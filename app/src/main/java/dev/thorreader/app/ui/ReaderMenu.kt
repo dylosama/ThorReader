@@ -247,13 +247,20 @@ fun ReaderMenu(session: ReaderSession) {
                     )
                     // Book modes: show the small screen's page on the big screen (and back).
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Swipe up to swap screens (comics)", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        // The label names the button for the current mode.
+                        val swapLabel = when (settings.mode) {
+                            ReadingMode.BOOK -> "Swap screens: swipe up or d-pad right"
+                            ReadingMode.BOOK_REVERSED -> "Swap screens: swipe up or Y"
+                            else -> "Swap screens (book modes): swipe up"
+                        }
+                        Text(swapLabel, color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
                         Chip("On", settings.swipeSwap) { settings.updateSwipeSwap(true) }
                         Chip("Off", !settings.swipeSwap) { settings.updateSwipeSwap(false) }
                     }
                     Text(
                         "In book modes: swipe up on the small screen's page to see it on the big screen; swipe up " +
-                            "on the big screen to swap back. The Y button does the same.",
+                            "on the big screen to swap back. Buttons: d-pad right or Y in Mode 1, Y in Mode 2. " +
+                            "On/Off turns the swipe on or off; the buttons always work.",
                         color = SubtleText,
                         fontSize = 13.sp,
                     )

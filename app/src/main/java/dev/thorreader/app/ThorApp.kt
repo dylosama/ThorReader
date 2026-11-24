@@ -543,6 +543,17 @@ class ThorApp : Application() {
             }
             else -> {
                 val r = s ?: return true
+                // Mode 1, comics/manga/PDF: d-pad RIGHT swaps the screens instead of turning the
+                // page (Y also swaps). Mode 2 and other modes keep d-pad right as a page turn.
+                if (code == KeyEvent.KEYCODE_DPAD_RIGHT && settings.mode == ReadingMode.BOOK && !r.reflowable) {
+                    Log.i(TAG, "D-pad RIGHT (code $code): mode 1, fixed-layout -> swap screens")
+                    r.toggleSwap(settings.mode, "d-pad right")
+                    return true
+                }
+                if (code == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                    val dir = physical(code, settings.mode)
+                    Log.i(TAG, "D-pad RIGHT (code $code): mode ${settings.mode.number}, ${if (r.reflowable) "book" else "fixed-layout"} -> page turn (${dir?.name?.lowercase()} side)")
+                }
                 val turn: (() -> Boolean)? = when (code) {
                     KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_R2,
                     KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_L2,

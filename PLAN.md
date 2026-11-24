@@ -631,3 +631,9 @@ Online lookup (`metadata/`), metadata only, never book content, never touches th
   swipes still follow the screen); holding a shoulder repeats the same action.
 - Pure mapping in `ShoulderButtons.kt` (unit-tested). Log line per press:
   "Shoulder R1 (code 103): mode 1, right-to-left, swap ON -> next page".
+- Addition: in Mode 1 (Book), fixed-layout books only, d-pad RIGHT toggles the swap instead of
+  turning the page (Y still toggles too). Mode 2 keeps d-pad right as a page turn (Y swaps).
+  Other modes and reflowable books unchanged. Logged: "D-pad RIGHT (code 22): mode 1,
+  fixed-layout -> swap screens" / "... -> page turn (...)". Menu label follows the mode:
+  "Swap screens: swipe up or d-pad right" (Mode 1), "Swap screens: swipe up or Y" (Mode 2);
+  the On/Off switch is for the swipe only, the buttons always work.

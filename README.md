@@ -26,8 +26,9 @@ Each book remembers its own mode. Switch from the reader menu.
 - Themes: Paper, Sepia, and Night (pure black with grey text, for OLED).
 - Comics and manga: fit-to-screen, double-page spreads split across both screens in book
   modes, right-to-left reading (auto-detected from ComicInfo.xml, or set per series),
-  double-tap and pinch zoom. In book modes, swipe up on the small screen's page (or press Y)
-  to see it on the big screen; swipe up again on the big screen to swap back.
+  double-tap and pinch zoom. In book modes, swipe up on the small screen's page to see it on
+  the big screen; swipe up again on the big screen to swap back. Buttons: d-pad right or Y in
+  Mode 1, Y in Mode 2.
 - Quick navigation: page scrubber, go to page, chapter list, and "back to where I was".
 - Page turns by tap, swipe, d-pad and shoulder buttons (hold to flip quickly), always in the
   physically right direction for the current mode. In right-to-left manga the shoulders are
