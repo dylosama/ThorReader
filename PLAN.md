@@ -587,3 +587,18 @@ Online lookup (`metadata/`), metadata only, never book content, never touches th
   `select_cycles_mode`, default off). When off, ThorApp.handleKey leaves Select alone.
   README no longer mentions Select. (Older notes above that say "Select cycles modes" describe
   the earlier default.)
+
+### Library declutter (step 16, still v0.2.0)
+- ONE row under "Library | Completed" + search, in the exact style of the step-14 sort row
+  (same chip size, font, weight, colours, spacing, radius, highlight, ↑/↓):
+  Recently read · Recently added · Progress · Title · Author · Series · Genre · Type
+  [· Needs review (N) at the end, only when N > 0]. The separate view-chip row is gone, and so
+  is the row's old "Sort" label (the row now also groups). Scrolls sideways (LazyRow) and keeps
+  the active chip in view; d-pad navigable.
+- Flat chips sort the whole list; tapping the active one flips ↑/↓ (defaults: newest first,
+  highest progress first, A→Z). Grouped chips show names with counts ("Frank Herbert · 1");
+  tapping the active one flips the names A→Z / Z→A (Type: Books, Manga, Comics / reversed).
+  Inside a group, books follow the last flat sort chosen; inside a series always volume order.
+- "Published" and "Completed date" are no longer sort options (the year still shows on rows).
+- One row state for both shelves, remembered: `lib_chip`, `flat_sort`, `flat_asc`, `group_asc`
+  (default Recently read, newest first). Replaces `lib_view` and the per-shelf `sort_*` prefs.

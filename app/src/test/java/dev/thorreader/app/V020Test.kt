@@ -293,8 +293,6 @@ class V020Test {
         assertEquals(listOf("Vol 1", "Vol 2"), LibraryLogic.booksIn(books, LibraryView.SERIES, "Saga", SortOrder.TITLE).map { it.title })
         assertEquals(listOf(LibraryLogic.BOOKS to 2, LibraryLogic.COMICS to 2), LibraryLogic.categories(books, LibraryView.TYPE))
         assertTrue(LibraryLogic.categories(books, LibraryView.AUTHORS).contains("Terry Pratchett" to 2))
-        assertEquals(listOf("Other", "Novel"), LibraryLogic.sort(books.filter { it.completed }, SortOrder.DATE_COMPLETED).map { it.title })
-        assertFalse(SortOrder.DATE_COMPLETED in LibraryLogic.sortsFor(Shelf.LIBRARY))
     }
 }
 
@@ -350,14 +348,11 @@ class SortTest {
     fun defaultsAndFlipping() {
         assertTrue(SortOrder.TITLE.defaultAscending)
         assertTrue(SortOrder.AUTHOR.defaultAscending)
-        assertFalse(SortOrder.PUBLISHED.defaultAscending)
         assertFalse(SortOrder.PROGRESS.defaultAscending)
         assertFalse(SortOrder.RECENTLY_READ.defaultAscending)
+        assertFalse(SortOrder.RECENTLY_ADDED.defaultAscending)
         assertEquals(listOf("Dune", "Emma", "Zed"), titles(LibraryLogic.sort(books, SortOrder.TITLE)))
         assertEquals(listOf("Zed", "Emma", "Dune"), titles(LibraryLogic.sort(books, SortOrder.TITLE, ascending = false)))
-        // Newest first; a book without a year always goes last, in both directions.
-        assertEquals(listOf("Dune", "Emma", "Zed"), titles(LibraryLogic.sort(books, SortOrder.PUBLISHED)))
-        assertEquals(listOf("Emma", "Dune", "Zed"), titles(LibraryLogic.sort(books, SortOrder.PUBLISHED, ascending = true)))
         // Never opened goes last for "Recently read".
         assertEquals(listOf("Dune", "Emma", "Zed"), titles(LibraryLogic.sort(books, SortOrder.RECENTLY_READ)))
         assertEquals(listOf("Emma", "Dune", "Zed"), titles(LibraryLogic.sort(books, SortOrder.RECENTLY_READ, ascending = true)))
@@ -365,20 +360,33 @@ class SortTest {
         assertEquals(listOf("Emma", "Dune", "Zed"), titles(LibraryLogic.sort(books, SortOrder.PROGRESS)))
         // No author: last.
         assertEquals(listOf("Dune", "Emma", "Zed"), titles(LibraryLogic.sort(books, SortOrder.AUTHOR)))
-        assertTrue(SortOrder.PUBLISHED in LibraryLogic.sortsFor(Shelf.LIBRARY))
     }
 
     @Test
-    fun categoriesFollowTheSort() {
-        // By name for Author sort, Z-A when flipped.
-        assertEquals(listOf("Frank Herbert", "Jane Austen", LibraryLogic.UNKNOWN_AUTHOR), LibraryLogic.categories(books, LibraryView.AUTHORS, SortOrder.AUTHOR).map { it.first })
-        assertEquals(listOf(LibraryLogic.UNKNOWN_AUTHOR, "Jane Austen", "Frank Herbert"), LibraryLogic.categories(books, LibraryView.AUTHORS, SortOrder.AUTHOR, false).map { it.first })
-        // By each author's best book for the other sorts (most recently read first).
-        assertEquals(listOf("Frank Herbert", "Jane Austen", LibraryLogic.UNKNOWN_AUTHOR), LibraryLogic.categories(books, LibraryView.AUTHORS, SortOrder.RECENTLY_READ).map { it.first })
-        assertEquals("Jane Austen", LibraryLogic.categories(books, LibraryView.AUTHORS, SortOrder.PROGRESS).first().first)
-        // Inside a series, "Title" = volume order; flipping reverses it.
-        val s = listOf(b("C", series = "S", n = 3f), b("A", series = "S", n = 1f), b("B", series = "S", n = 2f))
-        assertEquals(listOf("A", "B", "C"), titles(LibraryLogic.booksIn(s, LibraryView.SERIES, "S", SortOrder.TITLE)))
-        assertEquals(listOf("C", "B", "A"), titles(LibraryLogic.booksIn(s, LibraryView.SERIES, "S", SortOrder.TITLE, false)))
+    fun groupsAndBooksInside() {
+        // Group names A-Z, Z-A when flipped. Type keeps Books / Manga / Comics (reversed on flip).
+        assertEquals(listOf("Frank Herbert", "Jane Austen", LibraryLogic.UNKNOWN_AUTHOR), LibraryLogic.categories(books, LibraryView.AUTHORS).map { it.first })
+        assertEquals(listOf(LibraryLogic.UNKNOWN_AUTHOR, "Jane Austen", "Frank Herbert"), LibraryLogic.categories(books, LibraryView.AUTHORS, false).map { it.first })
+        assertEquals(listOf("Frank Herbert" to 1), LibraryLogic.categories(books.take(1), LibraryView.AUTHORS))
+        // Books inside a group follow the flat sort.
+        val two = listOf(b("Old", "A B", opened = 1), b("New", "A B", opened = 9))
+        assertEquals(listOf("New", "Old"), titles(LibraryLogic.booksIn(two, LibraryView.AUTHORS, "A B", SortOrder.RECENTLY_READ)))
+        assertEquals(listOf("New", "Old"), titles(LibraryLogic.booksIn(two, LibraryView.AUTHORS, "A B", SortOrder.TITLE)))
+        // ... except inside a series: always volume order, whatever the sort / direction.
+        val s = listOf(b("C", series = "S", n = 3f, opened = 9), b("A", series = "S", n = 1f), b("B", series = "S", n = 2f, opened = 5))
+        assertEquals(listOf("A", "B", "C"), titles(LibraryLogic.booksIn(s, LibraryView.SERIES, "S", SortOrder.RECENTLY_READ)))
+        assertEquals(listOf("A", "B", "C"), titles(LibraryLogic.booksIn(s, LibraryView.SERIES, "S", SortOrder.TITLE, false)))
+    }
+
+    @Test
+    fun theRowChips() {
+        // Order and kinds of the one library row.
+        assertEquals(
+            listOf("Recently read", "Recently added", "Progress", "Title", "Author", "Series", "Genre", "Type"),
+            LibraryChip.entries.map { it.label },
+        )
+        assertEquals(4, LibraryChip.entries.count { it.grouped })
+        assertEquals(LibraryView.TYPE, LibraryChip.TYPE.view)
+        assertEquals(SortOrder.PROGRESS, LibraryChip.PROGRESS.sort)
     }
 }

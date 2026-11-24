@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -60,6 +62,7 @@ import dev.thorreader.app.data.Book
 import dev.thorreader.app.importer.BookFormat
 import dev.thorreader.app.importer.formatNumber
 import dev.thorreader.app.LibraryView
+import dev.thorreader.app.LibraryChip
 import dev.thorreader.app.Shelf
 import dev.thorreader.app.SortOrder
 import dev.thorreader.app.TutorialStep
@@ -84,9 +87,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 
 /**
  * The library (always on the top screen, mode 3; the real bookshelf is milestone 3).
- * Top row: "Library | Completed" switch, search, sort, add buttons. Below: view chips
- * All · Authors · Series · Type · Genre. Authors/Series/Type/Genre list categories with book
- * counts; tapping one shows its books (back arrow or B returns). Works with the d-pad and A/B.
+ * Top: "Library | Completed" switch + search (centre), "+" and settings (right). Below: one row
+ * that sorts the list (Recently read, Recently added, Progress, Title) or groups it (Author,
+ * Series, Genre, Type: names with counts; tapping one shows its books, back arrow or B returns).
+ * Works with the d-pad and A/B.
  */
 @Composable
 fun LibraryScreen() {
@@ -99,8 +103,9 @@ fun LibraryScreen() {
 
     val shelf = settings.shelf
     val view = settings.libraryView
-    val sort = settings.sortFor(shelf)
-    val asc = settings.sortAscFor(shelf)
+    // The flat list and the books inside a group use the last flat sort chosen.
+    val sort = settings.flatSort
+    val asc = settings.flatAsc
     var category by remember { mutableStateOf<String?>(null) }
     var searchOpen by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -192,27 +197,16 @@ fun LibraryScreen() {
         }
         Spacer(Modifier.height(10.dp))
 
+        // --- one row: sort the list, or group it (both shelves) ---
+        LibraryRow(reviewCount, reviewOnly, onReview = { reviewOnly = !reviewOnly }) {
+            settings.tapChip(it)
+            category = null
+        }
+        Spacer(Modifier.height(8.dp))
         if (app.lookup.showKeyHint) {
             ComicVineHint()
             Spacer(Modifier.height(8.dp))
         }
-        // --- view chips (both shelves) ---
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            LibraryView.entries.forEach { v ->
-                Chip(v.label, v == view) {
-                    settings.updateLibraryView(v)
-                    category = null
-                }
-            }
-            if (reviewCount > 0) {
-                Spacer(Modifier.width(8.dp))
-                Chip("Needs review ($reviewCount)", reviewOnly) { reviewOnly = !reviewOnly }
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        // --- sort row (every view, both shelves) ---
-        SortRow(shelf, sort, asc)
-        Spacer(Modifier.height(8.dp))
 
         val cat = category
         when {
@@ -228,12 +222,13 @@ fun LibraryScreen() {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                     Chip("←") { category = null }
                     Spacer(Modifier.width(10.dp))
-                    Text(cat, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    // The group's name as a small header.
+                    Text(cat, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     Text("  ${inCat.size} ${if (inCat.size == 1) "book" else "books"}", color = SubtleText, fontSize = 13.sp)
                 }
                 BookList(inCat, app.tutorialShows(TutorialStep.OPEN_BOOK))
             }
-            else -> CategoryList(LibraryLogic.categories(matching, view, sort, asc)) { category = it }
+            else -> CategoryList(LibraryLogic.categories(matching, view, settings.groupAsc)) { category = it }
         }
     }
     if (app.settingsOpen) SettingsPanel()
@@ -273,9 +268,17 @@ private fun CategoryList(categories: List<Pair<String, Int>>, open: (String) -> 
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(name, color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                HouseBadge(if (count == 1) "1 book" else "$count books")
-                Text("  ›", color = SubtleText, fontSize = 18.sp)
+                // "Frank Herbert · 1"
+                Text(
+                    androidx.compose.ui.text.buildAnnotatedString {
+                        append(name)
+                        pushStyle(androidx.compose.ui.text.SpanStyle(color = SubtleText))
+                        append(" · $count")
+                        pop()
+                    },
+                    color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                )
+                Text("›", color = SubtleText, fontSize = 18.sp)
             }
         }
     }
@@ -668,27 +671,52 @@ private fun AddPopup(close: () -> Unit) {
 }
 
 /**
- * Compact sort options under the view chips. The active one is highlighted with ↑/↓; tapping it
- * again flips the direction, another one starts in its natural direction.
+ * The library's one row: Recently read · Recently added · Progress · Title (sort the list) ·
+ * Author · Series · Genre · Type (group it) [· Needs review (N)]. The active chip shows ↑/↓;
+ * tapping it again flips the direction. Scrolls sideways if it doesn't fit, keeping the active
+ * chip in view. (Chip look unchanged from the step-14 sort row.)
  */
 @Composable
-private fun SortRow(shelf: Shelf, current: SortOrder, asc: Boolean) {
+private fun LibraryRow(reviewCount: Int, reviewOnly: Boolean, onReview: () -> Unit, onChip: (LibraryChip) -> Unit) {
     val settings = ThorApp.instance.settings
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("Sort", color = Color(0xFF777777), fontSize = 12.sp, modifier = Modifier.padding(end = 4.dp))
-        LibraryLogic.sortsFor(shelf).forEach { o ->
-            val active = o == current
-            Text(
-                if (active) "${o.label} ${if (asc) "↑" else "↓"}" else o.label,
-                color = if (active) Accent else SubtleText,
-                fontSize = 13.sp,
-                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(if (active) Accent.copy(alpha = 0.14f) else Color.Transparent)
-                    .focusClick(RoundedCornerShape(50)) { settings.tapSort(shelf, o) }
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-            )
-        }
+    val current = settings.libraryChip
+    val asc = settings.chipAscending
+    val state = rememberLazyListState()
+    val chips = LibraryChip.entries
+    LaunchedEffect(current) {
+        val i = chips.indexOf(current)
+        val info = state.layoutInfo
+        val item = info.visibleItemsInfo.firstOrNull { it.index == i }
+        val fullyVisible = item != null && item.offset >= info.viewportStartOffset && item.offset + item.size <= info.viewportEndOffset
+        if (!fullyVisible) state.animateScrollToItem((i - 1).coerceAtLeast(0))
     }
+    LazyRow(
+        state = state,
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        items(chips) { c ->
+            val active = c == current
+            RowChip(if (active) "${c.label} ${if (asc) "↑" else "↓"}" else c.label, active) { onChip(c) }
+        }
+        if (reviewCount > 0) item { RowChip("Needs review ($reviewCount)", reviewOnly, onReview) }
+    }
+}
+
+/** One chip of the library row (the step-14 sort-row style, unchanged). */
+@Composable
+private fun RowChip(text: String, active: Boolean, onClick: () -> Unit) {
+    Text(
+        text,
+        color = if (active) Accent else SubtleText,
+        fontSize = 13.sp,
+        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(if (active) Accent.copy(alpha = 0.14f) else Color.Transparent)
+            .focusClick(RoundedCornerShape(50), onClick)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    )
 }

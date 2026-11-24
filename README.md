@@ -33,9 +33,9 @@ Each book remembers its own mode. Switch from the reader menu.
 - Reading position, mode and text settings are remembered per book.
 - Book modes can use a different text size on each screen ("Same text size on both screens" off
   in the reader menu); the text still flows from one screen to the next without losing a line.
-- Library: "Library | Completed" switch, views by Authors, Series, Type (Books / Manga / Comics)
-  and Genre, search, and sorting (recently read, recently added, title, author, progress,
-  published; tap the active one again to reverse it). Each row shows where you are, the page
+- Library: "Library | Completed" switch, search, and one row to sort the list (Recently read,
+  Recently added, Progress, Title) or group it (Author, Series, Genre, Type: Books / Manga /
+  Comics); tap the active option again to reverse it. Each row shows where you are, the page
   count, the year first published and the format ("277 / 1794 Pages · Published: 1965 · EPUB");
   finished books get a gold star and are also listed under "Completed". Works with the d-pad
   and A/B as well as touch.

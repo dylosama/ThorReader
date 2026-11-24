@@ -33,14 +33,11 @@ object LibraryLogic {
 
     val TYPES = listOf(BOOKS, MANGA, COMICS)
 
-    fun sortsFor(shelf: Shelf): List<SortOrder> =
-        SortOrder.entries.filter { it != SortOrder.DATE_COMPLETED || shelf == Shelf.COMPLETED }
-
     private val byTitle = Comparator<Book> { a, b -> NaturalOrder.compare(a.title, b.title) }
 
     /**
      * Sort [books] by [order]. [ascending] = ↑ (A→Z, oldest / lowest first). Books without a
-     * value for this order (never opened, no year, no author, not completed) always come last.
+     * value for this order (never opened, no author) always come last.
      */
     fun sort(books: List<Book>, order: SortOrder, ascending: Boolean = order.defaultAscending): List<Book> {
         val (has, none) = books.partition { hasValue(it, order) }
@@ -50,8 +47,6 @@ object LibraryLogic {
             SortOrder.TITLE -> byTitle
             SortOrder.AUTHOR -> Comparator<Book> { a, b -> (a.author ?: "").compareTo(b.author ?: "", ignoreCase = true) }.then(seriesOrder)
             SortOrder.PROGRESS -> compareBy { if (it.completed) 1f else it.progress }
-            SortOrder.PUBLISHED -> compareBy { it.year ?: 0 }
-            SortOrder.DATE_COMPLETED -> compareBy { it.completedAt ?: 0L }
         }
         val rest = if (order == SortOrder.RECENTLY_READ) compareByDescending<Book> { it.addedAt }.then(byTitle) else byTitle
         return has.sortedWith((if (ascending) asc else asc.reversed()).then(byTitle)) + none.sortedWith(rest)
@@ -60,8 +55,6 @@ object LibraryLogic {
     private fun hasValue(b: Book, order: SortOrder) = when (order) {
         SortOrder.RECENTLY_READ -> b.lastOpenedAt > 0
         SortOrder.AUTHOR -> !b.author.isNullOrBlank()
-        SortOrder.PUBLISHED -> b.year != null
-        SortOrder.DATE_COMPLETED -> b.completedAt != null
         else -> true
     }
 
@@ -95,17 +88,10 @@ object LibraryLogic {
     const val UNKNOWN_AUTHOR = "Unknown author"
 
     /**
-     * Categories with book counts. Names are matched ignoring case/spaces; shown as first seen.
-     * Order: Type is always Books, Manga, Comics; with Title or Author sorting, by name (A→Z or
-     * Z→A); otherwise by each category's best book in that sort (e.g. the author you read most
-     * recently first).
+     * Group names with book counts. Names are matched ignoring case/spaces; shown as first seen.
+     * [ascending]: A→Z (↓ = Z→A). Type keeps its own order Books, Manga, Comics (reversed on ↓).
      */
-    fun categories(
-        books: List<Book>,
-        view: LibraryView,
-        order: SortOrder = SortOrder.TITLE,
-        ascending: Boolean = order.defaultAscending,
-    ): List<Pair<String, Int>> {
+    fun categories(books: List<Book>, view: LibraryView, ascending: Boolean = true): List<Pair<String, Int>> {
         val names = LinkedHashMap<String, String>()
         val counts = HashMap<String, Int>()
         for (b in books) for (c in categoriesOf(b, view).distinctBy(::key)) {
@@ -114,34 +100,22 @@ object LibraryLogic {
             counts[k] = (counts[k] ?: 0) + 1
         }
         val list = names.map { (k, n) -> n to (counts[k] ?: 0) }
-        return if (view == LibraryView.TYPE) {
+        val ordered = if (view == LibraryView.TYPE) {
             listOf(BOOKS, MANGA, COMICS).mapNotNull { t -> list.firstOrNull { it.first == t } }
         } else {
-            when (order) {
-                SortOrder.TITLE, SortOrder.AUTHOR -> {
-                    val byName = list.sortedWith { a, b -> NaturalOrder.compare(a.first, b.first) }
-                    if (ascending) byName else byName.reversed()
-                }
-                else -> {
-                    val rank = HashMap<String, Int>()
-                    sort(books, order, ascending).forEachIndexed { i, b -> categoriesOf(b, view).forEach { rank.putIfAbsent(key(it), i) } }
-                    list.sortedWith(compareBy<Pair<String, Int>> { rank[key(it.first)] ?: Int.MAX_VALUE }.thenComparator { a, b -> NaturalOrder.compare(a.first, b.first) })
-                }
-            }
+            list.sortedWith { a, b -> NaturalOrder.compare(a.first, b.first) }
         }
+        return if (ascending) ordered else ordered.reversed()
     }
 
     /**
-     * Books in category [name], in the chosen sort. Inside a series, "Title" sorting means
-     * volume / issue order (↑ first volume first).
+     * Books in group [name], in the last flat sort chosen ([order], [ascending]) - except inside
+     * a series, which is always in volume / issue order.
      */
     fun booksIn(books: List<Book>, view: LibraryView, name: String, order: SortOrder, ascending: Boolean = order.defaultAscending): List<Book> {
         val k = key(name)
         val inCat = books.filter { b -> categoriesOf(b, view).any { key(it) == k } }
-        if (view == LibraryView.SERIES && order == SortOrder.TITLE) {
-            val byNumber = inCat.sortedWith(seriesOrder.then(byTitle))
-            return if (ascending) byNumber else byNumber.reversed()
-        }
+        if (view == LibraryView.SERIES) return inCat.sortedWith(seriesOrder.then(byTitle))
         return sort(inCat, order, ascending)
     }
 

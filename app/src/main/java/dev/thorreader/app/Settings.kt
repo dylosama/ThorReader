@@ -62,20 +62,36 @@ enum class PageTheme(val label: String, val paper: Color, val ink: Color) {
 /** Library top-left switch. */
 enum class Shelf(val label: String) { LIBRARY("Library"), COMPLETED("Completed") }
 
-/** Library view chips. */
-enum class LibraryView(val label: String) { ALL("All"), AUTHORS("Authors"), SERIES("Series"), TYPE("Type"), GENRE("Genre") }
+/** How the library list is built: the flat list (ALL) or one of the groupings. */
+enum class LibraryView(val label: String) { ALL("All"), AUTHORS("Author"), SERIES("Series"), TYPE("Type"), GENRE("Genre") }
 
+/** Orders for book lists. (AUTHOR is used for tie-breaks and tests; it isn't a chip.) */
 enum class SortOrder(val label: String) {
     RECENTLY_READ("Recently read"),
     RECENTLY_ADDED("Recently added"),
     TITLE("Title"),
     AUTHOR("Author"),
-    PROGRESS("Progress"),
-    PUBLISHED("Published"),
-    DATE_COMPLETED("Completed");
+    PROGRESS("Progress");
 
     /** Starting direction: A→Z for text, newest / highest first for the rest. */
     val defaultAscending: Boolean get() = this == TITLE || this == AUTHOR
+}
+
+/**
+ * The library's one row of chips, in order. Flat chips sort the whole list ([sort]); grouped
+ * chips show a list of names ([view]).
+ */
+enum class LibraryChip(val label: String, val sort: SortOrder? = null, val view: LibraryView? = null) {
+    RECENTLY_READ("Recently read", sort = SortOrder.RECENTLY_READ),
+    RECENTLY_ADDED("Recently added", sort = SortOrder.RECENTLY_ADDED),
+    PROGRESS("Progress", sort = SortOrder.PROGRESS),
+    TITLE("Title", sort = SortOrder.TITLE),
+    AUTHOR("Author", view = LibraryView.AUTHORS),
+    SERIES("Series", view = LibraryView.SERIES),
+    GENRE("Genre", view = LibraryView.GENRE),
+    TYPE("Type", view = LibraryView.TYPE);
+
+    val grouped: Boolean get() = view != null
 }
 
 /** First-run tutorial steps, shown once each, in this order. */
@@ -187,42 +203,47 @@ class Settings(private val prefs: SharedPreferences) {
 
     var shelf by mutableStateOf(enumPref("lib_shelf", Shelf.LIBRARY))
         private set
-    var libraryView by mutableStateOf(enumPref("lib_view", LibraryView.ALL))
-        private set
-    var sortLibrary by mutableStateOf(enumPref("sort_library", SortOrder.RECENTLY_READ))
-        private set
-    var sortCompleted by mutableStateOf(enumPref("sort_completed", SortOrder.DATE_COMPLETED))
-        private set
-
     fun updateShelf(s: Shelf) {
         shelf = s
         prefs.edit().putString("lib_shelf", s.name).apply()
     }
 
-    fun updateLibraryView(v: LibraryView) {
-        libraryView = v
-        prefs.edit().putString("lib_view", v.name).apply()
-    }
-
-    fun sortFor(s: Shelf) = if (s == Shelf.COMPLETED) sortCompleted else sortLibrary
-
-    /** Ascending (↑) or descending (↓) for each shelf. */
-    var sortAscLibrary by mutableStateOf(prefs.getBoolean("sort_library_asc", sortLibrary.defaultAscending))
-        private set
-    var sortAscCompleted by mutableStateOf(prefs.getBoolean("sort_completed_asc", sortCompleted.defaultAscending))
+    /** The active chip of the library row (same for Library and Completed). */
+    var libraryChip by mutableStateOf(enumPref("lib_chip", LibraryChip.RECENTLY_READ))
         private set
 
-    fun sortAscFor(s: Shelf) = if (s == Shelf.COMPLETED) sortAscCompleted else sortAscLibrary
+    /** The last flat sort chosen: the order of the flat list and of books inside a group. */
+    var flatSort by mutableStateOf(enumPref("flat_sort", SortOrder.RECENTLY_READ).let { if (it == SortOrder.AUTHOR) SortOrder.RECENTLY_READ else it })
+        private set
+    var flatAsc by mutableStateOf(prefs.getBoolean("flat_asc", flatSort.defaultAscending))
+        private set
+
+    /** Group names A→Z (↑) or Z→A (↓). */
+    var groupAsc by mutableStateOf(prefs.getBoolean("group_asc", true))
+        private set
+
+    /** The flat list or the grouping shown. */
+    val libraryView: LibraryView get() = libraryChip.view ?: LibraryView.ALL
+
+    /** Is the active chip showing ↑ (ascending)? */
+    val chipAscending: Boolean get() = if (libraryChip.grouped) groupAsc else flatAsc
 
     /**
-     * Tap on a sort option: the active one flips its direction; another one becomes active
-     * with its own starting direction.
+     * Tap on a chip: the active one flips its direction; another one becomes active with its
+     * starting direction (newest / highest first, A→Z for Title and for group names).
      */
-    fun tapSort(s: Shelf, order: SortOrder) {
-        val asc = if (order == sortFor(s)) !sortAscFor(s) else order.defaultAscending
-        if (s == Shelf.COMPLETED) { sortCompleted = order; sortAscCompleted = asc } else { sortLibrary = order; sortAscLibrary = asc }
-        val k = if (s == Shelf.COMPLETED) "sort_completed" else "sort_library"
-        prefs.edit().putString(k, order.name).putBoolean("${k}_asc", asc).apply()
+    fun tapChip(chip: LibraryChip) {
+        val again = chip == libraryChip
+        libraryChip = chip
+        val sort = chip.sort
+        if (sort != null) {
+            flatAsc = if (again) !flatAsc else sort.defaultAscending
+            flatSort = sort
+        } else {
+            groupAsc = if (again) !groupAsc else true
+        }
+        prefs.edit().putString("lib_chip", chip.name).putString("flat_sort", flatSort.name)
+            .putBoolean("flat_asc", flatAsc).putBoolean("group_asc", groupAsc).apply()
     }
 
     // ---- Select button -----------------------------------------------------------------
