@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <rect x="0" y="0" width="108" height="108" fill="#17181C"/>
+  <g transform="translate(54 54) scale(0.8) translate(-54 -54)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="23" y="30" width="28" height="48" rx="5" stroke="#F4EFE6" stroke-width="3"/>
+    <rect x="27.5" y="34.5" width="19" height="39" rx="1.5" stroke="#F4EFE6" stroke-width="1.8"/>
+    <path d="M31 40 H43 M31 45 H43 M31 50 H41 M31 55 H43 M31 60 H38 M33 65 H43 M31 70 H42" stroke="#F4EFE6" stroke-width="1.8" opacity="0.8"/>
+    <rect x="52.5" y="36" width="3" height="36" rx="1.5" stroke="#F4EFE6" stroke-width="1.8"/>
+    <rect x="57" y="30" width="28" height="48" rx="5" stroke="#F4EFE6" stroke-width="3"/>
+    <rect x="61" y="42" width="20" height="24" rx="1.5" stroke="#F4EFE6" stroke-width="1.8"/>
+    <circle cx="66" cy="36.5" r="1.6" stroke="#F4EFE6" stroke-width="1.6"/>
+    <circle cx="76" cy="36.5" r="1.6" stroke="#F4EFE6" stroke-width="1.6"/>
+    <path d="M66 70.5 V75.5 M63.5 73 H68.5" stroke="#F4EFE6" stroke-width="1.8"/>
+    <circle cx="76" cy="73" r="2.3" stroke="#F4EFE6" stroke-width="1.6"/>
+    <path d="M63.5 48 H70 M66.75 48 V60 M72.5 60 V48 H75.75 A3 3 0 0 1 75.75 54 H72.5 M75 54 L78.5 60" stroke="#F2B544" stroke-width="2.6"/>
+  </g>
+</svg>

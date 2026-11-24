@@ -1,0 +1,402 @@
+package dev.thorreader.app
+
+import android.app.Application
+import android.hardware.display.DisplayManager
+import android.os.SystemClock
+import android.util.Log
+import android.view.Display
+import android.view.KeyEvent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.room.Room
+import dev.thorreader.app.data.AppDatabase
+import dev.thorreader.app.data.Book
+import dev.thorreader.app.data.SeriesDirection
+import dev.thorreader.app.data.seriesKey
+import dev.thorreader.app.engine.MuPdf
+import dev.thorreader.app.engine.ReaderSession
+import dev.thorreader.app.engine.ScreenMetrics
+import dev.thorreader.app.importer.Importer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.io.File
+
+const val TAG = "ThorReader"
+
+/** The Thor's bottom screen is display 4. */
+const val BOTTOM_DISPLAY_ID = 4
+
+data class ModeToast(val mode: ReadingMode, val seq: Int)
+
+/** App-wide state shared by both activities and the bottom-screen Presentation. */
+class ThorApp : Application() {
+
+    lateinit var settings: Settings
+        private set
+    lateinit var db: AppDatabase
+        private set
+    lateinit var importer: Importer
+        private set
+    val scope = MainScope()
+
+    var screens by mutableStateOf(ScreenMetrics.DEFAULT)
+        private set
+
+    /** The open book, or null when the library is showing. */
+    var session by mutableStateOf<ReaderSession?>(null)
+        private set
+
+    /** Which screen the reader menu is open on (null = closed). */
+    var menuScreen by mutableStateOf<Screen?>(null)
+
+    /** Brief "Mode 2: Book reversed" label after a mode change. */
+    var modeToast by mutableStateOf<ModeToast?>(null)
+        private set
+
+    /** True if Android refused to move the reader onto the bottom display (mode 4 fallback). */
+    var bottomFallback by mutableStateOf(false)
+
+    private var toastSeq = 0
+    private var toastJob: Job? = null
+    private val displayManager by lazy { getSystemService(DisplayManager::class.java) }
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+        MuPdf.init()
+        settings = Settings(getSharedPreferences("thor_reader", MODE_PRIVATE))
+        db = Room.databaseBuilder(this, AppDatabase::class.java, "thor_reader.db")
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+            .build()
+        importer = Importer(this, db.books(), scope)
+        refreshScreens()
+        // Settings.mode always starts as Mode 3: the library on the top screen.
+        Log.i(TAG, "App started in mode ${settings.mode.number} (${settings.mode.title}), screens=$screens")
+    }
+
+    // ---- displays -------------------------------------------------------------------------
+
+    fun bottomDisplay(): Display? =
+        displayManager.getDisplay(BOTTOM_DISPLAY_ID)
+            ?: displayManager.displays.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
+
+    /**
+     * Real size of each screen, looked up by display id. Uses the display's hardware mode
+     * (physical pixels), which - unlike getRealMetrics() - does not depend on which display the
+     * calling activity happens to be on.
+     */
+    fun refreshScreens() {
+        fun size(d: Display?): Pair<Int, Int>? = d?.mode?.let { mode ->
+            val w = mode.physicalWidth
+            val h = mode.physicalHeight
+            if (w <= 0 || h <= 0) null else maxOf(w, h) to minOf(w, h) // landscape: width = longer side
+        }
+        val top = displayManager.getDisplay(Display.DEFAULT_DISPLAY)
+        val bottom = bottomDisplay()
+        val (tw, th) = size(top) ?: (ScreenMetrics.DEFAULT.topW to ScreenMetrics.DEFAULT.topH)
+        val (bw, bh) = size(bottom) ?: (ScreenMetrics.DEFAULT.bottomW to ScreenMetrics.DEFAULT.bottomH)
+        val density = top?.let { runCatching { createDisplayContext(it).resources.displayMetrics.density }.getOrNull() }
+            ?: ScreenMetrics.DEFAULT.density
+        val m = ScreenMetrics(tw, th, bw, bh, density)
+        if (m != screens) {
+            screens = m
+            Log.i(TAG, "Screens: top (display 0) ${tw}x$th, bottom (display ${bottom?.displayId}) ${bw}x$bh, density $density")
+        }
+    }
+
+    // ---- modes ----------------------------------------------------------------------------
+
+    /** Time of the last mode change: the screen handover that follows must not close the book. */
+    private var lastModeChangeAt = 0L
+
+    /**
+     * Switch the screens to [mode]. While a book is open the mode is saved to that book (and
+     * remembered as the mode for newly imported books).
+     */
+    fun setMode(mode: ReadingMode, showLabel: Boolean = true) {
+        if (mode != settings.mode) {
+            Log.i(TAG, "Mode ${settings.mode.number} -> ${mode.number} (${mode.title}); open book: ${session?.book?.title}")
+            lastModeChangeAt = SystemClock.uptimeMillis()
+            stopRepeating() // the key-up may arrive at another window during the screen handover
+            settings.updateMode(mode)
+        }
+        session?.let { s ->
+            if (s.book.readingMode != mode) {
+                s.applyMode(mode)
+                val id = s.book.id
+                scope.launch(Dispatchers.IO) { db.books().setMode(id, mode.name) }
+            }
+            settings.updateLastBookMode(mode)
+        }
+        menuScreen = null
+        if (!showLabel) return
+        toastSeq++
+        modeToast = ModeToast(mode, toastSeq)
+        toastJob?.cancel()
+        toastJob = scope.launch {
+            delay(1600)
+            modeToast = null
+        }
+    }
+
+    fun cycleMode() = setMode(settings.mode.next())
+
+    /** Change a book's saved mode from the library (doesn't change the screens). */
+    fun setBookMode(book: Book, mode: ReadingMode) {
+        scope.launch(Dispatchers.IO) { db.books().setMode(book.id, mode.name) }
+        Log.i(TAG, "'${book.title}' will open in mode ${mode.number} (${mode.title})")
+    }
+
+    // ---- books ----------------------------------------------------------------------------
+
+    /** Open a book in its own saved mode (or the last mode used, if it has none yet). */
+    fun openBook(id: Long) {
+        scope.launch {
+            val book = db.books().get(id) ?: return@launch
+            closeBook("opening another book", returnToLibrary = false)
+            val mode = book.readingMode ?: settings.lastBookMode
+            if (book.readingMode == null) launch(Dispatchers.IO) { db.books().setMode(book.id, mode.name) }
+            Log.i(TAG, "Opening '${book.title}' (${book.format}) in mode ${mode.number}: ${book.uri}")
+            session = ReaderSession(this@ThorApp, book.copy(mode = mode.name))
+            setMode(mode)
+        }
+    }
+
+    /**
+     * The ONLY way a book closes. [reason] is logged so unexpected closes can be traced.
+     * Afterwards the app returns to Mode 3 (library on the top screen, bottom screen released);
+     * the book keeps its own saved mode.
+     */
+    fun closeBook(reason: String, returnToLibrary: Boolean = true) {
+        val s = session ?: return
+        stopRepeating()
+        Log.i(TAG, "Closed '${s.book.title}' (reason: $reason)")
+        s.close()
+        session = null
+        menuScreen = null
+        if (returnToLibrary) setMode(ReadingMode.TOP, showLabel = false)
+    }
+
+    /** One light haptic tick (edge of the book), if the device can. */
+    fun tick() {
+        runCatching {
+            val v = getSystemService(android.os.VibratorManager::class.java)?.defaultVibrator ?: return
+            if (v.hasVibrator()) v.vibrate(android.os.VibrationEffect.createPredefined(android.os.VibrationEffect.EFFECT_TICK))
+        }
+    }
+
+    /**
+     * Reading direction for [book] and every other book in the same series, now and for
+     * volumes imported later.
+     */
+    fun setReadingDirection(book: Book, rtl: Boolean) {
+        session?.let { if (it.book.id == book.id) it.applyRtl(rtl) }
+        scope.launch(Dispatchers.IO) {
+            val dao = db.books()
+            dao.setRtlOverride(book.id, rtl)
+            val changed = mutableListOf(book.id)
+            val key = seriesKey(book.series)
+            if (key != null) {
+                dao.setSeriesDirection(SeriesDirection(key, rtl))
+                dao.booksInAnySeries().filter { seriesKey(it.series) == key && it.id != book.id }.forEach {
+                    dao.setRtlOverride(it.id, rtl)
+                    changed += it.id
+                }
+            }
+            Log.i(TAG, "Reading direction ${if (rtl) "right-to-left" else "left-to-right"} for '${book.title}'" +
+                if (key != null) " and its series '${book.series}' (${changed.size} books)" else "")
+            launch(Dispatchers.Main) { session?.let { if (it.book.id in changed) it.applyRtl(rtl) } }
+        }
+    }
+
+    fun removeBook(book: Book) {
+        if (session?.book?.id == book.id) closeBook("book removed from library")
+        scope.launch(Dispatchers.IO) {
+            db.books().delete(book.id)
+            book.coverPath?.let { File(it).delete() }
+            runCatching {
+                contentResolver.releasePersistableUriPermission(
+                    android.net.Uri.parse(book.uri), android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            Log.i(TAG, "Removed '${book.title}' from library")
+        }
+    }
+
+    fun toggleMenu(screen: Screen) {
+        menuScreen = if (menuScreen == screen) null else screen
+    }
+
+    /**
+     * Back / B button. Returns false if there is nothing to go back from (leave the app).
+     * Back events that arrive while the reader is moving between screens (just after a mode
+     * change) are ignored, so a mode switch can never close the book.
+     */
+    fun handleBack(source: String): Boolean {
+        val sinceModeChange = SystemClock.uptimeMillis() - lastModeChangeAt
+        return when {
+            sinceModeChange < HANDOVER_GUARD_MS -> {
+                Log.w(TAG, "Back from $source ignored: ${sinceModeChange} ms after a mode change (screen handover)")
+                true
+            }
+            session?.scrubbing == true -> {
+                session?.endScrub(false)
+                true
+            }
+            menuScreen != null -> {
+                menuScreen = null
+                true
+            }
+            session != null -> {
+                closeBook("Back pressed ($source)")
+                true
+            }
+            else -> false
+        }
+    }
+
+    // ---- buttons --------------------------------------------------------------------------
+
+    private enum class Dir { LEFT, RIGHT, UP, DOWN }
+
+    /** The direction a d-pad button physically points while the device is held for [mode]. */
+    private fun physical(code: Int, mode: ReadingMode): Dir? {
+        val pressed = when (code) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> Dir.LEFT
+            KeyEvent.KEYCODE_DPAD_RIGHT -> Dir.RIGHT
+            KeyEvent.KEYCODE_DPAD_UP -> Dir.UP
+            KeyEvent.KEYCODE_DPAD_DOWN -> Dir.DOWN
+            else -> return null
+        }
+        return when (mode) {
+            // Turned counter-clockwise: the device's "up" now points left, "down" points right.
+            ReadingMode.BOOK -> when (pressed) {
+                Dir.UP -> Dir.LEFT; Dir.DOWN -> Dir.RIGHT; Dir.LEFT -> Dir.DOWN; Dir.RIGHT -> Dir.UP
+            }
+            // Turned clockwise: "up" points right, "down" points left.
+            ReadingMode.BOOK_REVERSED -> when (pressed) {
+                Dir.UP -> Dir.RIGHT; Dir.DOWN -> Dir.LEFT; Dir.LEFT -> Dir.UP; Dir.RIGHT -> Dir.DOWN
+            }
+            else -> pressed
+        }
+    }
+
+    private val handledKeys = setOf(
+        KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_BUTTON_START,
+        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+        KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_L2, KeyEvent.KEYCODE_BUTTON_R2,
+        KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_PAGE_UP,
+    )
+
+    // Held buttons flip continuously: one turn at once, then after a pause faster and faster.
+    private var repeatJob: Job? = null
+    private var repeatKey = 0
+
+    private fun startRepeating(code: Int, action: () -> Boolean) {
+        repeatJob?.cancel()
+        repeatKey = code
+        if (!action()) return
+        repeatJob = scope.launch {
+            delay(REPEAT_FIRST_DELAY_MS)
+            var interval = REPEAT_START_MS
+            while (true) {
+                if (!action()) break // reached the edge of the book
+                delay(interval)
+                interval = (interval * REPEAT_ACCEL).toLong().coerceAtLeast(REPEAT_FASTEST_MS)
+            }
+        }
+    }
+
+    fun stopRepeating() {
+        repeatJob?.cancel()
+        repeatJob = null
+    }
+
+    /** Hardware buttons from either screen. Returns true if consumed. */
+    fun handleKey(e: KeyEvent): Boolean {
+        val code = e.keyCode
+        if (e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0) {
+            Log.d(TAG, "Key down: ${KeyEvent.keyCodeToString(code)} ($code)")
+        }
+        val s = session
+        if (s != null && s.scrubScreen != null) return handleScrubKey(s, e)
+        // In the library only Select is ours; the d-pad keeps its normal focus behaviour.
+        if (code != KeyEvent.KEYCODE_BUTTON_SELECT && (s == null || code !in handledKeys)) return false
+        if (code !in handledKeys) return false
+        if (e.action == KeyEvent.ACTION_UP) {
+            if (code == repeatKey) stopRepeating()
+            return true
+        }
+        if (e.action != KeyEvent.ACTION_DOWN || e.repeatCount > 0) return true // we do our own repeat
+        when (code) {
+            // Modes belong to books now: in the library Select does nothing.
+            KeyEvent.KEYCODE_BUTTON_SELECT -> if (s != null) cycleMode()
+            KeyEvent.KEYCODE_BUTTON_START -> toggleMenu(if (settings.mode == ReadingMode.BOTTOM) Screen.BOTTOM else Screen.TOP)
+            else -> {
+                val r = s ?: return true
+                val turn: (() -> Boolean)? = when (code) {
+                    KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_R2 -> r::physicalRight
+                    KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_L2 -> r::physicalLeft
+                    KeyEvent.KEYCODE_PAGE_DOWN -> r::forward
+                    KeyEvent.KEYCODE_PAGE_UP -> r::back
+                    else -> when (physical(code, settings.mode)) {
+                        Dir.RIGHT -> r::physicalRight
+                        Dir.LEFT -> r::physicalLeft
+                        Dir.DOWN -> r::forward
+                        Dir.UP -> r::back
+                        null -> null
+                    }
+                }
+                turn?.let { startRepeating(code, it) }
+            }
+        }
+        return true
+    }
+
+    /**
+     * Scrubber open: left/right = 1 page, shoulders = 10 pages (both in the physical direction,
+     * so right-to-left books run right-to-left), A = jump there, B = cancel and go back.
+     */
+    private fun handleScrubKey(s: ReaderSession, e: KeyEvent): Boolean {
+        val code = e.keyCode
+        if (e.action == KeyEvent.ACTION_UP) {
+            if (code == repeatKey) stopRepeating()
+            return true
+        }
+        if (e.action != KeyEvent.ACTION_DOWN || e.repeatCount > 0) return true
+        val step: Int? = when (code) {
+            KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_R2 -> 10
+            KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_L2 -> -10
+            else -> when (physical(code, settings.mode)) {
+                Dir.RIGHT, Dir.DOWN -> 1
+                Dir.LEFT, Dir.UP -> -1
+                null -> null
+            }
+        }
+        when {
+            step != null -> startRepeating(code) {
+                val before = s.scrubPos
+                s.scrubPhysical(step)
+                s.scrubPos != before
+            }
+            code == KeyEvent.KEYCODE_BUTTON_A || code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER -> s.endScrub(true)
+            code == KeyEvent.KEYCODE_BUTTON_B || code == KeyEvent.KEYCODE_BACK -> s.endScrub(false)
+            else -> return false
+        }
+        return true
+    }
+
+    companion object {
+        lateinit var instance: ThorApp
+            private set
+        private const val HANDOVER_GUARD_MS = 2000L
+        private const val REPEAT_FIRST_DELAY_MS = 450L
+        private const val REPEAT_START_MS = 320L
+        private const val REPEAT_FASTEST_MS = 60L
+        private const val REPEAT_ACCEL = 0.85f
+    }
+}

@@ -1,0 +1,42 @@
+# --- Android / Gradle build output ---
+build/
+*/build/
+.gradle/
+.kotlin/
+.cxx/
+.externalNativeBuild/
+captures/
+*.apk
+*.aab
+*.ap_
+output-metadata.json
+
+# --- Local machine settings ---
+local.properties
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# --- Signing: NEVER commit keystores or their passwords ---
+*.jks
+*.keystore
+*.p12
+keystore.properties
+
+# --- Books: never commit e-books or comics ---
+*.epub
+*.pdf
+*.cbz
+*.cbr
+*.cb7
+*.mobi
+*.azw
+*.azw3
+*.prc
+*.fb2
+*.xps
+*.oxps
+
+# --- Working notes (task prompts) ---
+step*.md

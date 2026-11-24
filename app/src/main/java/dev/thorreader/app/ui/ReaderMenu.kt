@@ -1,0 +1,249 @@
+package dev.thorreader.app.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import dev.thorreader.app.PageTheme
+import dev.thorreader.app.ReadingMode
+import dev.thorreader.app.Settings
+import dev.thorreader.app.ThorApp
+import dev.thorreader.app.engine.ChapterTitle
+import dev.thorreader.app.engine.ReaderSession
+import androidx.compose.foundation.layout.size
+import dev.thorreader.app.importer.formatNumber
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/**
+ * Reader menu, opened by pressing and holding a page (or Start). Big "Return to reading" and
+ * "Close book" buttons first, then book info, the four modes and settings.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ReaderMenu(session: ReaderSession) {
+    val app = ThorApp.instance
+    val settings = app.settings
+    val book = session.book
+    val p = session.pagination
+
+    // Dim background; tapping outside the panel closes the menu.
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color(0x99000000))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { app.menuScreen = null },
+        contentAlignment = Alignment.Center,
+    ) {
+        BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp), contentAlignment = Alignment.Center) {
+            Column(
+                Modifier
+                    .widthIn(max = 560.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(HouseStyle.PanelBackground)
+                    .border(1.dp, HouseStyle.Hairline, RoundedCornerShape(16.dp))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                // --- Big actions first ---
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    BigButton("Return to reading", primary = true) { app.menuScreen = null }
+                    BigButton("Close book", primary = false) { app.closeBook("Close book button") }
+                }
+
+                // --- Book: cover, title, author, progress ---
+                Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    BookCover(book, Modifier.size(72.dp, 104.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(book.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        val byline = listOfNotNull(
+                            book.author,
+                            book.series?.let { s -> s + (book.seriesNumber?.let { " #" + formatNumber(it) } ?: "") },
+                        ).joinToString("  ·  ")
+                        if (byline.isNotEmpty()) Text(byline, color = SubtleText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        // Books: already the chosen chapter name; PDFs: raw outline titles.
+                        p?.labelAt(session.viewIndex)?.let { if (session.reflowable) it else ChapterTitle.format(it) }?.let {
+                            Text(it, color = Accent, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        val pct = (session.progress * 100).toInt()
+                        // Progress bar in the house colours.
+                        Box(Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(50)).background(HouseStyle.Hairline)) {
+                            Box(Modifier.fillMaxWidth(session.progress.coerceIn(0f, 1f)).height(3.dp).background(Accent))
+                        }
+                        if (p != null) {
+                            val pages = if (p.complete) "Page ${session.viewIndex + 1} of ${p.views.size}" else "Page ${session.viewIndex + 1} (still laying out)"
+                            Text("$pages  ·  $pct%", color = SubtleText, fontSize = HouseStyle.TextSize)
+                        }
+                    }
+                    Clock()
+                }
+
+                // --- Navigation ---
+                if (p != null) {
+                    if (session.recentJump) {
+                        session.backPage?.let { page ->
+                            Chip("↩ Back to page $page") {
+                                session.jumpBack()
+                                app.menuScreen = null
+                            }
+                        }
+                    }
+                    ScrubTrack(session, Modifier.fillMaxWidth()) { session.endScrub(true) }
+                    val rtl = p.config.rtl
+                    // -10 -1 ... +1 +10, mirrored in right-to-left books (forward is to the left).
+                    val steps = if (rtl) listOf(10, 1, -1, -10) else listOf(-10, -1, 1, 10)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        steps.take(2).forEach { d -> Chip(if (d > 0) "+$d" else "$d") { session.jumpBy(d) } }
+                        Box(Modifier.weight(1f))
+                        steps.drop(2).forEach { d -> Chip(if (d > 0) "+$d" else "$d") { session.jumpBy(d) } }
+                    }
+                    var panel by remember { mutableStateOf(0) } // 0 none, 1 number pad, 2 chapters
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Chip("Go to page", panel == 1) { panel = if (panel == 1) 0 else 1 }
+                        Chip("Chapters", panel == 2) { panel = if (panel == 2) 0 else 2 }
+                    }
+                    when (panel) {
+                        1 -> NumberPad(session) { app.menuScreen = null }
+                        2 -> ChapterList(session) { app.menuScreen = null }
+                    }
+                }
+
+                // --- Modes ---
+                Section("Reading mode  (Select button cycles)")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ReadingMode.entries.forEach { m ->
+                        ModeButton(m, m == settings.mode) { app.setMode(m) }
+                    }
+                }
+                if (settings.mode == ReadingMode.BOTTOM) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Bottom screen:", color = Color.White, fontSize = 14.sp)
+                        Chip("One page", !settings.bottomTwoPage) { settings.updateBottomTwoPage(false) }
+                        Chip("Two pages", settings.bottomTwoPage) { settings.updateBottomTwoPage(true) }
+                    }
+                }
+
+                // --- Direction ---
+                Section(if (book.series != null) "Reading direction (whole series)" else "Reading direction")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Chip("Left-to-right", !book.rtl) { app.setReadingDirection(book, false) }
+                    Chip("Right-to-left (manga)", book.rtl) { app.setReadingDirection(book, true) }
+                }
+
+                // --- Text settings (reflowable only) ---
+                if (session.reflowable) {
+                    Section("Text")
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Size", color = Color.White, fontSize = 14.sp, modifier = Modifier.width(64.dp))
+                        Chip("A−") { settings.updateFont(settings.fontPt - 1f) }
+                        Text("${settings.fontPt.toInt()} pt", color = Color.White, fontSize = 15.sp)
+                        Chip("A+") { settings.updateFont(settings.fontPt + 1f) }
+                    }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Margins", color = Color.White, fontSize = 14.sp, modifier = Modifier.width(64.dp).padding(top = 8.dp))
+                        Settings.MARGIN_LABELS.forEachIndexed { i, label ->
+                            Chip(label, settings.marginLevel == i) { settings.updateMargin(i) }
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Theme", color = Color.White, fontSize = 14.sp, modifier = Modifier.width(64.dp))
+                        PageTheme.entries.forEach { t -> Chip(t.label, settings.theme == t) { settings.updateTheme(t) } }
+                    }
+                } else {
+                    Text(
+                        "Double-tap a page to zoom, pinch to zoom and move. Double-tap again to reset.",
+                        color = SubtleText,
+                        fontSize = 13.sp,
+                    )
+                }
+
+                // --- Page furniture ---
+                Section("Header & page number")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Chip("On", settings.showHeader) { settings.updateShowHeader(true) }
+                    Chip("Off", !settings.showHeader) { settings.updateShowHeader(false) }
+                }
+
+                // --- Controls ---
+                Section("Hold to open this menu")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Settings.HOLD_CHOICES_MS.forEach { ms ->
+                        Chip(if (ms % 1000 == 0) "${ms / 1000} s" else "${ms / 1000.0} s", settings.menuHoldMs == ms) {
+                            settings.updateMenuHold(ms)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.BigButton(label: String, primary: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .weight(1f)
+            .height(64.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (primary) Accent else Color(0xFF3A3A3A))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (primary) Color.Black else Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun Section(title: String) {
+    Text(title.uppercase(), color = Color(0xFF888888), fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+}
+
+@Composable
+private fun Clock() {
+    var now by remember { mutableStateOf(Date()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = Date()
+            delay(10_000)
+        }
+    }
+    val fmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    Text(fmt.format(now), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Light)
+}

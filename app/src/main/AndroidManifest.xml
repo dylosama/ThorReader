@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- One light haptic tick when trying to turn past the first/last page. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application
+        android:name=".ThorApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:largeHeap="true"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.ThorReader">
+
+        <!--
+          Top-screen host (display 0). Used for modes 1, 2 and 3.
+          Locked to landscape: book modes rotate our own content instead of using auto-rotate.
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|density|uiMode"
+            android:resizeableActivity="true"
+            android:autoRemoveFromRecents="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          Bottom-screen host (display 4). Used for mode 4 so the top screen is released.
+          Separate task affinity so it can live in its own task on the other display.
+        -->
+        <activity
+            android:name=".BottomActivity"
+            android:exported="false"
+            android:taskAffinity="dev.thorreader.app.bottom"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|density|uiMode"
+            android:resizeableActivity="true"
+            android:autoRemoveFromRecents="true"
+            android:excludeFromRecents="true" />
+    </application>
+
+</manifest>

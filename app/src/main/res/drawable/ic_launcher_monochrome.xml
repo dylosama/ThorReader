@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MONOCHROME layer for Android themed icons: the foreground in a single colour (Android tints it).
+  Converted 1:1 from icon.svg (108x108 adaptive grid).
+  SVG transform "translate(54 54) scale(0.8) translate(-54 -54)" = scale 0.8 around (54,54),
+  which keeps everything inside the circular safe zone. Rounded rects / circles are written as
+  path data with the same coordinates; strokes keep their widths, round caps and joins.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.8"
+        android:scaleY="0.8">
+
+        <!-- rect 23,30 28x48 rx5 -->
+        <path
+            android:pathData="M28,30 H46 A5,5 0 0 1 51,35 V73 A5,5 0 0 1 46,78 H28 A5,5 0 0 1 23,73 V35 A5,5 0 0 1 28,30 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="3"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <!-- rect 27.5,34.5 19x39 rx1.5 -->
+        <path
+            android:pathData="M29,34.5 H45 A1.5,1.5 0 0 1 46.5,36 V72 A1.5,1.5 0 0 1 45,73.5 H29 A1.5,1.5 0 0 1 27.5,72 V36 A1.5,1.5 0 0 1 29,34.5 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="1.8"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <!-- Text lines (opacity 0.8) -->
+        <path
+            android:pathData="M31,40 H43 M31,45 H43 M31,50 H41 M31,55 H43 M31,60 H38 M33,65 H43 M31,70 H42"
+            android:strokeColor="#FFFFFF"
+            android:strokeAlpha="0.8"
+            android:strokeWidth="1.8"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <!-- rect 52.5,36 3x36 rx1.5 -->
+        <path
+            android:pathData="M54,36 A1.5,1.5 0 0 1 55.5,37.5 V70.5 A1.5,1.5 0 0 1 54,72 A1.5,1.5 0 0 1 52.5,70.5 V37.5 A1.5,1.5 0 0 1 54,36 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="1.8"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <!-- rect 57,30 28x48 rx5 -->
+        <path
+            android:pathData="M62,30 H80 A5,5 0 0 1 85,35 V73 A5,5 0 0 1 80,78 H62 A5,5 0 0 1 57,73 V35 A5,5 0 0 1 62,30 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="3"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <!-- rect 61,42 20x24 rx1.5 -->
+        <path
+            android:pathData="M62.5,42 H79.5 A1.5,1.5 0 0 1 81,43.5 V64.5 A1.5,1.5 0 0 1 79.5,66 H62.5 A1.5,1.5 0 0 1 61,64.5 V43.5 A1.5,1.5 0 0 1 62.5,42 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="1.8"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <!-- circles (66,36.5) and (76,36.5), r1.6 -->
+        <path
+            android:pathData="M64.4,36.5 A1.6,1.6 0 1 0 67.6,36.5 A1.6,1.6 0 1 0 64.4,36.5 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="1.6"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M74.4,36.5 A1.6,1.6 0 1 0 77.6,36.5 A1.6,1.6 0 1 0 74.4,36.5 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="1.6"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <!-- plus at (66,73) -->
+        <path
+            android:pathData="M66,70.5 V75.5 M63.5,73 H68.5"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="1.8"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <!-- circle (76,73) r2.3 -->
+        <path
+            android:pathData="M73.7,73 A2.3,2.3 0 1 0 78.3,73 A2.3,2.3 0 1 0 73.7,73 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="1.6"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <!-- Gold strokes (#FFFFFF). The R's bowl is the arc from (75.75,48) to (75.75,54), radius 3, clockwise. -->
+        <path
+            android:pathData="M63.5,48 H70 M66.75,48 V60 M72.5,60 V48 H75.75 A3,3 0 0 1 75.75,54 H72.5 M75,54 L78.5,60"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2.6"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>
