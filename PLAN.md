@@ -618,3 +618,16 @@ Online lookup (`metadata/`), metadata only, never book content, never touches th
 - Animation: each screen's page slides out toward the hinge while the other slides in from it
   (300 ms, FastOutSlowIn), so they appear to pass each other across the hinge; each page is
   rendered for its new screen's size. House pill "Page 7 ⇄" on the big screen, fades after 1.5 s.
+
+### Shoulder buttons for manga (step 18, still v0.2.0)
+- Before: L1/L2 = page on the physical left, R1/R2 = page on the physical right, so in
+  right-to-left books R1 went BACK. LTR books: R1 = next page and L1 = previous in all four modes
+  (unchanged; every press is now logged so this can be checked on the Thor).
+- Reader menu toggle "Swap L1/R1 for manga" (only for right-to-left books), default ON, saved
+  per series (pref string set `shoulder_swap_off` of series keys / "book:<id>" for books without
+  a series - only the OFF choices are stored). When ON (RTL books): Mode 1 R1 = next, L1 =
+  previous; Mode 2 L1 = next, R1 = previous; Modes 3/4 R1 = next, L1 = previous. When OFF: the
+  physical direction as before. L2/R2 behave like L1/R1. Only the shoulders change (d-pad, taps,
+  swipes still follow the screen); holding a shoulder repeats the same action.
+- Pure mapping in `ShoulderButtons.kt` (unit-tested). Log line per press:
+  "Shoulder R1 (code 103): mode 1, right-to-left, swap ON -> next page".

@@ -197,6 +197,18 @@ fun ReaderMenu(session: ReaderSession) {
                     Chip("Left-to-right", !book.rtl) { app.setReadingDirection(book, false) }
                     Chip("Right-to-left (manga)", book.rtl) { app.setReadingDirection(book, true) }
                 }
+                if (book.rtl) {
+                    // Right-to-left: let the easy-to-reach shoulder go forward (saved per series).
+                    val swap = settings.mangaShoulderSwap(book.id, book.series)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Swap L1/R1 for manga" + if (book.series != null) " (whole series)" else "",
+                            color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f),
+                        )
+                        Chip("On", swap) { settings.updateMangaShoulderSwap(book.id, book.series, true) }
+                        Chip("Off", !swap) { settings.updateMangaShoulderSwap(book.id, book.series, false) }
+                    }
+                }
 
                 // --- Text settings (reflowable only) ---
                 if (session.reflowable) {

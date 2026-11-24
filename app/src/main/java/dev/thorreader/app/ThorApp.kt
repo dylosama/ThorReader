@@ -544,8 +544,9 @@ class ThorApp : Application() {
             else -> {
                 val r = s ?: return true
                 val turn: (() -> Boolean)? = when (code) {
-                    KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_R2 -> r::physicalRight
-                    KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_L2 -> r::physicalLeft
+                    KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_R2,
+                    KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_L2,
+                    -> shoulderAction(r, code)
                     KeyEvent.KEYCODE_PAGE_DOWN -> r::forward
                     KeyEvent.KEYCODE_PAGE_UP -> r::back
                     else -> when (physical(code, settings.mode)) {
@@ -560,6 +561,30 @@ class ThorApp : Application() {
             }
         }
         return true
+    }
+
+    /**
+     * A shoulder press: see [ShoulderButtons] (manga swap per series). Logged with mode,
+     * direction, toggle and result; holding the button repeats the same action.
+     */
+    private fun shoulderAction(r: ReaderSession, code: Int): () -> Boolean {
+        val right = code == KeyEvent.KEYCODE_BUTTON_R1 || code == KeyEvent.KEYCODE_BUTTON_R2
+        val mode = settings.mode
+        val rtl = r.book.rtl
+        val swap = settings.mangaShoulderSwap(r.book.id, r.book.series)
+        val t = ShoulderButtons.turn(right, mode, rtl, swap)
+        Log.i(
+            TAG,
+            "Shoulder ${KeyEvent.keyCodeToString(code).removePrefix("KEYCODE_BUTTON_")} (code $code): mode ${mode.number}, " +
+                "${if (rtl) "right-to-left" else "left-to-right"}, swap ${if (!rtl) "n/a" else if (swap) "ON" else "OFF"} -> " +
+                t.label + if (t == Turn.PAGE_LEFT || t == Turn.PAGE_RIGHT) " = ${ShoulderButtons.meaning(t, rtl).label}" else "",
+        )
+        return when (t) {
+            Turn.NEXT -> r::forward
+            Turn.PREVIOUS -> r::back
+            Turn.PAGE_RIGHT -> r::physicalRight
+            Turn.PAGE_LEFT -> r::physicalLeft
+        }
     }
 
     /**

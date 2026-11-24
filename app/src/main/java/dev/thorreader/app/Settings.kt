@@ -257,6 +257,22 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putBoolean("select_cycles_mode", on).apply()
     }
 
+    /**
+     * "Swap L1/R1 for manga" per series (or per book without a series): on by default, so only
+     * the series where it was turned OFF are stored.
+     */
+    private var shoulderSwapOff by mutableStateOf(prefs.getStringSet("shoulder_swap_off", emptySet())!!.toSet())
+
+    private fun shoulderKey(bookId: Long, series: String?) = dev.thorreader.app.data.seriesKey(series) ?: "book:$bookId"
+
+    fun mangaShoulderSwap(bookId: Long, series: String?): Boolean = shoulderKey(bookId, series) !in shoulderSwapOff
+
+    fun updateMangaShoulderSwap(bookId: Long, series: String?, on: Boolean) {
+        val k = shoulderKey(bookId, series)
+        shoulderSwapOff = if (on) shoulderSwapOff - k else shoulderSwapOff + k
+        prefs.edit().putStringSet("shoulder_swap_off", shoulderSwapOff).apply()
+    }
+
     /** Comics in book modes: swipe up to swap the pages between the screens (default on). */
     var swipeSwap by mutableStateOf(prefs.getBoolean("swipe_swap", true))
         private set
