@@ -228,7 +228,7 @@ page" always moves the right way physically.
    `Book.bookmarkChapter` / `bookmarkFraction`, fixed pages use fraction 0.5 for the right half of
    a split spread), so it survives font/margin/mode changes. Reader menu: "Bookmark" toggle under
    Return / Close (two-page views ask "Left page / Right page"), "Go to bookmark" when it is on
-   another page, round colour swatch -> picker (8 presets, red default; "Custom" hue slider; live
+   another page, round colour swatch -> picker (8 presets, blue default; "Custom" hue slider; live
    ribbon preview; one global colour, `Settings.bookmarkColor`). Ribbon: slim notched ribbon from
    the top edge, top-left of a left page / top-right of a right page (single pages: top-left, or
    top-right in RTL, like the running header). Swipe UP on it = off (slides up; no page turn, no
@@ -241,6 +241,8 @@ page" always moves the right way physically.
      app killed, the bookmark simply stays. Every on/off is logged: `Bookmark ON/OFF ... (reason)`.
    - While the menu is open the d-pad moves through the menu (no page turns) and B closes the
      colour picker, then the menu.
+   - Completed books stay in the Library view too (star); the Completed view lists only them.
+     Their row line is "22 / 22 · CBR" with the page in green (`CompletedGreen`).
    - Library row line: "277 / 1794 · EPUB" (current page in the bookmark colour, from
      `Book.lastPage` of the last-used layout; estimated from progress if unknown), "Not started ·
      EPUB" if never opened. Room DB v5 (`MIGRATION_4_5`).

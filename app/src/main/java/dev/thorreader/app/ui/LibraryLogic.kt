@@ -112,7 +112,7 @@ object LibraryLogic {
      * Row line under the author, in two parts: [current] (the page you're on, shown in the
      * bookmark colour) and the [rest]: "277" + " / 1794 · EPUB", or "Not started · EPUB".
      */
-    data class PageLine(val current: String?, val rest: String) {
+    data class PageLine(val current: String?, val rest: String, val completed: Boolean = false) {
         override fun toString() = (current ?: "") + rest
     }
 
@@ -123,8 +123,14 @@ object LibraryLogic {
      */
     fun detailLine(b: Book): PageLine {
         val format = runCatching { BookFormat.valueOf(b.format).label }.getOrDefault(b.format)
-        if (b.lastOpenedAt == 0L) return PageLine(null, "Not started · $format")
         val total = b.displayPages
+        // Completed: "22 / 22" (shown in green), even if the last view started on page 21 or
+        // the book was marked completed without being read to the end.
+        if (b.completed) {
+            return if (total > 0) PageLine("$total", " / $total · $format", completed = true)
+            else PageLine(null, "Completed · $format", completed = true)
+        }
+        if (b.lastOpenedAt == 0L) return PageLine(null, "Not started · $format")
         val current = when {
             b.lastPage > 0 -> if (total > 0) b.lastPage.coerceAtMost(total) else b.lastPage
             total > 0 -> Math.round(b.progress * total).coerceIn(1, total)

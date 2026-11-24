@@ -107,7 +107,8 @@ fun LibraryScreen() {
     // Upgraders and anyone who already has books skip "Add your books here".
     LaunchedEffect(loaded?.isNotEmpty()) { if (loaded?.isNotEmpty() == true) app.tutorialDone(TutorialStep.ADD_BOOKS) }
 
-    val onShelf = books.filter { it.completed == (shelf == Shelf.COMPLETED) }
+    // Library shows every book (completed ones too, with their star); Completed only the finished ones.
+    val onShelf = if (shelf == Shelf.COMPLETED) books.filter { it.completed } else books
     val q = query.trim()
     val matching = if (q.isEmpty()) onShelf else onShelf.filter { b ->
         b.title.contains(q, true) || b.author?.contains(q, true) == true || b.series?.contains(q, true) == true
@@ -117,7 +118,7 @@ fun LibraryScreen() {
     Column(Modifier.fillMaxSize().background(Color(0xFF101010)).padding(16.dp)) {
         // --- top row ---
         Row(verticalAlignment = Alignment.CenterVertically) {
-            ShelfSwitch(shelf, books.count { !it.completed }, books.count { it.completed }) {
+            ShelfSwitch(shelf, books.size, books.count { it.completed }) {
                 settings.updateShelf(it)
                 category = null
             }
@@ -172,7 +173,7 @@ fun LibraryScreen() {
             )
             onShelf.isEmpty() -> EmptyMessage(
                 if (shelf == Shelf.COMPLETED) "No completed books yet.\nA book moves here when you reach its last page,\nor with \"Mark as completed\" in its popup."
-                else "Every book is completed. They're in \"Completed\".",
+                else "No books yet.",
             )
             matching.isEmpty() -> EmptyMessage("Nothing matches \"$q\".")
             view == LibraryView.ALL -> BookList(sorted, app.tutorialShows(TutorialStep.OPEN_BOOK))
@@ -347,7 +348,8 @@ private fun BookRow(book: Book) {
             ).joinToString("  ·  ")
             if (byline.isNotEmpty()) Text(byline, color = SubtleText, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val line = LibraryLogic.detailLine(book)
-            val pageColor = Color(app.settings.bookmarkColor)
+            // A finished book shows "22 / 22" with the page in green; otherwise the bookmark colour.
+            val pageColor = if (line.completed) CompletedGreen else Color(app.settings.bookmarkColor)
             Text(
                 androidx.compose.ui.text.buildAnnotatedString {
                     line.current?.let { c ->
@@ -366,6 +368,9 @@ private fun BookRow(book: Book) {
 
 /** The completed star. */
 val Gold = Color(0xFFE8B84A)
+
+/** Page number of a completed book in the library ("22 / 22"). */
+val CompletedGreen = Color(0xFF5CBF6A)
 
 /** Square button showing the book's mode; opens the book's little popup. */
 @Composable

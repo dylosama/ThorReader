@@ -210,7 +210,7 @@ class Settings(private val prefs: SharedPreferences) {
     // ---- bookmark colour (one for all books) --------------------------------------------
 
     /** ARGB of the bookmark ribbon (and the current page number in the library). */
-    var bookmarkColor by mutableIntStateOf(prefs.getInt("bookmark_color", BOOKMARK_PRESETS[0]))
+    var bookmarkColor by mutableIntStateOf(prefs.getInt("bookmark_color", DEFAULT_BOOKMARK_COLOR))
         private set
 
     fun updateBookmarkColor(argb: Int) {
@@ -255,7 +255,7 @@ class Settings(private val prefs: SharedPreferences) {
 
         /**
          * Bookmark colours: mid-tone and fairly saturated, so each stands out on light Paper,
-         * yellowish Sepia and black Night pages alike. Red is the default.
+         * yellowish Sepia and black Night pages alike. Blue is the default.
          */
         val BOOKMARK_PRESETS = listOf(
             0xFFD93A3A.toInt(), // red
@@ -268,6 +268,9 @@ class Settings(private val prefs: SharedPreferences) {
             0xFFD9508C.toInt(), // pink
         )
         val BOOKMARK_PRESET_NAMES = listOf("Red", "Orange", "Gold", "Green", "Teal", "Blue", "Purple", "Pink")
+
+        /** Blue is the default bookmark colour. */
+        val DEFAULT_BOOKMARK_COLOR = BOOKMARK_PRESETS[5]
 
         /** Custom colours from the hue slider keep the presets' brightness and strength. */
         fun customBookmarkColor(hue: Float): Int =

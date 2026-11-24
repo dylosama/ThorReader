@@ -258,6 +258,11 @@ class V020Test {
         // Read before the page was saved: estimated from progress, against the source count.
         assertEquals("30 / 120 · PDF", LibraryLogic.detailLine(book("c", BookFormat.PDF, pages = 120, opened = 1, progress = 0.25f)).toString())
         assertEquals("1 / 1 · Image", LibraryLogic.detailLine(book("d", BookFormat.IMAGE, pages = 1, opened = 1)).toString())
+        // Completed: total / total (green in the UI), even if the last view started on page 21.
+        val done = LibraryLogic.detailLine(book("e", BookFormat.CBR, pages = 22, opened = 1, lastPage = 21, completedAt = 3))
+        assertEquals("22 / 22 · CBR", done.toString())
+        assertTrue(done.completed)
+        assertEquals(dev.thorreader.app.Settings.BOOKMARK_PRESETS[5], dev.thorreader.app.Settings.DEFAULT_BOOKMARK_COLOR)
     }
 
     @Test
