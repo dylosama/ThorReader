@@ -4,6 +4,13 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -94,8 +101,39 @@ fun ReaderScreen(session: ReaderSession, screen: Screen, mode: ReadingMode) {
                     mode.isBook -> {
                         val idx = bookUnitIndexFor(screen, mode, rtl)
                         val screenIsLeft = (screen == Screen.TOP) == (mode == ReadingMode.BOOK)
-                        val unit = view.units.getOrElse(idx) { BlankUnit }
-                        PageSlot(session, p, unit, p.slotFor(view, idx), screen, setOf(if (screenIsLeft) Side.LEFT else Side.RIGHT), Modifier.fillMaxSize())
+                        val swapped = session.isSwapped(mode)
+                        // Swipe up on the small (bottom) screen swaps; on the big one while swapped swaps back.
+                        val swipeUp: (() -> Unit)? =
+                            if (!session.reflowable && ThorApp.instance.settings.swipeSwap && (swapped == (screen == Screen.TOP))) {
+                                { session.toggleSwap(mode, "swipe up on the ${if (screen == Screen.TOP) "big" else "small"} screen") }
+                            } else {
+                                null
+                            }
+                        // When the pages are swapped, each screen shows the OTHER page, re-fitted to
+                        // this screen's own size. The two pages slide past each other at the hinge.
+                        AnimatedContent(
+                            targetState = index to swapped,
+                            transitionSpec = {
+                                if (initialState.first == targetState.first && initialState.second != targetState.second) {
+                                    // The hinge is on the right of the left screen, on the left of the right one.
+                                    val toHinge = if (screenIsLeft) 1 else -1
+                                    val spec = tween<IntOffset>(300, easing = FastOutSlowInEasing)
+                                    slideInHorizontally(spec) { it * toHinge } togetherWith slideOutHorizontally(spec) { it * toHinge }
+                                } else {
+                                    EnterTransition.None togetherWith ExitTransition.None
+                                }
+                            },
+                            label = "swap",
+                        ) { (vi, sw) ->
+                            val v = p.views.getOrNull(vi) ?: view
+                            val unit = v.units.getOrElse(if (sw) 1 - idx else idx) { BlankUnit }
+                            PageSlot(
+                                session, p, unit, p.slotFor(v, idx), screen, setOf(if (screenIsLeft) Side.LEFT else Side.RIGHT),
+                                Modifier.fillMaxSize(), onSwipeUp = swipeUp,
+                            )
+                        }
+                        // "Page 7 ⇄" / "Spread can't be swapped" on the big screen, fading out.
+                        if (screen == Screen.TOP) SwapPillOverlay(session)
                     }
                     view.wide || view.units.size == 1 ->
                         PageSlot(session, p, view.units[0], p.slotFor(view, 0), screen, setOf(Side.LEFT, Side.RIGHT), Modifier.fillMaxSize())
@@ -163,8 +201,11 @@ fun PageSlot(
     screen: Screen,
     edges: Set<Side>,
     modifier: Modifier,
+    /** A swipe up on this page (comics in book modes: swap the screens), or null. */
+    onSwipeUp: (() -> Unit)? = null,
 ) {
     val app = ThorApp.instance
+    val currentSwipeUp by rememberUpdatedState(onSwipeUp)
     val reflow = session.reflowable
     val theme = app.settings.theme
     val holdMs = app.settings.menuHoldMs
@@ -313,6 +354,14 @@ fun PageSlot(
                             if (!session.sideBlocked(side)) {
                                 if (side == Side.RIGHT) session.physicalRight() else session.physicalLeft()
                             }
+                        }
+                        // Swipe UP (comics, book modes): swap the pages between the screens. Not
+                        // while zoomed (that drag pans) or on a page that scrolls (that drag scrolls).
+                        val swipeUp = currentSwipeUp
+                        if (swipeUp != null && zoom <= 1.01f && vertical && total.y < -swipeMin &&
+                            abs(total.y) > abs(total.x) * 1.2f && maxScroll(size) <= 1f
+                        ) {
+                            swipeUp()
                         }
                         return@awaitEachGesture
                     }
@@ -505,5 +554,22 @@ private fun HoldRing(hold: Hold, holdMs: Int) {
         drawCircle(HouseStyle.Background, radius = size.minDimension / 2)
         drawArc(Color(0x55FFFFFF), 0f, 360f, false, Offset(inset, inset), arcSize, style = Stroke(stroke))
         drawArc(Accent, -90f, 360f * progress.value, false, Offset(inset, inset), arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+    }
+}
+
+/** "Page 7 ⇄" (or "Spread can't be swapped") on the big screen; fades out after 1.5 s. */
+@Composable
+private fun SwapPillOverlay(session: ReaderSession) {
+    val pill = session.swapPill
+    var last by remember { mutableStateOf("") }
+    if (pill != null) last = pill.text
+    Box(Modifier.fillMaxSize().padding(top = 18.dp), contentAlignment = Alignment.TopCenter) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = pill != null,
+            enter = androidx.compose.animation.fadeIn(tween(150)),
+            exit = androidx.compose.animation.fadeOut(tween(400)),
+        ) {
+            HouseBadge(last)
+        }
     }
 }

@@ -602,3 +602,19 @@ Online lookup (`metadata/`), metadata only, never book content, never touches th
 - "Published" and "Completed date" are no longer sort options (the year still shows on rows).
 - One row state for both shelves, remembered: `lib_chip`, `flat_sort`, `flat_asc`, `group_asc`
   (default Recently read, newest first). Replaces `lib_view` and the per-shelf `sort_*` prefs.
+
+### Swap pages between screens (step 17, still v0.2.0)
+- Fixed-layout books (comics, manga, PDF/XPS, picture folders) in book modes 1/2 only: show the
+  small (bottom) screen's page on the big (top) screen and vice versa. View-only: position,
+  page numbers and bookmarks are untouched (`ReaderSession.swappedView` = the view index that is
+  swapped; any page turn, re-layout or mode change ends it).
+- Triggers: swipe UP (in reading orientation) on the small screen's page -> swap; swipe up on
+  the big screen while swapped -> back. Only when not zoomed and the page isn't a scrolling
+  (overflow) page; the ribbon swipe is checked first; dragging cancels the hold ring; mostly
+  vertical (|dy| > 1.2 |dx|, > 60 dp). Thor Y button (KEYCODE_BUTTON_Y, logged) toggles.
+  Menu toggle "Swipe up to swap screens (comics)" (`Settings.swipeSwap`, default on).
+- Not allowed for split double-page spreads ("Spread can't be swapped" pill) or when one side
+  is blank. Right-to-left books work the same (it swaps screens, not reading order).
+- Animation: each screen's page slides out toward the hinge while the other slides in from it
+  (300 ms, FastOutSlowIn), so they appear to pass each other across the hinge; each page is
+  rendered for its new screen's size. House pill "Page 7 ⇄" on the big screen, fades after 1.5 s.

@@ -257,6 +257,15 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putBoolean("select_cycles_mode", on).apply()
     }
 
+    /** Comics in book modes: swipe up to swap the pages between the screens (default on). */
+    var swipeSwap by mutableStateOf(prefs.getBoolean("swipe_swap", true))
+        private set
+
+    fun updateSwipeSwap(on: Boolean) {
+        swipeSwap = on
+        prefs.edit().putBoolean("swipe_swap", on).apply()
+    }
+
     // ---- online book info --------------------------------------------------------------
 
     /** "Look up book info online" (default on). */

@@ -233,6 +233,18 @@ fun ReaderMenu(session: ReaderSession) {
                         color = SubtleText,
                         fontSize = 13.sp,
                     )
+                    // Book modes: show the small screen's page on the big screen (and back).
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Swipe up to swap screens (comics)", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Chip("On", settings.swipeSwap) { settings.updateSwipeSwap(true) }
+                        Chip("Off", !settings.swipeSwap) { settings.updateSwipeSwap(false) }
+                    }
+                    Text(
+                        "In book modes: swipe up on the small screen's page to see it on the big screen; swipe up " +
+                            "on the big screen to swap back. The Y button does the same.",
+                        color = SubtleText,
+                        fontSize = 13.sp,
+                    )
                 }
 
                 // --- Page furniture ---

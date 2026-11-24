@@ -462,7 +462,7 @@ class ThorApp : Application() {
     }
 
     private val handledKeys = setOf(
-        KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_MENU,
+        KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_BUTTON_Y,
         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
         KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_L2, KeyEvent.KEYCODE_BUTTON_R2,
         KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_PAGE_UP,
@@ -531,6 +531,11 @@ class ThorApp : Application() {
         when (code) {
             // Modes belong to books now: in the library Select does nothing.
             KeyEvent.KEYCODE_BUTTON_SELECT -> if (s != null) cycleMode()
+            // Y swaps the two pages between the screens (comics, book modes).
+            KeyEvent.KEYCODE_BUTTON_Y -> if (s != null) {
+                Log.i(TAG, "Y button (${KeyEvent.keyCodeToString(code)}, code $code): swap screens")
+                s.toggleSwap(settings.mode, "Y button")
+            }
             // Start opens/closes the reader menu (the Menu key too, in case the Thor sends that).
             KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_MENU -> if (s != null) {
                 Log.i(TAG, "Start/Menu key (${KeyEvent.keyCodeToString(code)}, code $code): reader menu")

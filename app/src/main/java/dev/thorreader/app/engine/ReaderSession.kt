@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.Executors
 
 /** A physical side of the reading area (after rotation in the book modes). */
@@ -311,6 +312,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
     /** Swap in a new pagination, staying on the same place in the book. */
     private fun publish(p: Pagination) {
         val anchor = currentAnchor()
+        swappedView = null // a new layout (e.g. another mode) shows pages in normal order
         pagination = p
         viewIndex = p.findView(anchor).coerceIn(0, p.views.size - 1)
         prefetch()
@@ -561,6 +563,82 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
     /** The book's own saved mode changed (the screens already switched). */
     fun applyMode(mode: ReadingMode) {
         book = book.copy(mode = mode.name)
+        swappedView = null
+    }
+
+    // ---- swap pages between the screens (comics, book modes) ----------------------------
+    //
+    // View-only: which screen shows which page of the current view. Never changes the position,
+    // page numbers or bookmarks. Stored as the view index that is swapped, so turning the page
+    // ends it by itself.
+
+    private var swappedView by mutableStateOf<Int?>(null)
+
+    /** Are the two pages of the current view shown on each other's screens? */
+    fun isSwapped(mode: ReadingMode): Boolean = mode.isBook && !reflowable && swappedView == viewIndex
+
+    /** Short house-style message on the big screen ("Page 7 ⇄"); [seq] restarts its fade. */
+    class SwapPill(val text: String, val seq: Int)
+
+    var swapPill by mutableStateOf<SwapPill?>(null)
+        private set
+    private var swapPillSeq = 0
+    private var swapPillJob: Job? = null
+
+    private fun showSwapPill(text: String) {
+        swapPill = SwapPill(text, ++swapPillSeq)
+        swapPillJob?.cancel()
+        swapPillJob = scope.launch {
+            delay(1500)
+            swapPill = null
+        }
+    }
+
+    /**
+     * Swap / unswap the pages of the current view between the screens ([source] is logged).
+     * Only fixed-layout books in book modes; split double-page spreads can't be swapped.
+     */
+    fun toggleSwap(mode: ReadingMode, source: String) {
+        if (!mode.isBook || reflowable) return
+        val p = pagination ?: return
+        val v = p.views.getOrNull(viewIndex) ?: return
+        if (v.units.size != 2 || v.units.any { it is BlankUnit }) {
+            Log.i(TAG, "Swap ($source): not possible here (single page)")
+            return
+        }
+        if (v.units.any { it is FixedUnit && it.part != Part.WHOLE }) {
+            Log.i(TAG, "Swap ($source): split double-page spread, can't swap")
+            showSwapPill("Spread can't be swapped")
+            return
+        }
+        if (swappedView != viewIndex) {
+            // Render each page for the OTHER screen's size first (max 0.6 s), so the slide shows
+            // real pages, not black.
+            val target = viewIndex
+            scope.launch {
+                withTimeoutOrNull(600) {
+                    v.units.forEachIndexed { i, u -> render(p, u, p.slotFor(v, 1 - i), 1f) }
+                }
+                if (viewIndex == target && pagination === p) {
+                    swappedView = target
+                    announceSwap(mode, p, v, true, source)
+                }
+            }
+            return
+        }
+        swappedView = null
+        announceSwap(mode, p, v, false, source)
+    }
+
+    private fun announceSwap(mode: ReadingMode, p: Pagination, v: PageView, on: Boolean, source: String) {
+        Log.i(TAG, "Swap ($source): pages ${if (on) "swapped" else "back to normal"} on view ${viewIndex + 1}")
+        if (on) {
+            // The page now on the big (top) screen.
+            val bigIdx = 1 - bookUnitIndexFor(dev.thorreader.app.Screen.TOP, mode, book.rtl)
+            p.pageNumber(v.units[bigIdx])?.let { showSwapPill("Page $it ⇄") }
+        } else {
+            swapPill = null
+        }
     }
 
     private fun scheduleSave() {
