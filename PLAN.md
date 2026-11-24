@@ -580,3 +580,10 @@ Online lookup (`metadata/`), metadata only, never book content, never touches th
   button that expands into a search field in place (× clears and closes); right = round "+"
   (popup: Add files / Add folder) and round gear (Settings: online lookup, ComicVine key, Show
   tutorial again); left = small status badges (importing, looking up). Old Add/⚙/sort chips removed.
+
+### Select button (after step 14, still v0.2.0)
+- The Select button no longer changes the mode by default. Reader menu, under the mode
+  buttons: "Select button changes mode" On/Off (`Settings.selectCyclesMode`, pref
+  `select_cycles_mode`, default off). When off, ThorApp.handleKey leaves Select alone.
+  README no longer mentions Select. (Older notes above that say "Select cycles modes" describe
+  the earlier default.)

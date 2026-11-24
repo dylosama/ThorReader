@@ -518,6 +518,8 @@ class ThorApp : Application() {
             if (e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0) libraryBackPending = libraryBack?.invoke() == true
             return libraryBackPending
         }
+        // Select changes the mode only when turned on in the reader menu (off by default).
+        if (code == KeyEvent.KEYCODE_BUTTON_SELECT && !settings.selectCyclesMode) return false
         // In the library only Select is ours; the d-pad keeps its normal focus behaviour.
         if (code != KeyEvent.KEYCODE_BUTTON_SELECT && (s == null || code !in handledKeys)) return false
         if (code !in handledKeys) return false

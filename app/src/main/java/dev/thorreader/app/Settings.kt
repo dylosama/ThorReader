@@ -225,6 +225,17 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putString(k, order.name).putBoolean("${k}_asc", asc).apply()
     }
 
+    // ---- Select button -----------------------------------------------------------------
+
+    /** The Select button cycles the reading mode while reading. Off by default (menu toggle). */
+    var selectCyclesMode by mutableStateOf(prefs.getBoolean("select_cycles_mode", false))
+        private set
+
+    fun updateSelectCyclesMode(on: Boolean) {
+        selectCyclesMode = on
+        prefs.edit().putBoolean("select_cycles_mode", on).apply()
+    }
+
     // ---- online book info --------------------------------------------------------------
 
     /** "Look up book info online" (default on). */

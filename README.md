@@ -10,7 +10,7 @@ free for something else.
 
 ## Reading modes
 
-Each book remembers its own mode. Switch with the **Select** button or from the reader menu.
+Each book remembers its own mode. Switch from the reader menu.
 
 | Mode | How you hold it | What you see |
 |---|---|---|

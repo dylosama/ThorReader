@@ -165,7 +165,7 @@ fun ReaderMenu(session: ReaderSession) {
                 }
 
                 // --- Modes ---
-                Section("Reading mode  (Select button cycles)")
+                Section("Reading mode")
                 if (app.tutorialShows(TutorialStep.CHOOSE_MODE)) {
                     TutorialBadge(TutorialStep.CHOOSE_MODE, "Choose how you hold your Thor", ArrowDir.DOWN, arrowAlign = Alignment.Start)
                 }
@@ -183,6 +183,12 @@ fun ReaderMenu(session: ReaderSession) {
                         Chip("One page", !settings.bottomTwoPage) { settings.updateBottomTwoPage(false) }
                         Chip("Two pages", settings.bottomTwoPage) { settings.updateBottomTwoPage(true) }
                     }
+                }
+                // Off by default: the Select button only changes the mode when turned on here.
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Select button changes mode", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Chip("On", settings.selectCyclesMode) { settings.updateSelectCyclesMode(true) }
+                    Chip("Off", !settings.selectCyclesMode) { settings.updateSelectCyclesMode(false) }
                 }
 
                 // --- Direction ---

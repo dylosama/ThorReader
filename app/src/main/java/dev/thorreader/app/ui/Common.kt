@@ -140,7 +140,7 @@ fun ModeButton(mode: ReadingMode, selected: Boolean, width: Dp = 104.dp, onClick
     }
 }
 
-/** Brief label after a mode change (Select button or menu). */
+/** Brief label after a mode change (menu, or the Select button when turned on). */
 @Composable
 fun ModeToastOverlay(modifier: Modifier = Modifier) {
     val toast = ThorApp.instance.modeToast
