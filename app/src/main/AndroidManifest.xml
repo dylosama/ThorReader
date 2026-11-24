@@ -4,6 +4,10 @@
     <!-- One light haptic tick when trying to turn past the first/last page. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Online book info (metadata only: AniList, ComicVine, Open Library). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
         android:name=".ThorApp"
         android:allowBackup="true"

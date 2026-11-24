@@ -41,6 +41,8 @@ class ThorApp : Application() {
         private set
     lateinit var importer: Importer
         private set
+    lateinit var lookup: dev.thorreader.app.metadata.MetadataLookup
+        private set
     val scope = MainScope()
 
     var screens by mutableStateOf(ScreenMetrics.DEFAULT)
@@ -62,6 +64,17 @@ class ThorApp : Application() {
 
     /** Set by the library while it shows something Back should close (search, a category). */
     var libraryBack: (() -> Boolean)? = null
+
+    /** Library overlays: the Settings screen and the "Edit info" panel for one book. */
+    var settingsOpen by mutableStateOf(false)
+    var editInfoBook by mutableStateOf<Book?>(null)
+
+    /** Open a web page (e.g. where to get a ComicVine key) in the browser. */
+    fun openWebPage(url: String) {
+        runCatching {
+            startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure { Log.w(TAG, "No browser to open $url") }
+    }
 
     /** Set by the reader menu while its colour picker is open (Back/B closes it first). */
     var menuBack: (() -> Boolean)? = null
@@ -124,9 +137,10 @@ class ThorApp : Application() {
         MuPdf.init()
         settings = Settings(getSharedPreferences("thor_reader", MODE_PRIVATE))
         db = Room.databaseBuilder(this, AppDatabase::class.java, "thor_reader.db")
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
             .build()
         importer = Importer(this, db.books(), scope)
+        lookup = dev.thorreader.app.metadata.MetadataLookup(this).also { it.start() }
         settings.onTextChanged = ::saveBookText
         registerScreenReceiver()
         refreshScreens()

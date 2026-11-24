@@ -127,6 +127,8 @@ class Importer(private val context: Context, private val dao: BookDao, private v
         var added = 0
         var skipped = 0
         var drm = 0
+        val newIds = ArrayList<Long>()
+        var comicsAdded = 0
         cands.forEachIndexed { i, c ->
             val format = c.format ?: BookFormat.fromFileName(c.name)
             if (format == null || c.uri.toString() in existing) {
@@ -145,32 +147,34 @@ class Importer(private val context: Context, private val dao: BookDao, private v
                 ExtractedMeta()
             }
             // A picture folder has no extension: don't let "Vol. 2" lose its number to the "." rule.
-            val parsed = FilenameParser.parse(if (format == BookFormat.IMAGES) "${c.name}.dir" else c.name, format.comic)
-            val seriesFromName = format.comic && format != BookFormat.IMAGE
-            val title = meta.title ?: parsed.title
-            val book = Book(
-                uri = c.uri.toString(),
-                fileName = c.name,
-                format = format.name,
-                sizeBytes = c.size,
-                title = title,
-                author = meta.authors.distinct().joinToString(", ").ifEmpty { null } ?: parsed.author,
-                series = meta.series ?: if (seriesFromName) parsed.series else null,
-                seriesNumber = if (meta.series != null) meta.seriesNumber else if (seriesFromName) parsed.number else null,
-                genres = meta.genres.distinct().joinToString("; ").ifEmpty { null },
-                pageCount = meta.pageCount,
-                coverPath = saveCover(meta),
-                mangaRtl = meta.mangaRtl,
-                // New books start in the last mode used while reading.
-                mode = ThorApp.instance.settings.lastBookMode.name,
+            val book = withFileMeta(
+                Book(
+                    uri = c.uri.toString(),
+                    fileName = c.name,
+                    format = format.name,
+                    sizeBytes = c.size,
+                    title = c.name,
+                    pageCount = meta.pageCount,
+                    coverPath = saveCover(meta),
+                    // New books start in the last mode used while reading.
+                    mode = ThorApp.instance.settings.lastBookMode.name,
+                    lookupState = "pending",
+                ),
+                meta,
             )
             // A direction chosen earlier for this series applies to new volumes too.
             val seriesRtl = seriesKey(book.series)?.let { dao.seriesRtl(it) }
-            if (dao.insert(book.copy(rtlOverride = seriesRtl)) > 0) {
+            val newId = dao.insert(book.copy(rtlOverride = seriesRtl))
+            if (newId > 0) {
                 added++
+                newIds += newId
+                if (format.comic && !book.isManga) comicsAdded++
                 Log.i(TAG, "Imported '${book.title}' (${format.label}, ${book.pageCount} pages, series=${book.series} #${book.seriesNumber}, manga flag=${book.mangaRtl}, series direction=${seriesRtl ?: "none"})")
             }
         }
+        // Online info for the new books (in the background, one at a time).
+        ThorApp.instance.lookup.enqueue(newIds, "import")
+        if (comicsAdded > 0) ThorApp.instance.lookup.comicsImported()
         if (drm > 0 && added == 0 && skipped == 0) {
             finalStatus(if (drm == 1) "This book is DRM-protected, so it can't be added" else "These $drm books are DRM-protected, so they can't be added")
             return
@@ -181,6 +185,11 @@ class Importer(private val context: Context, private val dao: BookDao, private v
                 (if (skipped > 0) ", skipped $skipped already in library or unsupported" else ""),
         )
     }
+
+    /** Re-read one book's metadata from its file with the current rules (one-time re-scan). */
+    fun rescan(b: Book): Book? = runCatching {
+        withFileMeta(b, extract(Uri.parse(b.uri), b.fileName, b.sizeBytes, BookFormat.valueOf(b.format)))
+    }.onFailure { Log.w(TAG, "Re-scan of '${b.title}' failed: ${it.message}") }.getOrNull()
 
     /** Any failure still ends with a final status that then clears itself. */
     private suspend fun guarded(block: suspend () -> Unit) {
@@ -317,4 +326,34 @@ class Importer(private val context: Context, private val dao: BookDao, private v
             status = s
         }
     }
+}
+
+/**
+ * Book fields from what the file itself says ([meta]) plus the file name, using the v0.2.0
+ * rules: genres are clean short tags, long text is the description, writers then artists are the
+ * authors. Fields edited by hand are kept. Used on import and by the one-time re-scan.
+ */
+fun withFileMeta(b: Book, meta: ExtractedMeta): Book {
+    val format = runCatching { BookFormat.valueOf(b.format) }.getOrNull()
+    val comic = format?.comic == true
+    // A picture folder has no extension: don't let "Vol. 2" lose its number to the "." rule.
+    val parsed = FilenameParser.parse(if (format == BookFormat.IMAGES) "${b.fileName}.dir" else b.fileName, comic)
+    val seriesFromName = comic && format != BookFormat.IMAGE
+    val genres = dev.thorreader.app.metadata.Genres.normalize(meta.genres, trusted = meta.trustedGenres)
+    val description = meta.description?.takeIf { it.isNotBlank() } ?: dev.thorreader.app.metadata.Genres.descriptionFrom(meta.genres)
+    val people = (meta.authors + meta.artists).distinct().joinToString(", ").ifEmpty { null }
+    fun <T> keep(field: String, old: T, new: T): T = if (b.edited(field)) old else new
+    return b.copy(
+        title = keep("title", b.title, meta.title ?: parsed.title),
+        author = keep("authors", b.author, people ?: parsed.author),
+        series = keep("series", b.series, meta.series ?: if (seriesFromName) parsed.series else null),
+        seriesNumber = keep("number", b.seriesNumber, if (meta.series != null) meta.seriesNumber else if (seriesFromName) parsed.number else null),
+        genres = keep("genres", b.genres, dev.thorreader.app.metadata.Genres.join(genres)),
+        description = keep("description", b.description, description),
+        mangaRtl = meta.mangaRtl || b.mangaRtl,
+        isManga = meta.isManga || b.isManga,
+        publisher = meta.publisher ?: b.publisher,
+        year = meta.year ?: parsed.year ?: b.year,
+        isbn = meta.isbn ?: b.isbn,
+    )
 }

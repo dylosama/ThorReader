@@ -207,6 +207,17 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putString(if (s == Shelf.COMPLETED) "sort_completed" else "sort_library", order.name).apply()
     }
 
+    // ---- online book info --------------------------------------------------------------
+
+    /** "Look up book info online" (default on). */
+    var lookupOnline by mutableStateOf(prefs.getBoolean("lookup_online", true))
+        private set
+
+    fun updateLookupOnline(on: Boolean) {
+        lookupOnline = on
+        prefs.edit().putBoolean("lookup_online", on).apply()
+    }
+
     // ---- bookmark colour (one for all books) --------------------------------------------
 
     /** ARGB of the bookmark ribbon (and the current page number in the library). */

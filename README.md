@@ -54,6 +54,26 @@ Kindle books (MOBI / AZW / AZW3) must be DRM-free; DRM-protected books show "Thi
 DRM-protected". Pictures next to an HTML or Markdown file are shown when the file was added
 with "Add folder" (Android only lets apps see a file's neighbours then).
 
+## Book info (looked up online)
+
+Thor Reader fills in missing book details - authors, series, genres, a description, and
+whether something is a book, manga or comic - by looking them up online. Only these details
+are looked up; your books never leave the device and their files are never changed. You can
+correct anything with **Edit info** (in a book's popup in the library); what you change by
+hand is never overwritten. Turn it off in **Settings** (the ⚙ in the library).
+
+- **Manga** (AniList) and **books** (Open Library) work automatically, no account needed.
+  Japanese manga found this way read right-to-left automatically (unless you set a direction).
+- **Comics** (ComicVine) need a free ComicVine API key, and every person needs their own:
+  ComicVine limits how often one key may be used, so a key can't be shared or built into the app.
+  1. In the library, tap ⚙ (Settings), then **Get a free key**. This opens
+     https://comicvine.gamespot.com/api in the browser.
+  2. Create a free account, then copy the key shown on that page.
+  3. Paste it into **ComicVine key**, tap **Save key**, then **Test key** ("Key works").
+  The key is stored encrypted on the device. Comics that contain a ComicInfo.xml (for example
+  tagged with ComicTagger) use that information without a key.
+- Books that couldn't be matched confidently show under **Needs review** in the library.
+
 ## Install
 
 1. On the Thor, open this repository's **Releases** page and download the latest
@@ -90,6 +110,8 @@ Thor Reader is free software, licensed under the **GNU Affero General Public Lic
   CBZ and CB7 comics. Apache License 2.0.
 - **[XZ for Java](https://tukaani.org/xz/java.html)** — LZMA/7z decompression. Zero-Clause BSD
   (0BSD) licence.
+- Online book info: [AniList](https://anilist.co) (manga), [Open Library](https://openlibrary.org)
+  (books) and [ComicVine](https://comicvine.gamespot.com) (comics, with your own key). Metadata only.
 - **[commonmark-java](https://github.com/commonmark/commonmark-java)** — Markdown to HTML (used
   when MuPDF can't open a .md file itself). BSD 2-Clause licence.
 - Apache Commons Compress also reads CBT (tar) comics.

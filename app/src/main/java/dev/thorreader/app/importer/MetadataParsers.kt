@@ -20,6 +20,22 @@ class ExtractedMeta {
     var coverBytes: ByteArray? = null
     var coverBitmap: android.graphics.Bitmap? = null
     var mangaRtl: Boolean = false
+    /** ComicInfo Manga = Yes or YesAndRightToLeft. */
+    var isManga: Boolean = false
+    var description: String? = null
+    var publisher: String? = null
+    var year: Int? = null
+    var isbn: String? = null
+    /** Artists (pencils etc.), listed after the writers. */
+    val artists = mutableListOf<String>()
+    /** Genres came from a curated field (ComicInfo Genre) rather than free-form subjects. */
+    var trustedGenres: Boolean = false
+}
+
+/** "978-0-7475-3269-9" or "urn:isbn:0747532699" -> digits, if it is an ISBN. */
+fun isbnOf(s: String): String? {
+    val d = s.replace(Regex("(?i)urn:isbn:|isbn[: ]*"), "").replace(Regex("[^0-9Xx]"), "")
+    return d.takeIf { (it.length == 13 && (it.startsWith("978") || it.startsWith("979"))) || (it.length == 10 && it.dropLast(1).all(Char::isDigit)) }
 }
 
 private fun newParser(input: InputStream): XmlPullParser = Xml.newPullParser().apply {
@@ -73,6 +89,10 @@ object EpubMeta {
                         "title" -> if (m.title == null) m.title = p.nextText().clean()
                         "creator" -> p.nextText().clean()?.let { m.authors += it }
                         "subject" -> p.nextText().clean()?.let { m.genres += it }
+                        "description" -> if (m.description == null) m.description = p.nextText().replace(Regex("<[^>]*>"), " ").clean()
+                        "identifier" -> if (m.isbn == null) m.isbn = isbnOf(p.nextText())
+                        "date" -> if (m.year == null) m.year = Regex("(1[5-9]|20)\\d\\d").find(p.nextText())?.value?.toIntOrNull()
+                        "publisher" -> if (m.publisher == null) m.publisher = p.nextText().clean()
                         "meta" -> {
                             val name = p.attr("name")
                             val content = p.attr("content")
@@ -197,8 +217,16 @@ object ComicInfo {
                 "number" -> number = p.nextText().trim()
                 "volume" -> volume = p.nextText().trim()
                 "writer" -> p.nextText().clean()?.let { w -> m.authors += w.split(',').mapNotNull { it.clean() } }
-                "genre" -> p.nextText().clean()?.let { g -> m.genres += g.split(',').mapNotNull { it.clean() } }
-                "manga" -> m.mangaRtl = p.nextText().trim().equals("YesAndRightToLeft", ignoreCase = true)
+                "genre" -> p.nextText().clean()?.let { g -> m.genres += g.split(',').mapNotNull { it.clean() }; m.trustedGenres = true }
+                "manga" -> {
+                    val v = p.nextText().trim()
+                    m.mangaRtl = v.equals("YesAndRightToLeft", ignoreCase = true)
+                    m.isManga = m.mangaRtl || v.equals("Yes", ignoreCase = true)
+                }
+                "penciller", "artist" -> p.nextText().clean()?.let { a -> m.artists += a.split(',').mapNotNull { it.clean() } }
+                "summary" -> m.description = p.nextText().clean()
+                "publisher" -> m.publisher = p.nextText().clean()
+                "year" -> m.year = p.nextText().trim().toIntOrNull()?.takeIf { it > 1800 }
             }
         }
         m.seriesNumber = number?.toFloatOrNull() ?: volume?.toFloatOrNull()
@@ -211,15 +239,34 @@ object ComicInfo {
 
 fun formatNumber(f: Float): String = if (f == f.toLong().toFloat()) f.toLong().toString() else f.toString()
 
-/** Fallback: guess title / author / series / number from the file name. */
+/**
+ * Fallback: guess title / author / series / volume / issue / year from the file name.
+ * Handles "Series v01 (2020) (Digital) (group).cbz", "Series 001.cbr", "Series v1 001",
+ * "Series Vol. 3", "Series #12", "Author - Title.epub". Bracketed tags are stripped (the
+ * first 4-digit year inside brackets is kept).
+ */
 object FilenameParser {
-    class Parsed(val title: String, val author: String?, val series: String?, val number: Float?)
+    class Parsed(
+        val title: String,
+        val author: String?,
+        val series: String?,
+        /** Issue if there is one, else volume. */
+        val number: Float?,
+        val volume: Int? = null,
+        val issue: Float? = null,
+        val year: Int? = null,
+    )
 
-    private val bracketed = Regex("""\s*[\(\[\{][^)\]\}]*[\)\]\}]""")
-    private val seriesNumber = Regex("""^(.*?)[\s._-]*(?:#|vol\.?\s*|volume\s*|v|t|tome\s*|ch\.?\s*|chapter\s*)?(\d{1,4}(?:\.\d+)?)$""", RegexOption.IGNORE_CASE)
+    private val bracketed = Regex("""\s*[\(\[\{]([^)\]\}]*)[\)\]\}]""")
+    private val yearRe = Regex("""^(19\d\d|20\d\d)$""")
+    private val num = """(\d{1,4}(?:\.\d+)?)"""
+    private val volIssue = Regex("""^(.*?)[\s._-]+(?:v|vol\.?|volume|t|tome)\s*(\d{1,3})(?:[\s._-]+(?:#|ch\.?\s*|chapter\s*)?$num)?$""", RegexOption.IGNORE_CASE)
+    private val hashIssue = Regex("""^(.*?)\s*#\s*$num$""")
+    private val plainNum = Regex("""^(.*?)[\s._-]+(?:ch\.?\s*|chapter\s*|issue\s*)?$num$""", RegexOption.IGNORE_CASE)
 
     fun parse(fileName: String, comic: Boolean): Parsed {
         val base = fileName.substringBeforeLast('.').replace('_', ' ').replace(Regex("\\s+"), " ").trim()
+        val year = bracketed.findAll(base).map { it.groupValues[1].trim() }.firstOrNull { yearRe.matches(it) }?.toInt()
         val stripped = base.replace(bracketed, "").trim().ifEmpty { base }
 
         var author: String? = null
@@ -233,15 +280,28 @@ object FilenameParser {
                 rest = right
             }
         }
+        fun clean(s: String) = s.trim().trimEnd('-', ',', '.', ':').trim()
         var series: String? = null
-        var number: Float? = null
-        seriesNumber.find(rest)?.let { mr ->
-            val name = mr.groupValues[1].trim().trimEnd('-', ',', '.').trim()
-            if (name.isNotEmpty()) {
-                series = name
-                number = mr.groupValues[2].toFloatOrNull()
+        var volume: Int? = null
+        var issue: Float? = null
+        val vi = volIssue.find(rest)
+        val hi = hashIssue.find(rest)
+        val pn = plainNum.find(rest)
+        when {
+            vi != null && clean(vi.groupValues[1]).isNotEmpty() -> {
+                series = clean(vi.groupValues[1])
+                volume = vi.groupValues[2].toIntOrNull()
+                issue = vi.groupValues[3].toFloatOrNull()
+            }
+            hi != null && clean(hi.groupValues[1]).isNotEmpty() -> {
+                series = clean(hi.groupValues[1])
+                issue = hi.groupValues[2].toFloatOrNull()
+            }
+            pn != null && clean(pn.groupValues[1]).isNotEmpty() && !yearRe.matches(pn.groupValues[2]) -> {
+                series = clean(pn.groupValues[1])
+                issue = pn.groupValues[2].toFloatOrNull()
             }
         }
-        return Parsed(title = rest, author = author, series = series, number = number)
+        return Parsed(title = rest, author = author, series = series, number = issue ?: volume?.toFloat(), volume = volume, issue = issue, year = year)
     }
 }

@@ -504,3 +504,54 @@ Causes confirmed in code before fixing:
 - `ui/Bookmark.kt`: `BookmarkRibbon` (AnimatedVisibility slide), `inRibbonZone`, `ColorSwatch`,
   `BookmarkColorPicker`, `HueSlider`. `ui/Reader.kt`: ribbon swipe handled first in the page
   gesture. `ui/ReaderMenu.kt`: `BookmarkControls`. `LibraryLogic.detailLine` -> `PageLine`.
+
+### Metadata fixes and online lookup (step 13, still v0.2.0)
+
+Causes of the reported problems (checked in code):
+- Spider-Man missing from Type/Series: it was completed, and the Library list (which the views
+  use) excluded completed books. Fixed by the step-12 follow-up (Library shows every book); the
+  views therefore include completed books with their star. Series with one book were already
+  listed; now confirmed by a test.
+- Blue Period under Comics: no ComicInfo.xml, so nothing said "manga". Now: online lookup.
+- "Unknown" authors: comics without ComicInfo.xml have no author in the file. Now: online lookup.
+- Harry Potter's genre = a description: the PDF "Subject" field was used as a genre.
+
+Rules:
+- **Type** (exactly one): Manga if right-to-left, ComicInfo Manga=Yes/YesAndRightToLeft, or the
+  online lookup says manga (AniList format MANGA/ONE_SHOT or country JP/KR/CN); Comics = other
+  comic archives (CBZ/CBR/CB7/CBT/IMAGE/IMAGES); Books = everything else. A hand-set type wins
+  (`Book.typeOverride`).
+- Online manga from Japan switches on right-to-left (automatic flag `mangaRtl`, for the book and
+  its series) unless a direction was set (`rtlOverride` stays untouched). Korean/Chinese: LTR.
+- **Genres**: short tags only (max 3 words, no sentence punctuation), normalised to a canonical
+  list by keyword (`metadata/Genres.kt`: "Fiction / Fantasy / General" -> Fantasy). Long text
+  goes to `Book.description` (shown in Edit info and the reader menu). Several genres allowed.
+- **Series view**: every series, one-book series too, volumes/issues sorted by number.
+- **Filename parsing**: "Series v01 (2020) (Digital) (group)", "Series 001", "Series v1 001",
+  "Series Vol. 3", "Series #12"; bracketed tags stripped; year kept; volume + issue.
+
+Online lookup (`metadata/`), metadata only, never book content, never touches the files:
+- Background queue after import, "Refresh info" in the library popup, setting "Look up book info
+  online" (default on). One worker; per-host minimum interval (AniList 2.5 s, ComicVine 1.5 s,
+  Open Library 1 s), 429/5xx back-off (Retry-After or doubling, max 10 min), responses cached on
+  disk for 30 days (`cacheDir/lookup`), offline -> state "retry", retried when the network
+  returns and at the next start.
+- Sources: comics/manga with a ComicInfo series + writer use that (no lookup needed for those
+  fields); otherwise AniList (manga; also tried for unflagged comic archives, but those need a
+  stricter score); ComicVine (comics, only with the user's key: volume search -> issue -> issue
+  details for writer, artist, story arc; publisher; description); Open Library (books: ISBN from
+  the EPUB, else title + author; authors, subjects -> genres, first publish year, description).
+- Matching: score = title similarity (+ volume/issue, year, publisher, author). Applied at
+  >= 0.75 (0.9 for AniList on comics not flagged as manga); otherwise "Needs review".
+- Hand-edited fields (`Book.editedFields`) are never overwritten. Logged per lookup: source,
+  query, best match, score, applied or not. API keys never logged.
+- ComicVine key: Settings screen (gear in the library), stored encrypted with an Android Keystore
+  AES key; "Get a free key" (opens comicvine.gamespot.com/api), "Test key". One-time house-style
+  hint when a comic is imported without a key.
+- Edit info (library popup): title, authors, series, number, type, genres, description;
+  "Search online" shows the top 5 candidates (cover, title, year, author) - picking one fills
+  the form, Save stores it as hand-edited. "Needs review" chip in the library views.
+- First launch after this update (`meta_version` < 2): every book's file metadata is re-read
+  with the new rules, then all books are looked up online.
+- Room DB v6 (`MIGRATION_5_6`): description, isManga, country, publisher, year, isbn,
+  storyArc, typeOverride, editedFields, lookupState, needsReview, lookupAt.

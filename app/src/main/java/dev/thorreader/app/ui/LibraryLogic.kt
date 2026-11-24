@@ -21,13 +21,17 @@ object LibraryLogic {
      * Books = everything else, PDF included.
      */
     fun typeOf(b: Book): String {
+        b.typeOverride?.takeIf { it in TYPES }?.let { return it } // chosen by hand
         val comic = runCatching { BookFormat.valueOf(b.format).comic }.getOrDefault(false)
         return when {
-            b.rtl || b.mangaRtl -> MANGA
+            // Right-to-left, ComicInfo Manga=Yes/YesAndRightToLeft, or the online lookup said so.
+            b.rtl || b.mangaRtl || b.isManga -> MANGA
             comic -> COMICS
             else -> BOOKS
         }
     }
+
+    val TYPES = listOf(BOOKS, MANGA, COMICS)
 
     fun sortsFor(shelf: Shelf): List<SortOrder> =
         SortOrder.entries.filter { it != SortOrder.DATE_COMPLETED || shelf == Shelf.COMPLETED }

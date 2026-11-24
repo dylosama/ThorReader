@@ -63,7 +63,28 @@ data class Book(
     val bookmarkFraction: Float? = null,
     /** Page number shown at the reading position in the last-used layout (0 = unknown). */
     val lastPage: Int = 0,
+    /** Long text about the book (never used as a genre). */
+    val description: String? = null,
+    /** ComicInfo or the online lookup says manga (Type view), independent of reading direction. */
+    val isManga: Boolean = false,
+    /** Country of origin from the lookup (JP, KR, CN, ...). */
+    val country: String? = null,
+    val publisher: String? = null,
+    val year: Int? = null,
+    val isbn: String? = null,
+    val storyArc: String? = null,
+    /** Type chosen by hand (Books / Manga / Comics); null = automatic. */
+    val typeOverride: String? = null,
+    /** Fields edited by hand, comma-separated (the lookup never overwrites them). */
+    val editedFields: String? = null,
+    /** Online lookup: null never, "pending", "done", "nomatch", "review", "retry", "off". */
+    val lookupState: String? = null,
+    /** The lookup found no confident match: shown under "Needs review". */
+    val needsReview: Boolean = false,
+    val lookupAt: Long = 0,
 ) {
+    fun edited(field: String): Boolean = editedFields?.split(',')?.contains(field) == true
+
     val rtl: Boolean get() = rtlOverride ?: mangaRtl
     val readingMode: ReadingMode? get() = mode?.let { runCatching { ReadingMode.valueOf(it) }.getOrNull() }
     val completed: Boolean get() = completedAt != null
@@ -116,6 +137,30 @@ interface BookDao {
     @Query("UPDATE books SET fontTop = :top, fontBottom = :bottom, sameFont = :same, marginLevel = :margin WHERE id = :id")
     suspend fun setText(id: Long, top: Float, bottom: Float, same: Boolean, margin: Int)
 
+    @Query("SELECT * FROM books")
+    suspend fun all(): List<Book>
+
+    @Query("SELECT id FROM books WHERE lookupState IS NULL OR lookupState IN ('pending', 'retry')")
+    suspend fun idsNeedingLookup(): List<Long>
+
+    @Query(
+        "UPDATE books SET title = :title, author = :author, series = :series, seriesNumber = :number, genres = :genres, " +
+            "description = :description, isManga = :isManga, mangaRtl = :mangaRtl, country = :country, publisher = :publisher, " +
+            "year = :year, isbn = :isbn, storyArc = :storyArc, typeOverride = :typeOverride, editedFields = :editedFields, " +
+            "lookupState = :lookupState, needsReview = :needsReview, lookupAt = :lookupAt, coverPath = :coverPath WHERE id = :id",
+    )
+    suspend fun updateMeta(
+        id: Long, title: String, author: String?, series: String?, number: Float?, genres: String?, description: String?,
+        isManga: Boolean, mangaRtl: Boolean, country: String?, publisher: String?, year: Int?, isbn: String?, storyArc: String?,
+        typeOverride: String?, editedFields: String?, lookupState: String?, needsReview: Boolean, lookupAt: Long, coverPath: String?,
+    )
+
+    @Query("UPDATE books SET lookupState = :state, needsReview = :review, lookupAt = :at WHERE id = :id")
+    suspend fun setLookupState(id: Long, state: String?, review: Boolean, at: Long)
+
+    @Query("UPDATE books SET mangaRtl = 1 WHERE rtlOverride IS NULL AND series IS NOT NULL AND lower(trim(series)) = :seriesLower")
+    suspend fun setSeriesAutoRtl(seriesLower: String)
+
     @Query("SELECT * FROM books WHERE series IS NOT NULL")
     suspend fun booksInAnySeries(): List<Book>
 
@@ -137,7 +182,7 @@ data class SeriesDirection(@PrimaryKey val seriesKey: String, val rtl: Boolean)
 fun seriesKey(series: String?): String? =
     series?.trim()?.replace(Regex("\\s+"), " ")?.lowercase()?.takeIf { it.isNotEmpty() }
 
-@Database(entities = [Book::class, SeriesDirection::class], version = 5, exportSchema = false)
+@Database(entities = [Book::class, SeriesDirection::class], version = 6, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun books(): BookDao
 
@@ -178,5 +223,22 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE books ADD COLUMN lastPage INTEGER NOT NULL DEFAULT 0")
             }
         }
+
+        /** v5 -> v6 (still v0.2.0): metadata fields for the online lookup and hand edits. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                listOf(
+                    "description TEXT", "isManga INTEGER NOT NULL DEFAULT 0", "country TEXT", "publisher TEXT",
+                    "year INTEGER", "isbn TEXT", "storyArc TEXT", "typeOverride TEXT", "editedFields TEXT",
+                    "lookupState TEXT", "needsReview INTEGER NOT NULL DEFAULT 0", "lookupAt INTEGER NOT NULL DEFAULT 0",
+                ).forEach { db.execSQL("ALTER TABLE books ADD COLUMN $it") }
+            }
+        }
     }
 }
+
+/** Save a book's metadata fields only (not its reading position, mode or text settings). */
+suspend fun BookDao.saveMeta(b: Book) = updateMeta(
+    b.id, b.title, b.author, b.series, b.seriesNumber, b.genres, b.description, b.isManga, b.mangaRtl, b.country,
+    b.publisher, b.year, b.isbn, b.storyArc, b.typeOverride, b.editedFields, b.lookupState, b.needsReview, b.lookupAt, b.coverPath,
+)

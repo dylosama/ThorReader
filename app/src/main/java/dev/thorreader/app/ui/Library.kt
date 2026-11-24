@@ -91,11 +91,15 @@ fun LibraryScreen() {
     var searchOpen by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var sortOpen by remember { mutableStateOf(false) }
+    var reviewOnly by remember { mutableStateOf(false) }
 
     // Leaving a category / search with Back or B.
     DisposableEffect(Unit) {
         app.libraryBack = {
             when {
+                app.editInfoBook != null -> { app.editInfoBook = null; true }
+                app.settingsOpen -> { app.settingsOpen = false; true }
+                reviewOnly -> { reviewOnly = false; true }
                 sortOpen -> { sortOpen = false; true }
                 category != null -> { category = null; true }
                 searchOpen -> { searchOpen = false; query = ""; true }
@@ -110,11 +114,16 @@ fun LibraryScreen() {
     // Library shows every book (completed ones too, with their star); Completed only the finished ones.
     val onShelf = if (shelf == Shelf.COMPLETED) books.filter { it.completed } else books
     val q = query.trim()
-    val matching = if (q.isEmpty()) onShelf else onShelf.filter { b ->
+    val searched = if (q.isEmpty()) onShelf else onShelf.filter { b ->
         b.title.contains(q, true) || b.author?.contains(q, true) == true || b.series?.contains(q, true) == true
     }
+    // "Needs review": books the online lookup couldn't match confidently.
+    val reviewCount = searched.count { it.needsReview }
+    if (reviewCount == 0) reviewOnly = false
+    val matching = if (reviewOnly) searched.filter { it.needsReview } else searched
     val sorted = LibraryLogic.sort(matching, sort)
 
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(Color(0xFF101010)).padding(16.dp)) {
         // --- top row ---
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -129,6 +138,7 @@ fun LibraryScreen() {
             }, modifier = Modifier.weight(1f, fill = false))
             Spacer(Modifier.weight(0.01f))
             app.importer.status?.let { HouseBadge(it, Modifier.padding(horizontal = 8.dp).widthIn(max = 260.dp)) }
+            if (app.importer.status == null) app.lookup.status?.let { HouseProgressBadge(it, Modifier.padding(horizontal = 8.dp).widthIn(max = 260.dp)) }
             Box {
                 Chip("⇅ ${sort.label}") { sortOpen = true }
                 if (sortOpen) {
@@ -144,6 +154,8 @@ fun LibraryScreen() {
             Chip("+ Add files", true) { host?.pickFiles() }
             Spacer(Modifier.width(8.dp))
             Chip("+ Add folder", true) { host?.pickFolder() }
+            Spacer(Modifier.width(8.dp))
+            Chip("⚙") { app.settingsOpen = true }
         }
         if (loaded != null && books.isEmpty() && app.tutorialShows(TutorialStep.ADD_BOOKS)) {
             TutorialBadge(
@@ -153,6 +165,10 @@ fun LibraryScreen() {
         }
         Spacer(Modifier.height(10.dp))
 
+        if (app.lookup.showKeyHint) {
+            ComicVineHint()
+            Spacer(Modifier.height(8.dp))
+        }
         // --- view chips (both shelves) ---
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             LibraryView.entries.forEach { v ->
@@ -160,6 +176,10 @@ fun LibraryScreen() {
                     settings.updateLibraryView(v)
                     category = null
                 }
+            }
+            if (reviewCount > 0) {
+                Spacer(Modifier.width(8.dp))
+                Chip("Needs review ($reviewCount)", reviewOnly) { reviewOnly = !reviewOnly }
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -189,6 +209,9 @@ fun LibraryScreen() {
             }
             else -> CategoryList(LibraryLogic.categories(matching, view)) { category = it }
         }
+    }
+    if (app.settingsOpen) SettingsPanel()
+    app.editInfoBook?.let { b -> androidx.compose.runtime.key(b.id) { EditInfoPanel(b) } }
     }
 }
 
@@ -447,6 +470,18 @@ private fun BookPopup(book: Book, mode: ReadingMode, close: () -> Unit) {
             HouseBadge(if (book.rtl) "On" else "Off", color = if (book.rtl) Accent else HouseStyle.Subtle)
         }
         if (book.series != null) PopupLabel("Applies to the whole series")
+        PopupDivider()
+        PopupItem(onClick = {
+            app.editInfoBook = book
+            close()
+        }) {
+            PopupText("Edit info", Modifier.weight(1f))
+            if (book.needsReview) HouseBadge("Needs review", color = HouseStyle.Warning)
+        }
+        PopupItem(onClick = {
+            app.lookup.refresh(book)
+            close()
+        }) { PopupText("Refresh info") }
         PopupDivider()
         PopupItem(onClick = {
             app.setCompleted(book, !book.completed)

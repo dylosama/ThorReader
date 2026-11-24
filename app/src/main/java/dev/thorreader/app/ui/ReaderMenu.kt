@@ -106,6 +106,17 @@ fun ReaderMenu(session: ReaderSession) {
                             book.series?.let { s -> s + (book.seriesNumber?.let { " #" + formatNumber(it) } ?: "") },
                         ).joinToString("  ·  ")
                         if (byline.isNotEmpty()) Text(byline, color = SubtleText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        // Book details: genres and the description (tap to show all of it).
+                        dev.thorreader.app.metadata.Genres.split(book.genres).takeIf { it.isNotEmpty() }?.let {
+                            Text(it.joinToString(" · "), color = SubtleText, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        book.description?.let { d ->
+                            var full by remember(book.id) { mutableStateOf(false) }
+                            Text(
+                                d, color = Color(0xFFBBBBBB), fontSize = 12.sp, maxLines = if (full) Int.MAX_VALUE else 3,
+                                overflow = TextOverflow.Ellipsis, modifier = Modifier.focusClick { full = !full },
+                            )
+                        }
                         // Books: already the chosen chapter name; PDFs: raw outline titles.
                         p?.labelAt(session.viewIndex)?.let { if (session.reflowable) it else ChapterTitle.format(it) }?.let {
                             Text(it, color = Accent, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -110,4 +110,6 @@ dependencies {
     implementation("org.commonmark:commonmark:0.24.0")
 
     testImplementation("junit:junit:4.13.2")
+    // Android has org.json built in; plain JVM unit tests need the real one.
+    testImplementation("org.json:json:20240303")
 }
