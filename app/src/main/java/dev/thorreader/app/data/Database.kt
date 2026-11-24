@@ -58,6 +58,11 @@ data class Book(
     val fontBottom: Float? = null,
     val sameFont: Boolean? = null,
     val marginLevel: Int? = null,
+    /** The bookmark (one per book) as a book location; null = none. */
+    val bookmarkChapter: Int? = null,
+    val bookmarkFraction: Float? = null,
+    /** Page number shown at the reading position in the last-used layout (0 = unknown). */
+    val lastPage: Int = 0,
 ) {
     val rtl: Boolean get() = rtlOverride ?: mangaRtl
     val readingMode: ReadingMode? get() = mode?.let { runCatching { ReadingMode.valueOf(it) }.getOrNull() }
@@ -99,6 +104,12 @@ interface BookDao {
     @Query("UPDATE books SET completedAt = :at WHERE id = :id")
     suspend fun setCompleted(id: Long, at: Long?)
 
+    @Query("UPDATE books SET bookmarkChapter = :chapter, bookmarkFraction = :fraction WHERE id = :id")
+    suspend fun setBookmark(id: Long, chapter: Int?, fraction: Float?)
+
+    @Query("UPDATE books SET lastPage = :page WHERE id = :id")
+    suspend fun setLastPage(id: Long, page: Int)
+
     @Query("UPDATE books SET layoutPages = :pages WHERE id = :id")
     suspend fun setLayoutPages(id: Long, pages: Int)
 
@@ -126,7 +137,7 @@ data class SeriesDirection(@PrimaryKey val seriesKey: String, val rtl: Boolean)
 fun seriesKey(series: String?): String? =
     series?.trim()?.replace(Regex("\\s+"), " ")?.lowercase()?.takeIf { it.isNotEmpty() }
 
-@Database(entities = [Book::class, SeriesDirection::class], version = 4, exportSchema = false)
+@Database(entities = [Book::class, SeriesDirection::class], version = 5, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun books(): BookDao
 
@@ -156,6 +167,15 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE books ADD COLUMN fontBottom REAL")
                 db.execSQL("ALTER TABLE books ADD COLUMN sameFont INTEGER")
                 db.execSQL("ALTER TABLE books ADD COLUMN marginLevel INTEGER")
+            }
+        }
+
+        /** v4 -> v5 (still v0.2.0): bookmark and the current page number for the library. */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE books ADD COLUMN bookmarkChapter INTEGER")
+                db.execSQL("ALTER TABLE books ADD COLUMN bookmarkFraction REAL")
+                db.execSQL("ALTER TABLE books ADD COLUMN lastPage INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

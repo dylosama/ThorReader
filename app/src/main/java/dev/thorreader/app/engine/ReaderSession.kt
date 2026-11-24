@@ -218,6 +218,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
     /** The library shows this layout's page count ("412 pages"): save it once it is known. */
     private fun rememberPageCount() {
         val n = pagination?.takeIf { it.complete }?.pageCount ?: return
+        saveCurrentPage()
         if (n == book.layoutPages) return
         book = book.copy(layoutPages = n)
         val id = book.id
@@ -236,6 +237,70 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         val id = book.id
         app.scope.launch(Dispatchers.IO + NonCancellable) { app.db.books().setCompleted(id, at) }
         Log.i(TAG, "Completed '${book.title}' (last page reached)")
+    }
+
+    // ---- bookmark (one per book, stored as a book location) ---------------------------------
+
+    /** The bookmark, or null. */
+    val bookmark: Anchor?
+        get() {
+            val ch = book.bookmarkChapter ?: return null
+            return Anchor(ch, book.bookmarkFraction ?: 0f)
+        }
+
+    /** Does the current view show the bookmarked page? */
+    val bookmarkHere: Boolean
+        get() {
+            val a = bookmark ?: return false
+            val v = pagination?.views?.getOrNull(viewIndex) ?: return false
+            return v.units.any { unitHolds(it, a) }
+        }
+
+    /** View index the bookmark is on (for "Go to bookmark"), or null. */
+    val bookmarkView: Int? get() = bookmark?.let { a -> pagination?.findView(a) }
+
+    /** Page number to show for the bookmark. */
+    val bookmarkPage: Int?
+        get() {
+            val p = pagination ?: return null
+            val v = bookmarkView ?: return null
+            return p.pageNumberOfView(v) ?: (v + 1)
+        }
+
+    /** Bookmark unit [unitIndex] (reading order) of the current view. Moves an existing one. */
+    fun setBookmark(unitIndex: Int, reason: String): Boolean {
+        val v = pagination?.views?.getOrNull(viewIndex) ?: return false
+        val u = v.units.getOrNull(unitIndex) ?: return false
+        val a = bookmarkAnchorOf(u) ?: return false
+        storeBookmark(a, "ON at ${pagination?.pageNumber(u)?.let { "page $it" } ?: "view ${viewIndex + 1}"}", reason)
+        return true
+    }
+
+    /** Bookmark the later page of the current view (the right-hand page; left-hand in RTL). */
+    fun setBookmarkOnLaterPage(reason: String): Boolean {
+        val v = pagination?.views?.getOrNull(viewIndex) ?: run {
+            Log.i(TAG, "Bookmark not set ($reason): book not laid out yet")
+            return false
+        }
+        val idx = v.units.indexOfLast { it !is BlankUnit }
+        return idx >= 0 && setBookmark(idx, reason)
+    }
+
+    fun clearBookmark(reason: String) {
+        if (bookmark == null) return
+        storeBookmark(null, "OFF", reason)
+    }
+
+    /** Go to the bookmarked page. */
+    fun goToBookmark() {
+        bookmarkView?.let { jumpTo(it) }
+    }
+
+    private fun storeBookmark(a: Anchor?, what: String, reason: String) {
+        book = book.copy(bookmarkChapter = a?.chapter, bookmarkFraction = a?.fraction)
+        val id = book.id
+        Log.i(TAG, "Bookmark $what for '${book.title}' (reason: $reason)")
+        app.scope.launch(Dispatchers.IO + NonCancellable) { app.db.books().setBookmark(id, a?.chapter, a?.fraction) }
     }
 
     /** Completion changed from the library popup while this book is open. */
@@ -511,10 +576,20 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         val a = p.anchorOf(viewIndex) ?: return
         val prog = progress
         book = book.copy(posChapter = a.chapter, posFraction = a.fraction, progress = prog)
+        saveCurrentPage()
         val id = book.id
         app.scope.launch(Dispatchers.IO + NonCancellable) {
             app.db.books().savePosition(id, a.chapter, a.fraction, prog, System.currentTimeMillis())
         }
+    }
+
+    /** The library shows "277 / 1794": remember the page number at the reading position. */
+    private fun saveCurrentPage() {
+        val n = pagination?.pageNumberOfView(viewIndex) ?: return
+        if (n == book.lastPage) return
+        book = book.copy(lastPage = n)
+        val id = book.id
+        app.scope.launch(Dispatchers.IO + NonCancellable) { app.db.books().setLastPage(id, n) }
     }
 
     fun close() {

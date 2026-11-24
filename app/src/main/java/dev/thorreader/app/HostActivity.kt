@@ -84,6 +84,12 @@ abstract class HostActivity : ComponentActivity(), HostActions {
     override fun onStart() {
         super.onStart()
         app.refreshScreens()
+        app.onHostStart(javaClass.simpleName)
+    }
+
+    override fun onStop() {
+        app.onHostStop(javaClass.simpleName)
+        super.onStop()
     }
 
     override fun onResume() {

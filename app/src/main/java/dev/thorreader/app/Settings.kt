@@ -207,6 +207,17 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putString(if (s == Shelf.COMPLETED) "sort_completed" else "sort_library", order.name).apply()
     }
 
+    // ---- bookmark colour (one for all books) --------------------------------------------
+
+    /** ARGB of the bookmark ribbon (and the current page number in the library). */
+    var bookmarkColor by mutableIntStateOf(prefs.getInt("bookmark_color", BOOKMARK_PRESETS[0]))
+        private set
+
+    fun updateBookmarkColor(argb: Int) {
+        bookmarkColor = argb
+        prefs.edit().putInt("bookmark_color", argb).apply()
+    }
+
     // ---- first-run tutorial -------------------------------------------------------------
 
     /** Tutorial steps already shown/done: bit n = [TutorialStep] ordinal n. */
@@ -241,5 +252,25 @@ class Settings(private val prefs: SharedPreferences) {
         const val MIN_HOLD_MS = 500
         const val MAX_HOLD_MS = 3000
         val HOLD_CHOICES_MS = listOf(500, 1000, 1500, 2000, 2500, 3000)
+
+        /**
+         * Bookmark colours: mid-tone and fairly saturated, so each stands out on light Paper,
+         * yellowish Sepia and black Night pages alike. Red is the default.
+         */
+        val BOOKMARK_PRESETS = listOf(
+            0xFFD93A3A.toInt(), // red
+            0xFFE57A1F.toInt(), // orange
+            0xFFD4A20F.toInt(), // gold
+            0xFF3E9E4F.toInt(), // green
+            0xFF14988F.toInt(), // teal
+            0xFF3A78D6.toInt(), // blue
+            0xFF8A55C8.toInt(), // purple
+            0xFFD9508C.toInt(), // pink
+        )
+        val BOOKMARK_PRESET_NAMES = listOf("Red", "Orange", "Gold", "Green", "Teal", "Blue", "Purple", "Pink")
+
+        /** Custom colours from the hue slider keep the presets' brightness and strength. */
+        fun customBookmarkColor(hue: Float): Int =
+            android.graphics.Color.HSVToColor(floatArrayOf(hue.coerceIn(0f, 359.9f), 0.72f, 0.85f))
     }
 }

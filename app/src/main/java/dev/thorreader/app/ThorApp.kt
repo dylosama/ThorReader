@@ -63,6 +63,9 @@ class ThorApp : Application() {
     /** Set by the library while it shows something Back should close (search, a category). */
     var libraryBack: (() -> Boolean)? = null
 
+    /** Set by the reader menu while its colour picker is open (Back/B closes it first). */
+    var menuBack: (() -> Boolean)? = null
+
     /** The last B press was used by the library (so its key-up is swallowed too). */
     private var libraryBackPending = false
 
@@ -121,10 +124,11 @@ class ThorApp : Application() {
         MuPdf.init()
         settings = Settings(getSharedPreferences("thor_reader", MODE_PRIVATE))
         db = Room.databaseBuilder(this, AppDatabase::class.java, "thor_reader.db")
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5)
             .build()
         importer = Importer(this, db.books(), scope)
         settings.onTextChanged = ::saveBookText
+        registerScreenReceiver()
         refreshScreens()
         MuPdf.logNativeSupport()
         // Settings.mode always starts as Mode 3: the library on the top screen.
@@ -244,6 +248,74 @@ class ThorApp : Application() {
         scope.launch(Dispatchers.IO) { db.books().setText(id, s.fontPt, s.fontPtBottom, s.sameFont, s.marginLevel) }
     }
 
+    // ---- auto-bookmark when leaving / coming back ----------------------------------------
+    //
+    // Leaving = our last visible activity stopped (app backgrounded or swiped away, lid closed)
+    // or the screen turned off, while a book is open: bookmark the current (later) page.
+    // Coming straight back to that same open book: remove that bookmark after a short moment,
+    // so the reader sees the ribbon slide away. Mode changes move the reader between
+    // activities; those stops/starts are ignored.
+
+    private var startedActivities = 0
+
+    /** Id of the open book whose bookmark was set automatically on leaving, or null. */
+    private var autoBookmarkBook: Long? = null
+    private var returnJob: Job? = null
+
+    fun onHostStart(who: String) {
+        startedActivities++
+        if (startedActivities == 1) onReturn("$who started again")
+    }
+
+    fun onHostStop(who: String) {
+        startedActivities = (startedActivities - 1).coerceAtLeast(0)
+        if (startedActivities > 0) return
+        if (SystemClock.uptimeMillis() - lastModeChangeAt < HANDOVER_GUARD_MS) {
+            Log.i(TAG, "$who stopped during a mode change: not leaving")
+            return
+        }
+        onLeave("$who stopped (app in background, swiped away or lid closed)")
+    }
+
+    private val screenReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+            when (intent.action) {
+                android.content.Intent.ACTION_SCREEN_OFF -> onLeave("screen off")
+                android.content.Intent.ACTION_SCREEN_ON -> if (startedActivities > 0) onReturn("screen on")
+            }
+        }
+    }
+
+    private fun registerScreenReceiver() {
+        val f = android.content.IntentFilter().apply {
+            addAction(android.content.Intent.ACTION_SCREEN_OFF)
+            addAction(android.content.Intent.ACTION_SCREEN_ON)
+        }
+        registerReceiver(screenReceiver, f, RECEIVER_NOT_EXPORTED)
+    }
+
+    private fun onLeave(reason: String) {
+        Log.i(TAG, "Leaving: $reason")
+        val s = session ?: return
+        returnJob?.cancel()
+        if (autoBookmarkBook == s.book.id && s.bookmarkHere) return // already done (screen off + stop)
+        if (s.setBookmarkOnLaterPage("auto, $reason")) autoBookmarkBook = s.book.id
+    }
+
+    private fun onReturn(reason: String) {
+        Log.i(TAG, "Back: $reason")
+        val s = session ?: return
+        if (autoBookmarkBook != s.book.id) return
+        returnJob?.cancel()
+        returnJob = scope.launch {
+            delay(AUTO_OFF_DELAY_MS) // let the reader see the ribbon before it slides away
+            if (session === s && startedActivities > 0 && autoBookmarkBook == s.book.id) {
+                s.clearBookmark("auto, back to the book: $reason")
+                autoBookmarkBook = null
+            }
+        }
+    }
+
     /** "Mark as completed" / "Mark as unread" (unread keeps the reading position). */
     fun setCompleted(book: Book, completed: Boolean) {
         val at = if (completed) System.currentTimeMillis() else null
@@ -261,6 +333,8 @@ class ThorApp : Application() {
         val s = session ?: return
         stopRepeating()
         Log.i(TAG, "Closed '${s.book.title}' (reason: $reason)")
+        autoBookmarkBook = null // a closed book keeps its bookmark
+        returnJob?.cancel()
         s.close()
         session = null
         menuScreen = null
@@ -336,7 +410,7 @@ class ThorApp : Application() {
             }
             session == null && libraryBack?.invoke() == true -> true
             menuScreen != null -> {
-                menuScreen = null
+                if (menuBack?.invoke() != true) menuScreen = null
                 true
             }
             session != null -> {
@@ -412,6 +486,19 @@ class ThorApp : Application() {
         }
         val s = session
         if (s != null && s.scrubScreen != null) return handleScrubKey(s, e)
+        // Reader menu open: the d-pad and A move through the menu instead of turning pages, and
+        // B closes the colour picker first, then the menu.
+        if (s != null && menuScreen != null) {
+            when (code) {
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_ENTER,
+                -> return false
+                KeyEvent.KEYCODE_BUTTON_B -> {
+                    if (e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0 && menuBack?.invoke() != true) menuScreen = null
+                    return true
+                }
+            }
+        }
         // Library: B closes search / a category / the sort menu (otherwise it's the normal Back).
         if (s == null && code == KeyEvent.KEYCODE_BUTTON_B && libraryBack != null) {
             if (e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0) libraryBackPending = libraryBack?.invoke() == true
@@ -491,6 +578,7 @@ class ThorApp : Application() {
         lateinit var instance: ThorApp
             private set
         private const val HANDOVER_GUARD_MS = 2000L
+        private const val AUTO_OFF_DELAY_MS = 1200L
         private const val REPEAT_FIRST_DELAY_MS = 450L
         private const val REPEAT_START_MS = 320L
         private const val REPEAT_FASTEST_MS = 60L

@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.key
 import dev.thorreader.app.ReadingMode
 import dev.thorreader.app.Screen
 import dev.thorreader.app.ThorApp
@@ -68,6 +69,7 @@ import dev.thorreader.app.engine.Rendered
 import dev.thorreader.app.engine.Side
 import dev.thorreader.app.engine.SlotSize
 import dev.thorreader.app.engine.bookUnitIndexFor
+import dev.thorreader.app.engine.unitHolds
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -182,6 +184,12 @@ fun PageSlot(
     val currentRendered by rememberUpdatedState(rendered)
     val currentEdges by rememberUpdatedState(edges)
     val currentP by rememberUpdatedState(p) // the gesture handler outlives re-publishes
+    // Bookmark ribbon: on this page? Which top corner (the page's outer side; single pages
+    // follow the running header: left, or right in right-to-left books).
+    val marked = session.bookmark?.let { unitHolds(unit, it) } == true
+    val ribbonSide = if (edges.size == 1) edges.first() else if (rtl) Side.RIGHT else Side.LEFT
+    val currentMarked by rememberUpdatedState(marked)
+    val currentRibbonSide by rememberUpdatedState(ribbonSide)
 
     /** How far an overflowing page can scroll, for a box of [size]. */
     fun maxScroll(size: IntSize): Float {
@@ -207,6 +215,24 @@ fun PageSlot(
                 val canZoom = !reflow && unit !is BlankUnit
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
+                    // A touch on the bookmark ribbon: swipe UP removes it. Never turns the page or
+                    // starts the hold-for-menu ring.
+                    if (currentMarked && inRibbonZone(down.position, size.width, currentRibbonSide, this)) {
+                        var dy = 0f
+                        var dx = 0f
+                        while (true) {
+                            val ev = awaitPointerEvent()
+                            ev.changes.forEach { dy += it.positionChange().y; dx += it.positionChange().x; it.consume() }
+                            if (ev.changes.none { it.pressed }) break
+                            if (-dy > RIBBON_SWIPE_DP.dp.toPx() && -dy > abs(dx)) {
+                                session.clearBookmark("swiped up on the ribbon")
+                                ev.changes.forEach { it.consume() }
+                                waitForUpOrCancellation()
+                                break
+                            }
+                        }
+                        return@awaitEachGesture
+                    }
                     hold = Hold(down.position, down.uptimeMillis)
                     var now = down.uptimeMillis
                     var total = Offset.Zero
@@ -360,6 +386,7 @@ fun PageSlot(
         }
 
         PageOverlays(session, p, unit, rtl)
+        key(unit.key) { BookmarkRibbon(marked, ribbonSide) }
         EdgeShadow(session, currentEdges)
         hold?.let { HoldRing(it, holdMs) }
     }

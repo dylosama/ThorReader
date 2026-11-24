@@ -242,17 +242,22 @@ class V020Test {
     private fun book(
         title: String, format: BookFormat = BookFormat.EPUB, author: String? = null, progress: Float = 0f,
         pages: Int = 0, layoutPages: Int = 0, rtl: Boolean = false, completedAt: Long? = null, series: String? = null, n: Float? = null,
+        opened: Long = 0, lastPage: Int = 0,
     ) = Book(
         uri = "u:$title", fileName = "$title.x", format = format.name, sizeBytes = 1, title = title, author = author,
         progress = progress, pageCount = pages, layoutPages = layoutPages, mangaRtl = rtl, completedAt = completedAt,
-        series = series, seriesNumber = n,
+        series = series, seriesNumber = n, lastOpenedAt = opened, lastPage = lastPage,
     )
 
     @Test
     fun rowSecondLine() {
-        assertEquals("412 pages · EPUB · 37%", LibraryLogic.detailLine(book("a", pages = 300, layoutPages = 412, progress = 0.37f)))
-        assertEquals("120 pages · PDF · Not started", LibraryLogic.detailLine(book("b", BookFormat.PDF, pages = 120)))
-        assertEquals("1 page · Image · Not started", LibraryLogic.detailLine(book("c", BookFormat.IMAGE, pages = 1)))
+        val a = LibraryLogic.detailLine(book("a", pages = 300, layoutPages = 1794, opened = 1, lastPage = 277))
+        assertEquals("277", a.current)
+        assertEquals("277 / 1794 · EPUB", a.toString())
+        assertEquals("Not started · PDF", LibraryLogic.detailLine(book("b", BookFormat.PDF, pages = 120)).toString())
+        // Read before the page was saved: estimated from progress, against the source count.
+        assertEquals("30 / 120 · PDF", LibraryLogic.detailLine(book("c", BookFormat.PDF, pages = 120, opened = 1, progress = 0.25f)).toString())
+        assertEquals("1 / 1 · Image", LibraryLogic.detailLine(book("d", BookFormat.IMAGE, pages = 1, opened = 1)).toString())
     }
 
     @Test
@@ -279,5 +284,38 @@ class V020Test {
         assertTrue(LibraryLogic.categories(books, LibraryView.AUTHORS).contains("Terry Pratchett" to 2))
         assertEquals(listOf("Other", "Novel"), LibraryLogic.sort(books.filter { it.completed }, SortOrder.DATE_COMPLETED).map { it.title })
         assertFalse(SortOrder.DATE_COMPLETED in LibraryLogic.sortsFor(Shelf.LIBRARY))
+    }
+}
+
+/** Step 12: bookmarks are book locations, so they survive font / margin / mode changes. */
+class BookmarkTest {
+    private fun slice(ch: Int, a: Float, b: Float) =
+        dev.thorreader.app.engine.SliceUnit(ch, 0, 0f, 1f, dev.thorreader.app.engine.SlotSize(1, 1), a, b, null, false)
+
+    @Test
+    fun reflowBookmarkFindsItsPageInAnyLayout() {
+        // Bookmark a page covering 30-40% of chapter 2 ...
+        val a = dev.thorreader.app.engine.bookmarkAnchorOf(slice(2, 0.30f, 0.40f))!!
+        // ... after a font change the pages are cut differently: the page holding 30% wins.
+        assertTrue(dev.thorreader.app.engine.unitHolds(slice(2, 0.25f, 0.33f), a))
+        assertFalse(dev.thorreader.app.engine.unitHolds(slice(2, 0.33f, 0.45f), a))
+        assertFalse(dev.thorreader.app.engine.unitHolds(slice(3, 0.25f, 0.33f), a))
+        // The last page of a chapter (ends at 1.0) still holds a bookmark at its very end.
+        val end = dev.thorreader.app.engine.Anchor(1, 0.99995f)
+        assertTrue(dev.thorreader.app.engine.unitHolds(slice(1, 0.9f, 1f), end))
+    }
+
+    @Test
+    fun splitSpreadHalvesAreSeparateButWholePageHoldsBoth() {
+        val p = dev.thorreader.app.engine.Part.RIGHT
+        val right = dev.thorreader.app.engine.bookmarkAnchorOf(dev.thorreader.app.engine.FixedUnit(7, p))!!
+        val left = dev.thorreader.app.engine.bookmarkAnchorOf(dev.thorreader.app.engine.FixedUnit(7, dev.thorreader.app.engine.Part.LEFT))!!
+        assertTrue(dev.thorreader.app.engine.unitHolds(dev.thorreader.app.engine.FixedUnit(7, p), right))
+        assertFalse(dev.thorreader.app.engine.unitHolds(dev.thorreader.app.engine.FixedUnit(7, p), left))
+        // Mode 3/4 show the spread whole: it holds either half's bookmark.
+        assertTrue(dev.thorreader.app.engine.unitHolds(dev.thorreader.app.engine.FixedUnit(7, dev.thorreader.app.engine.Part.WHOLE), right))
+        assertFalse(dev.thorreader.app.engine.unitHolds(dev.thorreader.app.engine.FixedUnit(8, dev.thorreader.app.engine.Part.WHOLE), right))
+        assertEquals(0, dev.thorreader.app.engine.leftUnitIndex(false))
+        assertEquals(1, dev.thorreader.app.engine.leftUnitIndex(true))
     }
 }

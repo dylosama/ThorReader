@@ -224,6 +224,26 @@ page" always moves the right way physically.
    after the title. Popup: "Mark as completed" / "Mark as unread" (unread keeps the position).
    Completed books live in the Completed view (default sort: date completed).
 7. versionName 0.2.0, versionCode 2. Room DB v4 (migration 3->4 adds the new columns).
+8. **Bookmark (step 12, still v0.2.0)**: ONE per book, stored as an Anchor (book location:
+   `Book.bookmarkChapter` / `bookmarkFraction`, fixed pages use fraction 0.5 for the right half of
+   a split spread), so it survives font/margin/mode changes. Reader menu: "Bookmark" toggle under
+   Return / Close (two-page views ask "Left page / Right page"), "Go to bookmark" when it is on
+   another page, round colour swatch -> picker (8 presets, red default; "Custom" hue slider; live
+   ribbon preview; one global colour, `Settings.bookmarkColor`). Ribbon: slim notched ribbon from
+   the top edge, top-left of a left page / top-right of a right page (single pages: top-left, or
+   top-right in RTL, like the running header). Swipe UP on it = off (slides up; no page turn, no
+   hold ring).
+   - **Auto**: leaving while a book is open (last activity stopped - app backgrounded, swiped
+     away, lid closed - or ACTION_SCREEN_OFF) sets the bookmark on the later page of the view
+     (right-hand page; left-hand in RTL). Coming straight back to the same open book (activity
+     started again / ACTION_SCREEN_ON while visible) removes it after 1.2 s so the ribbon is seen
+     sliding away. Mode-change handovers are ignored (2 s guard). If the book was closed or the
+     app killed, the bookmark simply stays. Every on/off is logged: `Bookmark ON/OFF ... (reason)`.
+   - While the menu is open the d-pad moves through the menu (no page turns) and B closes the
+     colour picker, then the menu.
+   - Library row line: "277 / 1794 · EPUB" (current page in the bookmark colour, from
+     `Book.lastPage` of the last-used layout; estimated from progress if unknown), "Not started ·
+     EPUB" if never opened. Room DB v5 (`MIGRATION_4_5`).
 
 ### App icon (step 10)
 - `icon.svg` (repo root) is the master design on the 108×108 adaptive grid.
@@ -470,3 +490,15 @@ Causes confirmed in code before fixing:
   EPUB writer, library logic).
 - Not verifiable on the PC (no device attached while building): which formats MuPDF opens
   natively (see the "MuPDF native support" log line), KF8 files from the wild, AVIF decoding.
+
+### Bookmark code map (step 12)
+- `engine/Layout.kt`: `bookmarkAnchorOf`, `unitHolds`, `leftUnitIndex` (unit-tested in `BookmarkTest`).
+- `engine/ReaderSession.kt`: `bookmark`, `bookmarkHere`, `bookmarkPage`, `setBookmark(unitIndex)`,
+  `setBookmarkOnLaterPage`, `clearBookmark`, `goToBookmark` (all logged with a reason);
+  `saveCurrentPage` -> `Book.lastPage`.
+- `ThorApp.kt`: `onHostStart/onHostStop` (called from `HostActivity`, so MainActivity and
+  BottomActivity), screen on/off receiver, `onLeave`/`onReturn` (logged "Leaving: ..." / "Back: ...").
+  `menuBack` + d-pad pass-through while the menu is open.
+- `ui/Bookmark.kt`: `BookmarkRibbon` (AnimatedVisibility slide), `inRibbonZone`, `ColorSwatch`,
+  `BookmarkColorPicker`, `HueSlider`. `ui/Reader.kt`: ribbon swipe handled first in the page
+  gesture. `ui/ReaderMenu.kt`: `BookmarkControls`. `LibraryLogic.detailLine` -> `PageLine`.

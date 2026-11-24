@@ -37,6 +37,9 @@ Each book remembers its own mode. Switch with the **Select** button or from the 
   and Genre, search, and sorting (recently read, recently added, title, author, progress).
   Each row shows pages, format and progress; finished books get a gold star and move to
   "Completed". Works with the d-pad and A/B as well as touch.
+- A bookmark per book, shown as a ribbon on the page (choose its colour; swipe it up to remove).
+  Closing the lid or leaving the app bookmarks your page automatically, and the ribbon slides
+  away again when you come straight back.
 - A short first-run tutorial (can be shown again from the reader menu).
 
 ## Supported formats

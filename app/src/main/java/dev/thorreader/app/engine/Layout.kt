@@ -322,3 +322,25 @@ fun paginateFixed(count: Int, isSpread: (Int) -> Boolean, label: (Int) -> String
     if (views.isEmpty()) views += PageView(List(cfg.perView) { BlankUnit })
     return views
 }
+
+// ---- bookmarks -------------------------------------------------------------------------------
+
+/**
+ * The book location of one page (unit), for a bookmark. Reflowable: a point just inside the
+ * page. Fixed: the page index; fraction 0.5 marks the right half of a split double-page spread.
+ */
+fun bookmarkAnchorOf(u: PageUnit): Anchor? = when (u) {
+    is SliceUnit -> Anchor(u.chapter, u.fracStart + minOf(0.0001f, (u.fracEnd - u.fracStart) / 2f))
+    is FixedUnit -> Anchor(u.page, if (u.part == Part.RIGHT) 0.5f else 0f)
+    else -> null
+}
+
+/** Does page [u] (in any layout) contain bookmark [a]? */
+fun unitHolds(u: PageUnit, a: Anchor): Boolean = when (u) {
+    is SliceUnit -> u.chapter == a.chapter && a.fraction >= u.fracStart && (a.fraction < u.fracEnd || u.fracEnd >= 0.9999f)
+    is FixedUnit -> u.page == a.chapter && (u.part == Part.WHOLE || (u.part == Part.RIGHT) == (a.fraction >= 0.5f))
+    else -> false
+}
+
+/** Index (in reading order) of the unit on the physical LEFT of a two-page view. */
+fun leftUnitIndex(rtl: Boolean) = if (rtl) 1 else 0

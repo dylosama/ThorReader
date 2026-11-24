@@ -108,14 +108,32 @@ object LibraryLogic {
 
     private fun key(s: String) = s.trim().replace(Regex("\\s+"), " ").lowercase()
 
-    /** Row line under the author: "412 pages · EPUB · 37%" ("Not started" instead of 0%). */
-    fun detailLine(b: Book): String {
+    /**
+     * Row line under the author, in two parts: [current] (the page you're on, shown in the
+     * bookmark colour) and the [rest]: "277" + " / 1794 · EPUB", or "Not started · EPUB".
+     */
+    data class PageLine(val current: String?, val rest: String) {
+        override fun toString() = (current ?: "") + rest
+    }
+
+    /**
+     * Current page and total come from the book's last-used layout; the total falls back to the
+     * source's page count, and a current page not saved yet (books read before v0.2.0) is
+     * estimated from the reading progress.
+     */
+    fun detailLine(b: Book): PageLine {
         val format = runCatching { BookFormat.valueOf(b.format).label }.getOrDefault(b.format)
-        val pct = (b.progress * 100).toInt()
-        return listOfNotNull(
-            b.displayPages.takeIf { it > 0 }?.let { if (it == 1) "1 page" else "$it pages" },
-            format,
-            if (pct <= 0) "Not started" else "$pct%",
-        ).joinToString(" · ")
+        if (b.lastOpenedAt == 0L) return PageLine(null, "Not started · $format")
+        val total = b.displayPages
+        val current = when {
+            b.lastPage > 0 -> if (total > 0) b.lastPage.coerceAtMost(total) else b.lastPage
+            total > 0 -> Math.round(b.progress * total).coerceIn(1, total)
+            else -> null
+        }
+        return when {
+            current != null && total > 0 -> PageLine("$current", " / $total · $format")
+            current != null -> PageLine("$current", " · $format")
+            else -> PageLine(null, format)
+        }
     }
 }

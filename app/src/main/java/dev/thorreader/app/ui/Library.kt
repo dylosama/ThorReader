@@ -346,7 +346,19 @@ private fun BookRow(book: Book) {
                 book.series?.let { s -> s + (book.seriesNumber?.let { " #" + formatNumber(it) } ?: "") },
             ).joinToString("  ·  ")
             if (byline.isNotEmpty()) Text(byline, color = SubtleText, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(LibraryLogic.detailLine(book), color = Color(0xFF888888), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val line = LibraryLogic.detailLine(book)
+            val pageColor = Color(app.settings.bookmarkColor)
+            Text(
+                androidx.compose.ui.text.buildAnnotatedString {
+                    line.current?.let { c ->
+                        pushStyle(androidx.compose.ui.text.SpanStyle(color = pageColor, fontWeight = FontWeight.SemiBold))
+                        append(c)
+                        pop()
+                    }
+                    append(line.rest)
+                },
+                color = Color(0xFF888888), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
         }
         BookModeButton(book)
     }

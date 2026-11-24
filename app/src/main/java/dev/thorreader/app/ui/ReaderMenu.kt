@@ -44,6 +44,9 @@ import dev.thorreader.app.Screen
 import dev.thorreader.app.TutorialStep
 import dev.thorreader.app.engine.ChapterTitle
 import dev.thorreader.app.engine.ReaderSession
+import dev.thorreader.app.engine.BlankUnit
+import dev.thorreader.app.engine.leftUnitIndex
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.layout.size
 import dev.thorreader.app.importer.formatNumber
 import kotlinx.coroutines.delay
@@ -89,6 +92,9 @@ fun ReaderMenu(session: ReaderSession) {
                     BigButton("Return to reading", primary = true) { app.menuScreen = null }
                     BigButton("Close book", primary = false) { app.closeBook("Close book button") }
                 }
+
+                // --- Bookmark (one per book) + its colour ---
+                BookmarkControls(session)
 
                 // --- Book: cover, title, author, progress ---
                 Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -250,6 +256,67 @@ private fun RowScope.BigButton(label: String, primary: Boolean, onClick: () -> U
     ) {
         Text(label, color = if (primary) Color.Black else Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
     }
+}
+
+/**
+ * "Bookmark" toggle (on = this view shows the bookmarked page). In two-page views turning it on
+ * asks "Left page / Right page". Next to it: the colour swatch that opens the picker, and
+ * "Go to bookmark" when the bookmark is on another page.
+ */
+@Composable
+private fun BookmarkControls(session: ReaderSession) {
+    val app = ThorApp.instance
+    val p = session.pagination ?: return
+    val view = p.views.getOrNull(session.viewIndex) ?: return
+    val here = session.bookmarkHere
+    var asking by remember(session.viewIndex) { mutableStateOf(false) }
+    var picker by remember { mutableStateOf(false) }
+    DisposableEffect(picker) {
+        app.menuBack = if (picker) ({ picker = false; true }) else null
+        onDispose { app.menuBack = null }
+    }
+    val twoPages = view.units.size == 2 && view.units.none { it is BlankUnit }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Chip(if (here) "🔖 Bookmark: On" else "🔖 Bookmark: Off", here) {
+                when {
+                    here -> session.clearBookmark("menu toggle")
+                    twoPages -> asking = !asking
+                    else -> session.setBookmark(view.units.indexOfFirst { it !is BlankUnit }.coerceAtLeast(0), "menu toggle")
+                }
+            }
+            ColorSwatch(Color(app.settings.bookmarkColor), selected = picker, size = 40) { picker = !picker }
+            if (!here) {
+                session.bookmarkPage?.let { page -> Chip("Go to bookmark (page $page)") { session.goToBookmark(); app.menuScreen = null } }
+            }
+        }
+        if (asking && !here) {
+            // Which page of the two: physical left / right (mirrored order in right-to-left books).
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Bookmark which page?", color = HouseStyle.Subtle, fontSize = HouseStyle.ItemTextSize)
+                val left = leftUnitIndex(p.config.rtl)
+                HouseButton("Left page") { session.setBookmark(left, "menu, left page"); asking = false }
+                HouseButton("Right page") { session.setBookmark(1 - left, "menu, right page"); asking = false }
+            }
+        }
+        if (picker) BookmarkColorPicker()
+    }
+}
+
+/** Small house-style button (translucent pill, white text). */
+@Composable
+private fun HouseButton(label: String, onClick: () -> Unit) {
+    Text(
+        label,
+        color = HouseStyle.TextColor,
+        fontSize = HouseStyle.ItemTextSize,
+        modifier = Modifier
+            .clip(HouseStyle.Shape)
+            .background(HouseStyle.Background)
+            .border(1.dp, HouseStyle.Hairline, HouseStyle.Shape)
+            .focusClick(HouseStyle.Shape, onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+    )
 }
 
 /** "Size  A−  10 pt  A+" for one screen (with "same size" on, that's the shared size). */
