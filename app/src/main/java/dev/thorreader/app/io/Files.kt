@@ -44,12 +44,27 @@ class SafFile private constructor(private val pfd: ParcelFileDescriptor) : Close
         return buf.array()
     }
 
+    /** The first [n] bytes (or the whole file if it is shorter). */
+    fun readHead(n: Int): ByteArray {
+        val buf = ByteBuffer.allocate(minOf(n.toLong(), size).toInt())
+        var pos = 0L
+        while (buf.hasRemaining()) {
+            val r = channel.read(buf, pos)
+            if (r <= 0) break
+            pos += r
+        }
+        return buf.array().copyOf(buf.position())
+    }
+
     override fun close() {
         runCatching { input.close() }
         runCatching { pfd.close() }
     }
 
     companion object {
+        /** One of our own files (e.g. a converted EPUB in app storage). */
+        fun open(file: java.io.File): SafFile = SafFile(ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY))
+
         fun open(context: Context, uri: Uri): SafFile {
             val pfd = context.contentResolver.openFileDescriptor(uri, "r")
                 ?: throw IOException("Cannot open $uri")

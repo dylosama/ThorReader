@@ -79,15 +79,25 @@ class ReflowEngine(
 
     val chapterCount: Int get() = chapters.size
 
-    private fun widthPt(cfg: LayoutConfig) = (cfg.slots.minOf { it.w } - 2 * cfg.marginPx) / cfg.pxPerPt
+    /**
+     * Column width in points of the (single) text layout: the widest column every slot can
+     * show. A slot with a smaller text size draws the layout scaled down ([LayoutConfig.slotScale]),
+     * so it could fit a wider column; the larger-text slot is the one that limits it.
+     */
+    private fun widthPt(cfg: LayoutConfig) = cfg.textWidthPt()
 
-    /** Text area height: page minus margins minus the running header / page number bands. */
-    private fun heightPt(cfg: LayoutConfig, slot: SlotSize) = (slot.h - 2 * cfg.marginPx - 2 * cfg.headerPx) / cfg.pxPerPt
-    private fun imageCapPt(cfg: LayoutConfig) = cfg.slots.minOf { heightPt(cfg, it) } * 0.98f
+    /** Text area height of slot [i] in layout points: page minus margins minus header bands. */
+    private fun heightPt(cfg: LayoutConfig, i: Int) = cfg.textHeightPt(i)
+    private fun imageCapPt(cfg: LayoutConfig) = cfg.slots.indices.minOf { heightPt(cfg, it) } * 0.98f
 
-    /** Identifies the text layout. Slicing into pages is cheap and done per mode. */
+    /**
+     * Identifies the text layout (keyed by both screens' text sizes). Slicing into pages is
+     * cheap and done per mode.
+     */
     fun layoutIdFor(cfg: LayoutConfig): String =
-        "v$LAYOUT_VERSION-w%.2f-f%.2f-i%.0f".format(widthPt(cfg), cfg.fontPt, imageCapPt(cfg))
+        "v$LAYOUT_VERSION-w%.2f-f%.2f-i%.0f-s%s".format(
+            widthPt(cfg), cfg.fontPt, imageCapPt(cfg), cfg.slotFontPt.sorted().joinToString("/") { "%.1f".format(it) },
+        )
 
     /** Switch MuPDF to this layout (cheap: chapters are laid out lazily) and load any disk cache. */
     fun useLayout(cfg: LayoutConfig) {
@@ -240,9 +250,10 @@ class ReflowEngine(
             resolveToc(ch)
             val units = ArrayList<PageUnit>()
             for (seg in chapter.segs) {
-                val spans = LinePaginator.pages(seg.rows, units.size) { k -> heightPt(cfg, cfg.slots[k % n]) }
+                val spans = LinePaginator.pages(seg.rows, units.size) { k -> heightPt(cfg, k % n) }
                 for (span in spans) {
-                    val slot = cfg.slots[units.size % n]
+                    val slotIdx = units.size % n
+                    val slot = cfg.slots[slotIdx]
                     val overflow = span.overflow > 0.5f
                     if (overflow) logOverflow(ch, seg.page, span, slot, cfg)
                     val label = headerFor(ch, seg.page, span.y0)
@@ -254,6 +265,7 @@ class ReflowEngine(
                         label = label,
                         overflow = overflow,
                         header = if (showsHeader) label else null,
+                        scale = cfg.slotScale(slotIdx),
                     )
                 }
             }
@@ -285,9 +297,10 @@ class ReflowEngine(
             }
         }
         val w = unit.slot.w
-        val mx = cfg.marginPx.toFloat()
         val m = (cfg.marginPx + cfg.headerPx).toFloat() // top/bottom: margin + header band
-        val s = cfg.pxPerPt
+        val s = cfg.pxPerPt * unit.scale
+        // The column is centred: a smaller text size on this screen leaves wider side margins.
+        val mx = maxOf(cfg.marginPx.toFloat(), (w - widthPt(cfg) * s) / 2f)
         val contentPx = (unit.y1 - unit.y0) * s
         val h = if (unit.overflow) ceil(contentPx + 2 * m).toInt().coerceAtMost(MAX_BITMAP) else unit.slot.h
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -307,7 +320,7 @@ class ReflowEngine(
 
         if (cfg.headerPx > 0) {
             ensureBodyFont(unit)
-            val size = headerTextPx(cfg.fontPt, s)
+            val size = headerTextPx(cfg.fontPt * unit.scale, cfg.pxPerPt)
             val band = cfg.headerPx.toFloat()
             val top = cfg.marginPx.toFloat()
             unit.header?.let { text ->
@@ -489,7 +502,7 @@ class ReflowEngine(
 
     private companion object {
         /** Bump when the layout rules change so old caches are ignored. */
-        const val LAYOUT_VERSION = 3
+        const val LAYOUT_VERSION = 4
         const val CACHE_MAGIC = 0x54524C32 // "TRL2"
         const val MAX_BITMAP = 8192
 

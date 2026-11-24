@@ -186,3 +186,66 @@ object ComicArchives {
         dirs.drop(3).forEach { it.deleteRecursively() }
     }
 }
+
+/** CBT (tar): random access straight from the user's file, like CBZ. */
+class TarImageArchive(file: SafFile) : ImageArchive {
+    private val tar = org.apache.commons.compress.archivers.tar.TarFile(file.newChannel())
+    private val entries = tar.entries.filter { it.isFile }.associateBy { it.name }
+    override val pages: List<String> = entries.keys.filter(::isImageName).sortedWith(NaturalOrder)
+    private val infoEntry = entries.values.firstOrNull { isComicInfoName(it.name) }
+
+    override fun read(page: String): ByteArray = open(page).use { it.readBytes() }
+    override fun open(page: String): java.io.InputStream = tar.getInputStream(entries[page] ?: throw IOException("Missing $page"))
+    override fun comicInfo(): ByteArray? = infoEntry?.let { e -> tar.getInputStream(e).use { it.readBytes() } }
+    override fun close() = tar.close()
+}
+
+/** A single picture file shown as a one-page comic. */
+class SingleImageArchive(private val file: SafFile, name: String) : ImageArchive {
+    override val pages: List<String> = listOf(name)
+    override fun read(page: String): ByteArray = file.readAll()
+    override fun open(page: String): java.io.InputStream = file.readAll().inputStream()
+    override fun comicInfo(): ByteArray? = null
+    override fun close() = Unit
+}
+
+/**
+ * A folder of pictures (added with "Add folder") shown as one comic, read in place through the
+ * folder permission. [folder] is the folder's document uri inside the granted tree.
+ */
+class SafFolderImageArchive(private val context: Context, folder: android.net.Uri) : ImageArchive {
+    private val children = HashMap<String, android.net.Uri>()
+    override val pages: List<String>
+
+    init {
+        val tree = android.provider.DocumentsContract.buildTreeDocumentUri(
+            folder.authority, android.provider.DocumentsContract.getTreeDocumentId(folder),
+        )
+        val list = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(
+            tree, android.provider.DocumentsContract.getDocumentId(folder),
+        )
+        val cols = arrayOf(
+            android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+            android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE,
+        )
+        context.contentResolver.query(list, cols, null, null, null)?.use { c ->
+            while (c.moveToNext()) {
+                val id = c.getString(0) ?: continue
+                val name = c.getString(1) ?: continue
+                if (c.getString(2) == android.provider.DocumentsContract.Document.MIME_TYPE_DIR) continue
+                children[name] = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, id)
+            }
+        }
+        pages = children.keys.filter(::isImageName).sortedWith(NaturalOrder)
+        if (pages.isEmpty()) throw IOException("No pictures in this folder any more")
+    }
+
+    override fun read(page: String): ByteArray = open(page).use { it.readBytes() }
+    override fun open(page: String): java.io.InputStream =
+        context.contentResolver.openInputStream(children[page] ?: throw IOException("Missing $page")) ?: throw IOException("Cannot read $page")
+    override fun comicInfo(): ByteArray? = children.entries.firstOrNull { isComicInfoName(it.key) }?.let { e ->
+        context.contentResolver.openInputStream(e.value)?.use { it.readBytes() }
+    }
+    override fun close() = Unit
+}

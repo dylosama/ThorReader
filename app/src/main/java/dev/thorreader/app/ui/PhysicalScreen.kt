@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import dev.thorreader.app.ReadingMode
 import dev.thorreader.app.Screen
 import dev.thorreader.app.ThorApp
+import dev.thorreader.app.TutorialStep
 
 /**
  * Everything drawn on one physical screen. The same composable runs on the top screen
@@ -42,7 +43,7 @@ fun PhysicalScreen(screen: Screen) {
 private fun ScreenBody(screen: Screen, mode: ReadingMode) {
     val app = ThorApp.instance
     val session = app.session
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().tutorialTapCatcher()) {
         if (session == null) {
             val libraryHere = if (mode == ReadingMode.BOTTOM) screen == Screen.BOTTOM else screen == Screen.TOP
             if (libraryHere) {
@@ -61,6 +62,18 @@ private fun ScreenBody(screen: Screen, mode: ReadingMode) {
                 BackPill(session, Modifier.align(Alignment.BottomCenter).padding(bottom = 36.dp))
             }
             if (session.scrubScreen == screen) ScrubberBar(session)
+            // First open: how to reach the menu. Shown on the screen where Start opens it.
+            val menuHere = if (mode == ReadingMode.BOTTOM) Screen.BOTTOM else Screen.TOP
+            if (screen == menuHere && app.menuScreen == null && session.pagination != null && session.scrubScreen == null &&
+                app.tutorialShows(TutorialStep.OPEN_MENU)
+            ) {
+                val ms = app.settings.menuHoldMs
+                val secs = if (ms % 1000 == 0) "${ms / 1000} second${if (ms == 1000) "" else "s"}" else "${ms / 1000.0} seconds"
+                TutorialBadge(
+                    TutorialStep.OPEN_MENU, "Hold anywhere for $secs, or press Start, to open the menu", ArrowDir.NONE,
+                    Modifier.align(Alignment.Center),
+                )
+            }
             if (app.menuScreen == screen) ReaderMenu(session)
         }
         ModeToastOverlay()

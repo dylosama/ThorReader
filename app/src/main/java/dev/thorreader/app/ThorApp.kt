@@ -50,8 +50,59 @@ class ThorApp : Application() {
     var session by mutableStateOf<ReaderSession?>(null)
         private set
 
+    private var menuScreenState = mutableStateOf<Screen?>(null)
+
     /** Which screen the reader menu is open on (null = closed). */
-    var menuScreen by mutableStateOf<Screen?>(null)
+    var menuScreen: Screen?
+        get() = menuScreenState.value
+        set(value) {
+            menuScreenState.value = value
+            if (value != null) tutorialDone(TutorialStep.OPEN_MENU)
+        }
+
+    /** Set by the library while it shows something Back should close (search, a category). */
+    var libraryBack: (() -> Boolean)? = null
+
+    /** The last B press was used by the library (so its key-up is swallowed too). */
+    private var libraryBackPending = false
+
+    // ---- first-run tutorial -------------------------------------------------------------
+
+    private fun isDone(step: TutorialStep) = settings.tutorialDone and (1 shl step.ordinal) != 0
+
+    /**
+     * Should [step]'s badge show now (its screen must also be showing)? Each step shows once,
+     * in order: "Tap a book" waits for "Add your books", "Choose how you hold" for "open the menu".
+     * (The library steps and the reader steps happen on different screens, so after "Show
+     * tutorial again" while reading, the reader steps come first.)
+     */
+    fun tutorialShows(step: TutorialStep): Boolean = !isDone(step) && when (step) {
+        TutorialStep.ADD_BOOKS, TutorialStep.OPEN_MENU -> true
+        TutorialStep.OPEN_BOOK -> isDone(TutorialStep.ADD_BOOKS)
+        TutorialStep.CHOOSE_MODE -> isDone(TutorialStep.OPEN_MENU)
+    }
+
+    /** [step] was done or dismissed: never show it again (until "Show tutorial again"). */
+    fun tutorialDone(step: TutorialStep) {
+        if (isDone(step)) return
+        settings.updateTutorialDone(settings.tutorialDone or (1 shl step.ordinal))
+        Log.i(TAG, "Tutorial step ${step.name} done")
+    }
+
+    /** Badges currently on screen (a tap anywhere dismisses them). */
+    val tutorialVisible = androidx.compose.runtime.mutableStateListOf<TutorialStep>()
+
+    /** A tap anywhere: dismiss the badges that are showing (the tap itself still goes through). */
+    fun tutorialTapped() {
+        tutorialVisible.toList().forEach { tutorialDone(it) }
+    }
+
+    /** "Show tutorial again" (reader menu). */
+    fun restartTutorial() {
+        settings.updateTutorialDone(0)
+        menuScreen = null // close the menu so "Hold anywhere ... to open the menu" shows right away
+        Log.i(TAG, "Tutorial restarted")
+    }
 
     /** Brief "Mode 2: Book reversed" label after a mode change. */
     var modeToast by mutableStateOf<ModeToast?>(null)
@@ -70,10 +121,12 @@ class ThorApp : Application() {
         MuPdf.init()
         settings = Settings(getSharedPreferences("thor_reader", MODE_PRIVATE))
         db = Room.databaseBuilder(this, AppDatabase::class.java, "thor_reader.db")
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
             .build()
         importer = Importer(this, db.books(), scope)
+        settings.onTextChanged = ::saveBookText
         refreshScreens()
+        MuPdf.logNativeSupport()
         // Settings.mode always starts as Mode 3: the library on the top screen.
         Log.i(TAG, "App started in mode ${settings.mode.number} (${settings.mode.title}), screens=$screens")
     }
@@ -160,10 +213,43 @@ class ThorApp : Application() {
             closeBook("opening another book", returnToLibrary = false)
             val mode = book.readingMode ?: settings.lastBookMode
             if (book.readingMode == null) launch(Dispatchers.IO) { db.books().setMode(book.id, mode.name) }
+            applyBookText(book)
             Log.i(TAG, "Opening '${book.title}' (${book.format}) in mode ${mode.number}: ${book.uri}")
             session = ReaderSession(this@ThorApp, book.copy(mode = mode.name))
             setMode(mode)
+            tutorialDone(TutorialStep.ADD_BOOKS)
+            tutorialDone(TutorialStep.OPEN_BOOK)
         }
+    }
+
+    /**
+     * Text settings are per book: show the book's own, or give a book that has none yet the
+     * current ones (so later changes in other books don't affect it).
+     */
+    private fun applyBookText(book: Book) {
+        val s = settings
+        if (book.fontTop != null) {
+            s.applyBookText(book.fontTop, book.fontBottom ?: book.fontTop, book.sameFont ?: true, book.marginLevel ?: s.marginLevel)
+        } else {
+            scope.launch(Dispatchers.IO) { db.books().setText(book.id, s.fontPt, s.fontPtBottom, s.sameFont, s.marginLevel) }
+        }
+        val sizes = if (s.sameFont) "${s.fontPt}pt (both screens)" else "${s.fontPt}pt top / ${s.fontPtBottom}pt bottom"
+        Log.i(TAG, "Text for '${book.title}': $sizes, margins ${s.marginLevel}")
+    }
+
+    /** A text setting changed in the menu: save it to the open book. */
+    private fun saveBookText() {
+        val id = session?.book?.id ?: return
+        val s = settings
+        scope.launch(Dispatchers.IO) { db.books().setText(id, s.fontPt, s.fontPtBottom, s.sameFont, s.marginLevel) }
+    }
+
+    /** "Mark as completed" / "Mark as unread" (unread keeps the reading position). */
+    fun setCompleted(book: Book, completed: Boolean) {
+        val at = if (completed) System.currentTimeMillis() else null
+        session?.let { if (it.book.id == book.id) it.applyCompleted(at) }
+        scope.launch(Dispatchers.IO) { db.books().setCompleted(book.id, at) }
+        Log.i(TAG, "'${book.title}' marked ${if (completed) "completed" else "unread"}")
     }
 
     /**
@@ -218,6 +304,7 @@ class ThorApp : Application() {
         scope.launch(Dispatchers.IO) {
             db.books().delete(book.id)
             book.coverPath?.let { File(it).delete() }
+            dev.thorreader.app.convert.BookSource.convertedFile(this@ThorApp, book.uri, book.sizeBytes).delete()
             runCatching {
                 contentResolver.releasePersistableUriPermission(
                     android.net.Uri.parse(book.uri), android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -247,6 +334,7 @@ class ThorApp : Application() {
                 session?.endScrub(false)
                 true
             }
+            session == null && libraryBack?.invoke() == true -> true
             menuScreen != null -> {
                 menuScreen = null
                 true
@@ -286,7 +374,7 @@ class ThorApp : Application() {
     }
 
     private val handledKeys = setOf(
-        KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_BUTTON_START,
+        KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_MENU,
         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
         KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_L2, KeyEvent.KEYCODE_BUTTON_R2,
         KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_PAGE_UP,
@@ -324,6 +412,11 @@ class ThorApp : Application() {
         }
         val s = session
         if (s != null && s.scrubScreen != null) return handleScrubKey(s, e)
+        // Library: B closes search / a category / the sort menu (otherwise it's the normal Back).
+        if (s == null && code == KeyEvent.KEYCODE_BUTTON_B && libraryBack != null) {
+            if (e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0) libraryBackPending = libraryBack?.invoke() == true
+            return libraryBackPending
+        }
         // In the library only Select is ours; the d-pad keeps its normal focus behaviour.
         if (code != KeyEvent.KEYCODE_BUTTON_SELECT && (s == null || code !in handledKeys)) return false
         if (code !in handledKeys) return false
@@ -335,7 +428,11 @@ class ThorApp : Application() {
         when (code) {
             // Modes belong to books now: in the library Select does nothing.
             KeyEvent.KEYCODE_BUTTON_SELECT -> if (s != null) cycleMode()
-            KeyEvent.KEYCODE_BUTTON_START -> toggleMenu(if (settings.mode == ReadingMode.BOTTOM) Screen.BOTTOM else Screen.TOP)
+            // Start opens/closes the reader menu (the Menu key too, in case the Thor sends that).
+            KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_MENU -> if (s != null) {
+                Log.i(TAG, "Start/Menu key (${KeyEvent.keyCodeToString(code)}, code $code): reader menu")
+                toggleMenu(if (settings.mode == ReadingMode.BOTTOM) Screen.BOTTOM else Screen.TOP)
+            }
             else -> {
                 val r = s ?: return true
                 val turn: (() -> Boolean)? = when (code) {

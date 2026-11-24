@@ -31,6 +31,10 @@ data class LayoutConfig(
     val rtl: Boolean,
     val slots: List<SlotSize>,
     val wideSlot: SlotSize,
+    /**
+     * The size text is laid out at: the LARGER of the slots' sizes. Slots with a smaller size
+     * draw the same lines scaled down (see [slotScale]), so the text is one continuous flow.
+     */
     val fontPt: Float,
     val marginPx: Int,
     /** Pixels per point: 1pt of font = 1/72 inch on the Thor's screen. */
@@ -40,13 +44,32 @@ data class LayoutConfig(
      * number (0 = off), so text never runs under them.
      */
     val headerPx: Int = 0,
+    /** Text size of each slot (reading order). Differs only in book modes with "same size" off. */
+    val slotFontPt: List<Float> = List(slots.size) { fontPt },
 ) {
     val perView: Int get() = slots.size
 
+    /** How much smaller slot [i] draws the laid-out text (1 = full size). */
+    fun slotScale(i: Int): Float = (slotFontPt.getOrElse(i) { fontPt } / fontPt).coerceIn(0.1f, 1f)
+
+    /**
+     * Width in layout points of the single text column: the widest every slot can show. A slot
+     * with a smaller text size draws the layout scaled down, so it could take a wider column;
+     * the larger-text slot limits it (the smaller-text screen gets wider side margins).
+     */
+    fun textWidthPt(): Float = slots.indices.minOf { i -> (slots[i].w - 2 * marginPx) / (pxPerPt * slotScale(i)) }
+
+    /** Text height of slot [i] in layout points: page minus margins and header bands, unscaled. */
+    fun textHeightPt(i: Int): Float = (slots[i].h - 2 * marginPx - 2 * headerPx) / (pxPerPt * slotScale(i))
+
     companion object {
         fun build(mode: ReadingMode, rtl: Boolean, screens: ScreenMetrics, settings: Settings): LayoutConfig =
-            build(mode, rtl, screens, settings.fontPt, settings.marginLevel, settings.bottomTwoPage, settings.showHeader)
+            build(
+                mode, rtl, screens, settings.fontFor(Screen.TOP), settings.marginLevel, settings.bottomTwoPage,
+                settings.showHeader, bottomFontPt = settings.fontFor(Screen.BOTTOM),
+            )
 
+        /** [fontPt] = top screen's text size, [bottomFontPt] = bottom screen's (default: same). */
         fun build(
             mode: ReadingMode,
             rtl: Boolean,
@@ -55,21 +78,25 @@ data class LayoutConfig(
             marginLevel: Int,
             bottomTwoPage: Boolean,
             showHeader: Boolean = false,
+            bottomFontPt: Float = fontPt,
         ): LayoutConfig {
             // In book modes the reader holds the device sideways, so each screen is used rotated.
             val topRotated = SlotSize(screens.topH, screens.topW)          // 1080 x 1920
             val bottomRotated = SlotSize(screens.bottomH, screens.bottomW) // 1080 x 1240
             val slots: List<SlotSize>
             val wide: SlotSize
+            val fonts: List<Float>
             when (mode) {
                 ReadingMode.BOOK, ReadingMode.BOOK_REVERSED -> {
                     val firstOnTop = (mode == ReadingMode.BOOK) != rtl
                     slots = if (firstOnTop) listOf(topRotated, bottomRotated) else listOf(bottomRotated, topRotated)
+                    fonts = if (firstOnTop) listOf(fontPt, bottomFontPt) else listOf(bottomFontPt, fontPt)
                     wide = slots[0]
                 }
                 ReadingMode.TOP -> {
                     val half = SlotSize(screens.topW / 2, screens.topH)
                     slots = listOf(half, half)
+                    fonts = listOf(fontPt, fontPt)
                     wide = SlotSize(screens.topW, screens.topH)
                 }
                 ReadingMode.BOTTOM -> {
@@ -80,12 +107,14 @@ data class LayoutConfig(
                     } else {
                         listOf(wide)
                     }
+                    fonts = List(slots.size) { bottomFontPt }
                 }
             }
+            val layoutPt = fonts.max()
             val pxPerPt = screens.density * 160f / 72f
             val marginPx = (Settings.MARGIN_DP[marginLevel] * screens.density).toInt()
-            val headerPx = if (showHeader) headerBandPx(fontPt, pxPerPt, screens.density) else 0
-            return LayoutConfig(mode, rtl, slots, wide, fontPt, marginPx, pxPerPt, headerPx)
+            val headerPx = if (showHeader) headerBandPx(layoutPt, pxPerPt, screens.density) else 0
+            return LayoutConfig(mode, rtl, slots, wide, layoutPt, marginPx, pxPerPt, headerPx, fonts)
         }
     }
 }
@@ -148,8 +177,10 @@ data class SliceUnit(
     val overflow: Boolean,
     /** Running header drawn on this page: only the left page of a view (right page in RTL). */
     val header: String? = null,
+    /** Drawn at this fraction of the laid-out size (a screen set to a smaller text size). */
+    val scale: Float = 1f,
 ) : PageUnit {
-    override val key = "s$chapter.$page:$y0:$y1:${slot.w}x${slot.h}:h${header.hashCode()}"
+    override val key = "s$chapter.$page:$y0:$y1:${slot.w}x${slot.h}:h${header.hashCode()}:x$scale"
 }
 
 /** What is visible at once: 1 or 2 units in reading order. [wide] = one spread filling the screen. */

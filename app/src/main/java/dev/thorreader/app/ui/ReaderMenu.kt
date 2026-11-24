@@ -40,6 +40,8 @@ import dev.thorreader.app.PageTheme
 import dev.thorreader.app.ReadingMode
 import dev.thorreader.app.Settings
 import dev.thorreader.app.ThorApp
+import dev.thorreader.app.Screen
+import dev.thorreader.app.TutorialStep
 import dev.thorreader.app.engine.ChapterTitle
 import dev.thorreader.app.engine.ReaderSession
 import androidx.compose.foundation.layout.size
@@ -147,9 +149,15 @@ fun ReaderMenu(session: ReaderSession) {
 
                 // --- Modes ---
                 Section("Reading mode  (Select button cycles)")
+                if (app.tutorialShows(TutorialStep.CHOOSE_MODE)) {
+                    TutorialBadge(TutorialStep.CHOOSE_MODE, "Choose how you hold your Thor", ArrowDir.DOWN, arrowAlign = Alignment.Start)
+                }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     ReadingMode.entries.forEach { m ->
-                        ModeButton(m, m == settings.mode) { app.setMode(m) }
+                        ModeButton(m, m == settings.mode) {
+                            app.tutorialDone(TutorialStep.CHOOSE_MODE)
+                            app.setMode(m)
+                        }
                     }
                 }
                 if (settings.mode == ReadingMode.BOTTOM) {
@@ -170,11 +178,21 @@ fun ReaderMenu(session: ReaderSession) {
                 // --- Text settings (reflowable only) ---
                 if (session.reflowable) {
                     Section("Text")
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Size", color = Color.White, fontSize = 14.sp, modifier = Modifier.width(64.dp))
-                        Chip("A−") { settings.updateFont(settings.fontPt - 1f) }
-                        Text("${settings.fontPt.toInt()} pt", color = Color.White, fontSize = 15.sp)
-                        Chip("A+") { settings.updateFont(settings.fontPt + 1f) }
+                    val mode = settings.mode
+                    if (mode.isBook) {
+                        // Book modes: optionally a different size on each screen.
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Same text size on both screens", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Chip("On", settings.sameFont) { settings.updateSameFont(true) }
+                            Chip("Off", !settings.sameFont) { settings.updateSameFont(false) }
+                        }
+                    }
+                    if (mode.isBook && !settings.sameFont) {
+                        FontRow("Top screen", Screen.TOP, labelWidth = 110)
+                        FontRow("Bottom screen", Screen.BOTTOM, labelWidth = 110)
+                    } else {
+                        // One control: mode 4 changes the bottom screen's size, the others the top's.
+                        FontRow("Size", if (mode == ReadingMode.BOTTOM) Screen.BOTTOM else Screen.TOP, labelWidth = 64)
                     }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Margins", color = Color.White, fontSize = 14.sp, modifier = Modifier.width(64.dp).padding(top = 8.dp))
@@ -210,6 +228,10 @@ fun ReaderMenu(session: ReaderSession) {
                         }
                     }
                 }
+
+                // --- Help ---
+                Section("Help")
+                Chip("Show tutorial again") { app.restartTutorial() }
             }
         }
     }
@@ -227,6 +249,19 @@ private fun RowScope.BigButton(label: String, primary: Boolean, onClick: () -> U
         contentAlignment = Alignment.Center,
     ) {
         Text(label, color = if (primary) Color.Black else Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** "Size  A−  10 pt  A+" for one screen (with "same size" on, that's the shared size). */
+@Composable
+private fun FontRow(label: String, screen: Screen, labelWidth: Int) {
+    val settings = ThorApp.instance.settings
+    val pt = settings.fontFor(screen)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, color = Color.White, fontSize = 14.sp, modifier = Modifier.width(labelWidth.dp))
+        Chip("A−") { settings.updateFontFor(screen, pt - 1f) }
+        Text("${pt.toInt()} pt", color = Color.White, fontSize = 15.sp)
+        Chip("A+") { settings.updateFontFor(screen, pt + 1f) }
     }
 }
 

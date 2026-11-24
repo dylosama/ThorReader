@@ -30,11 +30,26 @@ Each book remembers its own mode. Switch with the **Select** button or from the 
 - Quick navigation: page scrubber, go to page, chapter list, and "back to where I was".
 - Page turns by tap, swipe, d-pad and shoulder buttons (hold to flip quickly), always in the
   physically right direction for the current mode.
-- Reading position, mode and settings are remembered per book.
+- Reading position, mode and text settings are remembered per book.
+- Book modes can use a different text size on each screen ("Same text size on both screens" off
+  in the reader menu); the text still flows from one screen to the next without losing a line.
+- Library: "Library | Completed" switch, views by Authors, Series, Type (Books / Manga / Comics)
+  and Genre, search, and sorting (recently read, recently added, title, author, progress).
+  Each row shows pages, format and progress; finished books get a gold star and move to
+  "Completed". Works with the d-pad and A/B as well as touch.
+- A short first-run tutorial (can be shown again from the reader menu).
 
 ## Supported formats
 
-EPUB, MOBI, FB2, TXT, PDF, XPS, CBZ, CBR (RAR4), CB7.
+- **Books:** EPUB, MOBI, AZW, AZW3 (KF8), FB2, TXT, HTML / HTM / XHTML, Markdown (.md), DOCX,
+  ODT, RTF.
+- **Fixed layout:** PDF, XPS.
+- **Comics / manga:** CBZ, CBR (RAR4), CB7, CBT, single pictures (JPG, PNG, WEBP, GIF, AVIF), and
+  a folder of pictures added with "Add folder" (shown as one comic).
+
+Kindle books (MOBI / AZW / AZW3) must be DRM-free; DRM-protected books show "This book is
+DRM-protected". Pictures next to an HTML or Markdown file are shown when the file was added
+with "Add folder" (Android only lets apps see a file's neighbours then).
 
 ## Install
 
@@ -72,4 +87,10 @@ Thor Reader is free software, licensed under the **GNU Affero General Public Lic
   CBZ and CB7 comics. Apache License 2.0.
 - **[XZ for Java](https://tukaani.org/xz/java.html)** — LZMA/7z decompression. Zero-Clause BSD
   (0BSD) licence.
+- **[commonmark-java](https://github.com/commonmark/commonmark-java)** — Markdown to HTML (used
+  when MuPDF can't open a .md file itself). BSD 2-Clause licence.
+- Apache Commons Compress also reads CBT (tar) comics.
+- The AZW3/KF8, MOBI, DOCX, ODT and RTF readers are Thor Reader's own code (AGPL v3), written
+  from the public format descriptions; converted books are kept as EPUB files in the app's
+  private storage.
 - AndroidX, Jetpack Compose and Room — Apache License 2.0.

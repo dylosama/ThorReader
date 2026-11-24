@@ -30,6 +30,27 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.thorreader.app.data.Book
+import dev.thorreader.app.ThorApp
+import dev.thorreader.app.TutorialStep
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.composed
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -145,5 +166,75 @@ private fun PlaceholderCover(title: String, author: String?) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+/**
+ * Clickable that also works with the d-pad: focusable, a thin accent outline while focused,
+ * and A / Enter / centre press activate it (as does a tap).
+ */
+fun Modifier.focusClick(shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(10.dp), onClick: () -> Unit): Modifier = composed {
+    var focused by remember { mutableStateOf(false) }
+    this
+        .onFocusChanged { focused = it.isFocused }
+        .border(2.dp, if (focused) Accent else Color.Transparent, shape)
+        .onKeyEvent {
+            if (it.key == Key.ButtonA) {
+                if (it.type == KeyEventType.KeyUp) onClick()
+                true
+            } else {
+                false
+            }
+        }
+        .clickable(onClick = onClick)
+}
+
+/** Which way a tutorial badge's little arrow points. */
+enum class ArrowDir { UP, DOWN, NONE }
+
+/**
+ * First-run tutorial badge: the house pill with a small arrow toward what it explains. While
+ * shown it is registered in [ThorApp.tutorialVisible], so a tap anywhere dismisses it.
+ */
+@Composable
+fun TutorialBadge(
+    step: TutorialStep,
+    text: String,
+    arrow: ArrowDir,
+    modifier: Modifier = Modifier,
+    arrowAlign: Alignment.Horizontal = Alignment.CenterHorizontally,
+) {
+    val app = ThorApp.instance
+    DisposableEffect(step) {
+        app.tutorialVisible += step
+        onDispose { app.tutorialVisible -= step }
+    }
+    Column(modifier, horizontalAlignment = arrowAlign) {
+        if (arrow == ArrowDir.UP) BadgeArrow(up = true)
+        HouseBadge(text)
+        if (arrow == ArrowDir.DOWN) BadgeArrow(up = false)
+    }
+}
+
+@Composable
+private fun BadgeArrow(up: Boolean) {
+    Canvas(Modifier.padding(horizontal = 16.dp).size(12.dp, 6.dp)) {
+        val p = Path().apply {
+            if (up) {
+                moveTo(0f, size.height); lineTo(size.width / 2f, 0f); lineTo(size.width, size.height)
+            } else {
+                moveTo(0f, 0f); lineTo(size.width / 2f, size.height); lineTo(size.width, 0f)
+            }
+            close()
+        }
+        drawPath(p, HouseStyle.Background)
+    }
+}
+
+/** Observes every touch on a screen without taking it: dismisses tutorial badges. */
+fun Modifier.tutorialTapCatcher(): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        ThorApp.instance.tutorialTapped()
     }
 }

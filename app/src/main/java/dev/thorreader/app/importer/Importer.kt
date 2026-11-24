@@ -19,6 +19,12 @@ import dev.thorreader.app.engine.MuPdf
 import dev.thorreader.app.io.ComicArchives
 import dev.thorreader.app.io.SafFile
 import dev.thorreader.app.io.ZipImageArchive
+import dev.thorreader.app.io.TarImageArchive
+import dev.thorreader.app.io.SingleImageArchive
+import dev.thorreader.app.io.SafFolderImageArchive
+import dev.thorreader.app.io.ImageArchive
+import dev.thorreader.app.convert.BookSource
+import dev.thorreader.app.convert.DrmProtectedException
 import dev.thorreader.app.io.queryFileInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,7 +47,8 @@ class Importer(private val context: Context, private val dao: BookDao, private v
     private val mutex = Mutex()
     private var clearJob: Job? = null
 
-    private class Candidate(val uri: Uri, val name: String, val size: Long)
+    /** [format] is set for a folder of pictures (it has no file extension). */
+    private class Candidate(val uri: Uri, val name: String, val size: Long, val format: BookFormat? = null)
 
     fun importFiles(uris: List<Uri>) {
         if (uris.isEmpty()) return
@@ -61,7 +68,10 @@ class Importer(private val context: Context, private val dao: BookDao, private v
                 guarded {
                     postStatus("Scanning folder…")
                     val found = ArrayList<Candidate>()
-                    runCatching { scan(tree, DocumentsContract.getTreeDocumentId(tree), found, 0) }
+                    val rootId = DocumentsContract.getTreeDocumentId(tree)
+                    val rootName = queryFileInfo(context, DocumentsContract.buildDocumentUriUsingTree(tree, rootId))?.name
+                        ?: rootId.substringAfterLast('/').substringAfterLast(':').ifEmpty { "Pictures" }
+                    runCatching { scan(tree, rootId, rootName, found, 0) }
                         .onFailure { Log.e(TAG, "Folder scan failed", it) }
                     Log.i(TAG, "Folder scan found ${found.size} supported files")
                     run(found)
@@ -70,8 +80,15 @@ class Importer(private val context: Context, private val dao: BookDao, private v
         }
     }
 
-    private fun scan(tree: Uri, docId: String, out: MutableList<Candidate>, depth: Int) {
+    /**
+     * Book files anywhere below [docId]. A folder that holds pictures but no books becomes one
+     * comic (pictures next to books, like covers, are ignored).
+     */
+    private fun scan(tree: Uri, docId: String, dirName: String, out: MutableList<Candidate>, depth: Int) {
         if (depth > 12) return
+        var images = 0
+        var imageBytes = 0L
+        var books = 0
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId)
         val cols = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -84,13 +101,24 @@ class Importer(private val context: Context, private val dao: BookDao, private v
                 val id = c.getString(0) ?: continue
                 val name = c.getString(1) ?: continue
                 val mime = c.getString(2)
+                val size = if (c.isNull(3)) -1 else c.getLong(3)
+                val format = BookFormat.fromFileName(name)
                 if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
-                    scan(tree, id, out, depth + 1)
-                } else if (BookFormat.fromFileName(name) != null) {
-                    out += Candidate(DocumentsContract.buildDocumentUriUsingTree(tree, id), name, if (c.isNull(3)) -1 else c.getLong(3))
+                    if (!name.startsWith(".") && name != "__MACOSX") scan(tree, id, name, out, depth + 1)
+                } else if (format == BookFormat.IMAGE) {
+                    if (!name.startsWith(".")) {
+                        images++
+                        imageBytes += size.coerceAtLeast(0)
+                    }
+                } else if (format != null) {
+                    books++
+                    out += Candidate(DocumentsContract.buildDocumentUriUsingTree(tree, id), name, size)
                     if (out.size % 25 == 0) postStatus("Scanning folder… ${out.size} books found")
                 }
             }
+        }
+        if (images > 0 && books == 0) {
+            out += Candidate(DocumentsContract.buildDocumentUriUsingTree(tree, docId), dirName, imageBytes, BookFormat.IMAGES)
         }
     }
 
@@ -98,20 +126,27 @@ class Importer(private val context: Context, private val dao: BookDao, private v
         val existing = dao.allUris().toHashSet()
         var added = 0
         var skipped = 0
+        var drm = 0
         cands.forEachIndexed { i, c ->
-            val format = BookFormat.fromFileName(c.name)
+            val format = c.format ?: BookFormat.fromFileName(c.name)
             if (format == null || c.uri.toString() in existing) {
                 skipped++
                 return@forEachIndexed
             }
             postStatus("Importing ${i + 1} of ${cands.size}: ${c.name}")
             val meta = try {
-                extract(c.uri, c.name, format)
+                extract(c.uri, c.name, c.size, format)
+            } catch (e: DrmProtectedException) {
+                Log.w(TAG, "Not imported: '${c.name}' is DRM-protected")
+                drm++
+                return@forEachIndexed
             } catch (t: Throwable) {
                 Log.w(TAG, "Metadata extraction failed for ${c.name}", t)
                 ExtractedMeta()
             }
-            val parsed = FilenameParser.parse(c.name, format.comic)
+            // A picture folder has no extension: don't let "Vol. 2" lose its number to the "." rule.
+            val parsed = FilenameParser.parse(if (format == BookFormat.IMAGES) "${c.name}.dir" else c.name, format.comic)
+            val seriesFromName = format.comic && format != BookFormat.IMAGE
             val title = meta.title ?: parsed.title
             val book = Book(
                 uri = c.uri.toString(),
@@ -120,8 +155,8 @@ class Importer(private val context: Context, private val dao: BookDao, private v
                 sizeBytes = c.size,
                 title = title,
                 author = meta.authors.distinct().joinToString(", ").ifEmpty { null } ?: parsed.author,
-                series = meta.series ?: if (format.comic) parsed.series else null,
-                seriesNumber = if (meta.series != null) meta.seriesNumber else if (format.comic) parsed.number else null,
+                series = meta.series ?: if (seriesFromName) parsed.series else null,
+                seriesNumber = if (meta.series != null) meta.seriesNumber else if (seriesFromName) parsed.number else null,
                 genres = meta.genres.distinct().joinToString("; ").ifEmpty { null },
                 pageCount = meta.pageCount,
                 coverPath = saveCover(meta),
@@ -136,7 +171,15 @@ class Importer(private val context: Context, private val dao: BookDao, private v
                 Log.i(TAG, "Imported '${book.title}' (${format.label}, ${book.pageCount} pages, series=${book.series} #${book.seriesNumber}, manga flag=${book.mangaRtl}, series direction=${seriesRtl ?: "none"})")
             }
         }
-        finalStatus("Added $added book(s)" + if (skipped > 0) ", skipped $skipped already in library or unsupported" else "")
+        if (drm > 0 && added == 0 && skipped == 0) {
+            finalStatus(if (drm == 1) "This book is DRM-protected, so it can't be added" else "These $drm books are DRM-protected, so they can't be added")
+            return
+        }
+        finalStatus(
+            "Added $added book(s)" +
+                (if (drm > 0) ", $drm not added: DRM-protected" else "") +
+                (if (skipped > 0) ", skipped $skipped already in library or unsupported" else ""),
+        )
     }
 
     /** Any failure still ends with a final status that then clears itself. */
@@ -164,8 +207,13 @@ class Importer(private val context: Context, private val dao: BookDao, private v
         }
     }
 
-    private fun extract(uri: Uri, name: String, format: BookFormat): ExtractedMeta {
+    private fun extract(uri: Uri, name: String, size: Long, format: BookFormat): ExtractedMeta {
         val m = ExtractedMeta()
+        if (format == BookFormat.IMAGES) {
+            // A folder of pictures: no single file to open.
+            SafFolderImageArchive(context, uri).use { a -> comicMeta(a, m) }
+            return m
+        }
         SafFile.open(context, uri).use { f ->
             when (format) {
                 BookFormat.EPUB -> {
@@ -176,8 +224,22 @@ class Importer(private val context: Context, private val dao: BookDao, private v
                     runCatching { Fb2Meta.read(f, m) }.onFailure { Log.w(TAG, "FB2 parse failed: $name", it) }
                     muReflow(MuPdf.open(f, name), m)
                 }
-                BookFormat.MOBI -> muReflow(MuPdf.open(f, name), m)
                 BookFormat.TXT -> muReflow(MuPdf.openText(f), m, cover = false)
+                BookFormat.MOBI, BookFormat.AZW, BookFormat.AZW3, BookFormat.HTML, BookFormat.MARKDOWN,
+                BookFormat.DOCX, BookFormat.ODT, BookFormat.RTF -> {
+                    // Same route as reading (MuPDF itself, or our converter -> cached EPUB).
+                    val o = BookSource.open(context, uri, name, size, format, f)
+                    Log.i(TAG, "Import '$name' (${format.label}) via ${o.how}")
+                    try {
+                        o.epub?.let { e -> runCatching { EpubMeta.read(e, m) }.onFailure { Log.w(TAG, "Converted OPF unreadable: $name", it) } }
+                        muReflow(o.doc, m)
+                    } finally {
+                        o.epub?.close()
+                    }
+                }
+                BookFormat.CBT -> TarImageArchive(f).use { a -> comicMeta(a, m) }
+                BookFormat.IMAGE -> SingleImageArchive(f, name).use { a -> comicMeta(a, m) }
+                BookFormat.IMAGES -> Unit
                 BookFormat.PDF, BookFormat.XPS -> {
                     val doc = MuPdf.open(f, name)
                     try {
@@ -202,6 +264,12 @@ class Importer(private val context: Context, private val dao: BookDao, private v
             }
         }
         return m
+    }
+
+    private fun comicMeta(a: ImageArchive, m: ExtractedMeta) {
+        a.comicInfo()?.let { runCatching { ComicInfo.read(it, m) } }
+        m.pageCount = a.pages.size
+        m.coverBytes = a.pages.firstOrNull()?.let { a.read(it) }
     }
 
     /** Lay the book out at a reference page size to count pages; title/author/cover fallbacks. */

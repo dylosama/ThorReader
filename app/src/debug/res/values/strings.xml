@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Debug builds share the release applicationId (so they install over each other) but
+         have their own label so you can tell them apart in the launcher. -->
+    <string name="app_name">Thor Reader (dev)</string>
+</resources>

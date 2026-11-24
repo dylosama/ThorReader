@@ -59,6 +59,24 @@ enum class PageTheme(val label: String, val paper: Color, val ink: Color) {
     }
 }
 
+/** Library top-left switch. */
+enum class Shelf(val label: String) { LIBRARY("Library"), COMPLETED("Completed") }
+
+/** Library view chips. */
+enum class LibraryView(val label: String) { ALL("All"), AUTHORS("Authors"), SERIES("Series"), TYPE("Type"), GENRE("Genre") }
+
+enum class SortOrder(val label: String) {
+    RECENTLY_READ("Recently read"),
+    RECENTLY_ADDED("Recently added"),
+    TITLE("Title"),
+    AUTHOR("Author"),
+    PROGRESS("Progress"),
+    DATE_COMPLETED("Date completed"),
+}
+
+/** First-run tutorial steps, shown once each, in this order. */
+enum class TutorialStep { ADD_BOOKS, OPEN_BOOK, OPEN_MENU, CHOOSE_MODE }
+
 /** Persistent user settings (SharedPreferences), observable by Compose. */
 class Settings(private val prefs: SharedPreferences) {
 
@@ -105,14 +123,99 @@ class Settings(private val prefs: SharedPreferences) {
         mode = m
     }
 
+    // ---- text settings ----------------------------------------------------------------------
+    //
+    // [fontPt] is the top screen's size (and the only size while [sameFont] is on);
+    // [fontPtBottom] the bottom screen's size when [sameFont] is off. They are saved per book
+    // (ThorApp.saveBookText, via [onTextChanged]); the prefs keep the last values as defaults.
+
+    /** Bottom screen's text size when "Same text size on both screens" is off. */
+    var fontPtBottom by mutableFloatStateOf(prefs.getFloat("font_pt_bottom", prefs.getFloat("font_pt", DEFAULT_FONT_PT)))
+        private set
+
+    /** "Same text size on both screens" (default on). */
+    var sameFont by mutableStateOf(prefs.getBoolean("same_font", true))
+        private set
+
+    /** Called after any text setting changes (to save it to the open book). */
+    var onTextChanged: (() -> Unit)? = null
+
+    /** The text size a screen uses. */
+    fun fontFor(screen: Screen): Float = if (sameFont || screen == Screen.TOP) fontPt else fontPtBottom
+
     fun updateFont(pt: Float) {
         fontPt = pt.coerceIn(MIN_FONT_PT, MAX_FONT_PT)
         prefs.edit().putFloat("font_pt", fontPt).apply()
+        onTextChanged?.invoke()
+    }
+
+    fun updateFontBottom(pt: Float) {
+        fontPtBottom = pt.coerceIn(MIN_FONT_PT, MAX_FONT_PT)
+        prefs.edit().putFloat("font_pt_bottom", fontPtBottom).apply()
+        onTextChanged?.invoke()
+    }
+
+    /** Change the size of [screen] (with the same-size toggle on, that is the shared size). */
+    fun updateFontFor(screen: Screen, pt: Float) = if (sameFont || screen == Screen.TOP) updateFont(pt) else updateFontBottom(pt)
+
+    fun updateSameFont(same: Boolean) {
+        if (!same && sameFont) fontPtBottom = fontPt // start from the size both screens had
+        sameFont = same
+        prefs.edit().putBoolean("same_font", same).putFloat("font_pt_bottom", fontPtBottom).apply()
+        onTextChanged?.invoke()
     }
 
     fun updateMargin(level: Int) {
         marginLevel = level.coerceIn(0, MARGIN_DP.lastIndex)
         prefs.edit().putInt("margin_level", marginLevel).apply()
+        onTextChanged?.invoke()
+    }
+
+    /** Show a book's own text settings (not saved as the defaults). */
+    fun applyBookText(top: Float, bottom: Float, same: Boolean, margin: Int) {
+        fontPt = top.coerceIn(MIN_FONT_PT, MAX_FONT_PT)
+        fontPtBottom = bottom.coerceIn(MIN_FONT_PT, MAX_FONT_PT)
+        sameFont = same
+        marginLevel = margin.coerceIn(0, MARGIN_DP.lastIndex)
+    }
+
+    // ---- library ------------------------------------------------------------------------
+
+    var shelf by mutableStateOf(enumPref("lib_shelf", Shelf.LIBRARY))
+        private set
+    var libraryView by mutableStateOf(enumPref("lib_view", LibraryView.ALL))
+        private set
+    var sortLibrary by mutableStateOf(enumPref("sort_library", SortOrder.RECENTLY_READ))
+        private set
+    var sortCompleted by mutableStateOf(enumPref("sort_completed", SortOrder.DATE_COMPLETED))
+        private set
+
+    fun updateShelf(s: Shelf) {
+        shelf = s
+        prefs.edit().putString("lib_shelf", s.name).apply()
+    }
+
+    fun updateLibraryView(v: LibraryView) {
+        libraryView = v
+        prefs.edit().putString("lib_view", v.name).apply()
+    }
+
+    fun sortFor(s: Shelf) = if (s == Shelf.COMPLETED) sortCompleted else sortLibrary
+
+    fun updateSort(s: Shelf, order: SortOrder) {
+        if (s == Shelf.COMPLETED) sortCompleted = order else sortLibrary = order
+        prefs.edit().putString(if (s == Shelf.COMPLETED) "sort_completed" else "sort_library", order.name).apply()
+    }
+
+    // ---- first-run tutorial -------------------------------------------------------------
+
+    /** Tutorial steps already shown/done: bit n = [TutorialStep] ordinal n. */
+    var tutorialDone by mutableIntStateOf(prefs.getInt("tutorial_done", 0))
+        private set
+
+    fun updateTutorialDone(mask: Int) {
+        tutorialDone = mask
+        prefs.edit().putInt("tutorial_done", mask).apply()
     }
 
     fun updateTheme(t: PageTheme) {

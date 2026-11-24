@@ -10,6 +10,7 @@ must do is explained in plain words.
 |---|---|
 | 1. Dual-screen setup | DONE (2026-11-23). Gyro auto-detection removed in milestone 2. |
 | 2. Manual modes + real reading + comics/manga | Rounds 1–3 tested on Thor. Step 10 (quick page navigation, app icon, GitHub + signed release) = **v0.1.0**, BUILT 2026-11-24 |
+| 2b. v0.2.0 (step 11): per-screen font size, more formats, tutorial, library views/search/sort, completed books | BUILT 2026-11-24, to test on Thor (see "v0.2.0" below) |
 | 3. Bookshelf | not started |
 | 4. Animations (book enchant-out, OpenGL page curl) | not started |
 | 5. Polish | not started |
@@ -179,6 +180,51 @@ page" always moves the right way physically.
   `ui/Navigation.kt` (ScrubTrack, ScrubberBar, BackPill, NumberPad, ChapterList),
   `ThorApp.startRepeating/handleScrubKey`.
 
+### v0.2.0 (step 11)
+
+0. **Debug signing**: when `keystore.properties` exists, the debug build is signed with the
+   release key, so debug and release APKs install over each other (library kept). Same
+   applicationId; debug label "Thor Reader (dev)" (`res` value overridden per build type).
+1. **Separate font size per screen** (book modes 1/2): menu toggle "Same text size on both
+   screens" (default on). Off: "Top screen" / "Bottom screen" size controls. Modes 3/4 show one
+   control (mode 3 edits the top size, mode 4 the bottom size; identical while the toggle is on).
+   - How the text stays continuous: the book is laid out ONCE, at the larger of the two sizes,
+     in a column as wide as the larger-text screen allows. The screen with the smaller size
+     draws the same lines scaled down (vector, so still sharp) in a slightly narrower centred
+     column, and fits proportionally more lines per page. Every page is still whole lines of
+     one single flow, so nothing is lost, repeated or cut. Trade-off: the smaller-text screen
+     has wider side margins (by the size ratio, e.g. 9 vs 10 pt = 10% narrower column).
+   - `LayoutConfig.slotFontPt` (per slot, reading order), `fontPt` = the larger (layout size);
+     `SliceUnit.scale`; layout id / disk cache keyed by both sizes (LAYOUT_VERSION 4).
+   - Text settings (sizes, same-size toggle, margins) are now saved PER BOOK (Room columns);
+     a book without its own settings takes the current ones the first time it opens.
+2. **More formats** (decided at run time where MuPDF might do it natively: the app logs
+   `MuPDF native support: ...` at start, from `Document.recognize`):
+   - HTML/HTM/XHTML: MuPDF natively; images next to the file are supplied through a MuPDF
+     `TreeArchive` when the file was added with "Add folder" (SAF only lets us see siblings
+     then). Single picked files show text without pictures.
+   - Markdown, DOCX: MuPDF natively when it recognises them, otherwise our own converters.
+   - AZW3/KF8, AZW, ODT, RTF: our own small converters (no new libraries) -> a cached EPUB in
+     `filesDir/converted/`, which MuPDF then reads like any EPUB (chapters, headings, TOC).
+     MOBI/AZW/AZW3: DRM detected from the file header -> "This book is DRM-protected".
+   - CBT: tar via the existing Apache Commons Compress (random access, like CBZ).
+   - Single image files (JPG/PNG/WEBP/GIF/AVIF, decoded by Android) = a one-page comic; with
+     "Add folder", a folder holding images and no books = one comic (named after the folder).
+3. **Tutorial badges**: house-style pill with a small arrow, 4 steps in order (library empty ->
+   add buttons; first book; reading -> hold/Start; menu -> mode buttons). Step stored in prefs
+   (`tutorial_step`); a tap anywhere (not consumed) or doing the step advances. Reader menu:
+   "Show tutorial again". Start (and the Menu key) open the reader menu; key codes are logged.
+4. **Library**: "Library | Completed" switch, view chips All · Authors · Series · Type · Genre
+   (category lists with counts -> books, back arrow / B), search (title, author, series), sort
+   (Recently read, Recently added, Title, Author, Progress; Completed also "Date completed").
+   View and sort remembered. Everything focusable for d-pad + A / B.
+5. **Row second line**: "412 pages · EPUB · 37%" (pages = `Book.layoutPages` saved when a full
+   layout finishes, else the import page count; "Not started" instead of 0%).
+6. **Completed**: reaching the last page (by turning/jumping) sets `Book.completedAt`. Gold star
+   after the title. Popup: "Mark as completed" / "Mark as unread" (unread keeps the position).
+   Completed books live in the Completed view (default sort: date completed).
+7. versionName 0.2.0, versionCode 2. Room DB v4 (migration 3->4 adds the new columns).
+
 ### App icon (step 10)
 - `icon.svg` (repo root) is the master design on the 108×108 adaptive grid.
 - Adaptive icon: `res/drawable/ic_launcher_background.xml` (#17181C),
@@ -197,11 +243,12 @@ page" always moves the right way physically.
   PKCS12, alias `thor-reader`, RSA 4096, valid 100 years). Passwords only in
   `keystore.properties` (git-ignored) which `app/build.gradle.kts` reads. **The .jks file and
   its password must be backed up**: without them no update can ever install over v0.1.0.
-- Version: versionName 0.1.0, versionCode 1 (increase versionCode for every release).
+- Version: versionName 0.2.0, versionCode 2 (increase versionCode for every release).
 - Build: `.\gradlew assembleRelease` -> `app\build\outputs\apk\release\app-release.apk`.
   The owner uploads it to GitHub Releases manually.
-- A release-signed APK cannot install over a debug build (different signature): uninstall the
-  debug app once first (this clears the library database; books themselves are untouched).
+- Since v0.2.0 debug builds are signed with the release key too (when keystore.properties
+  exists), so debug and release install over each other. A debug APK built BEFORE v0.2.0 (old
+  debug key) still needs one uninstall first.
 
 ## Visual style
 
@@ -393,3 +440,33 @@ Causes confirmed in code before fixing:
   equal/unequal heights, overflow, side-by-side rows, image headers).
 - Hardware key codes assumed: Select = BUTTON_SELECT, Start = BUTTON_START, shoulders L1/R1/L2/R2.
   Every key press is logged (`adb logcat -s ThorReader`) to check the Thor's real codes.
+
+### v0.2.0 code map (step 11)
+- `convert/` (new): `Epub.kt` (`ConvBook`, `EpubWriter` -> EPUB 2 with NCX TOC, `HeadingSplitter`
+  splits generated HTML into chapters at h1/h2), `Mobi.kt` (`MobiFile`: PDB records, PalmDOC and
+  HUFF/CDIC decompression, trailing entries, EXTH, DRM flag, INDX/TAGX/CNCX index reading, KF8
+  skeleton+fragment reassembly, FDST flows -> CSS, kindle:embed pictures, NCX chapter names;
+  MOBI 6 fallback with recindex pictures), `OfficeDocs.kt` (`DocxConverter`, `OdtConverter`),
+  `Rtf.kt` (`RtfConverter`), `BookSource.kt` (native-vs-converter decision, converted EPUB cache
+  `filesDir/converted/<sha1(uri)>-<size>.epub`, `siblingFiles` -> MuPDF `TreeArchive`,
+  `MarkdownToHtml` via commonmark-java).
+- `io/ImageArchives.kt`: `TarImageArchive` (CBT), `SingleImageArchive`, `SafFolderImageArchive`.
+- `importer/Importer.kt`: folder scan groups pictures per folder (`BookFormat.IMAGES`), DRM books
+  are not added (status "This book is DRM-protected, so it can't be added").
+- `engine/Layout.kt`: `LayoutConfig.slotFontPt`, `slotScale`, `textWidthPt`, `textHeightPt`;
+  `SliceUnit.scale`. `ReflowEngine` renders each slice at `pxPerPt * scale`, centred column.
+- `engine/ReaderSession.kt`: `checkCompleted` (turns/jumps only, incl. trying to go past the end),
+  `rememberPageCount` -> `Book.layoutPages`. DRM error shown as is.
+- `Settings.kt`: `fontPtBottom`, `sameFont`, `fontFor(screen)`, `applyBookText`; `Shelf`,
+  `LibraryView`, `SortOrder` (+ prefs); `TutorialStep` + `tutorialDone` bitmask.
+- `ThorApp.kt`: per-book text (`applyBookText`/`saveBookText`), `setCompleted`, tutorial
+  (`tutorialShows`, `tutorialDone`, `tutorialTapped`, `restartTutorial`), `libraryBack` (Back/B
+  in the library), Start + Menu keys open the reader menu (logged "Start/Menu key ...").
+- `ui/Library.kt` (rewritten top), `ui/LibraryLogic.kt` (sorting, categories, author splitting,
+  types, row line; unit-tested), `ui/Style.kt` (`focusClick` = d-pad/A clickable,
+  `TutorialBadge`, `tutorialTapCatcher`), `ui/ReaderMenu.kt` (text size rows, Show tutorial again).
+- Room DB v4 (`MIGRATION_3_4`). Tests: `V020Test` (per-screen sizes incl. no line lost/repeated/
+  cut for 9/10, 14/8, 6/24 pt; PalmDOC, trailing entries, a hand-made MOBI, DRM flag, RTF,
+  EPUB writer, library logic).
+- Not verifiable on the PC (no device attached while building): which formats MuPDF opens
+  natively (see the "MuPDF native support" log line), KF8 files from the wild, AVIF decoding.

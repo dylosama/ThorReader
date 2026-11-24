@@ -124,7 +124,7 @@ fun ModeButton(mode: ReadingMode, selected: Boolean, width: Dp = 104.dp, onClick
             .clip(RoundedCornerShape(10.dp))
             .background(if (selected) Color(0xFF3A2C18) else Color(0xFF262626))
             .border(2.dp, if (selected) Accent else Color(0xFF3A3A3A), RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
+            .focusClick(RoundedCornerShape(10.dp), onClick)
             .padding(vertical = 8.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -166,7 +166,7 @@ fun Chip(label: String, selected: Boolean = false, onClick: () -> Unit) {
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .background(if (selected) Accent else Color(0xFF2E2E2E))
-            .clickable(onClick = onClick)
+            .focusClick(RoundedCornerShape(50), onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
     )
 }

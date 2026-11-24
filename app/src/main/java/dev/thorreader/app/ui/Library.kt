@@ -59,42 +59,265 @@ import dev.thorreader.app.ThorApp
 import dev.thorreader.app.data.Book
 import dev.thorreader.app.importer.BookFormat
 import dev.thorreader.app.importer.formatNumber
+import dev.thorreader.app.LibraryView
+import dev.thorreader.app.Shelf
+import dev.thorreader.app.SortOrder
+import dev.thorreader.app.TutorialStep
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 
-/** Temporary library list (the real bookshelf is milestone 3). Always on the top screen, mode 3. */
+/**
+ * The library (always on the top screen, mode 3; the real bookshelf is milestone 3).
+ * Top row: "Library | Completed" switch, search, sort, add buttons. Below: view chips
+ * All · Authors · Series · Type · Genre. Authors/Series/Type/Genre list categories with book
+ * counts; tapping one shows its books (back arrow or B returns). Works with the d-pad and A/B.
+ */
 @Composable
 fun LibraryScreen() {
     val app = ThorApp.instance
+    val settings = app.settings
     val host = LocalHost.current
     val flow = remember { app.db.books().observeAll() }
-    val books by flow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val loaded by flow.collectAsStateWithLifecycle(initialValue = null)
+    val books = loaded ?: emptyList()
+
+    val shelf = settings.shelf
+    val view = settings.libraryView
+    val sort = settings.sortFor(shelf)
+    var category by remember { mutableStateOf<String?>(null) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    var sortOpen by remember { mutableStateOf(false) }
+
+    // Leaving a category / search with Back or B.
+    DisposableEffect(Unit) {
+        app.libraryBack = {
+            when {
+                sortOpen -> { sortOpen = false; true }
+                category != null -> { category = null; true }
+                searchOpen -> { searchOpen = false; query = ""; true }
+                else -> false
+            }
+        }
+        onDispose { app.libraryBack = null }
+    }
+    // Upgraders and anyone who already has books skip "Add your books here".
+    LaunchedEffect(loaded?.isNotEmpty()) { if (loaded?.isNotEmpty() == true) app.tutorialDone(TutorialStep.ADD_BOOKS) }
+
+    val onShelf = books.filter { it.completed == (shelf == Shelf.COMPLETED) }
+    val q = query.trim()
+    val matching = if (q.isEmpty()) onShelf else onShelf.filter { b ->
+        b.title.contains(q, true) || b.author?.contains(q, true) == true || b.series?.contains(q, true) == true
+    }
+    val sorted = LibraryLogic.sort(matching, sort)
 
     Column(Modifier.fillMaxSize().background(Color(0xFF101010)).padding(16.dp)) {
+        // --- top row ---
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Library", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Text("  ${books.size} books", color = SubtleText, fontSize = 14.sp)
-            Spacer(Modifier.weight(1f))
-            app.importer.status?.let { HouseBadge(it, Modifier.padding(end = 10.dp)) }
+            ShelfSwitch(shelf, books.count { !it.completed }, books.count { it.completed }) {
+                settings.updateShelf(it)
+                category = null
+            }
+            Spacer(Modifier.width(10.dp))
+            SearchBox(searchOpen, query, onOpen = { searchOpen = true }, onQuery = { query = it }, onClose = {
+                searchOpen = false
+                query = ""
+            }, modifier = Modifier.weight(1f, fill = false))
+            Spacer(Modifier.weight(0.01f))
+            app.importer.status?.let { HouseBadge(it, Modifier.padding(horizontal = 8.dp).widthIn(max = 260.dp)) }
+            Box {
+                Chip("⇅ ${sort.label}") { sortOpen = true }
+                if (sortOpen) {
+                    Popup(popupPositionProvider = BesideAnchor, onDismissRequest = { sortOpen = false }, properties = PopupProperties(focusable = true)) {
+                        SortPopup(shelf, sort) {
+                            settings.updateSort(shelf, it)
+                            sortOpen = false
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.width(8.dp))
             Chip("+ Add files", true) { host?.pickFiles() }
             Spacer(Modifier.width(8.dp))
             Chip("+ Add folder", true) { host?.pickFolder() }
         }
-        Spacer(Modifier.height(12.dp))
-        if (books.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    "No books yet.\nTap \"Add files\" to pick books, or \"Add folder\" to add everything in a folder.\n" +
-                        "Supported: EPUB, PDF, MOBI, FB2, XPS, TXT, CBZ, CBR, CB7.",
-                    color = SubtleText,
-                    fontSize = 15.sp,
-                    textAlign = TextAlign.Center,
-                )
+        if (loaded != null && books.isEmpty() && app.tutorialShows(TutorialStep.ADD_BOOKS)) {
+            TutorialBadge(
+                TutorialStep.ADD_BOOKS, "Add your books here", ArrowDir.UP,
+                Modifier.align(Alignment.End).padding(top = 4.dp, end = 60.dp), arrowAlign = Alignment.End,
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+
+        // --- view chips (both shelves) ---
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            LibraryView.entries.forEach { v ->
+                Chip(v.label, v == view) {
+                    settings.updateLibraryView(v)
+                    category = null
+                }
             }
-        } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(books, key = { it.id }) { BookRow(it) }
+        }
+        Spacer(Modifier.height(10.dp))
+
+        val cat = category
+        when {
+            loaded == null -> Unit
+            books.isEmpty() -> EmptyMessage(
+                "No books yet.\nTap \"Add files\" to pick books, or \"Add folder\" to add everything in a folder.\n" +
+                    "Supported: ${BookFormat.summary}.",
+            )
+            onShelf.isEmpty() -> EmptyMessage(
+                if (shelf == Shelf.COMPLETED) "No completed books yet.\nA book moves here when you reach its last page,\nor with \"Mark as completed\" in its popup."
+                else "Every book is completed. They're in \"Completed\".",
+            )
+            matching.isEmpty() -> EmptyMessage("Nothing matches \"$q\".")
+            view == LibraryView.ALL -> BookList(sorted, app.tutorialShows(TutorialStep.OPEN_BOOK))
+            cat != null -> {
+                val inCat = LibraryLogic.booksIn(matching, view, cat, sort)
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                    Chip("←") { category = null }
+                    Spacer(Modifier.width(10.dp))
+                    Text(cat, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Text("  ${inCat.size} ${if (inCat.size == 1) "book" else "books"}", color = SubtleText, fontSize = 13.sp)
+                }
+                BookList(inCat, app.tutorialShows(TutorialStep.OPEN_BOOK))
+            }
+            else -> CategoryList(LibraryLogic.categories(matching, view)) { category = it }
+        }
+    }
+}
+
+@Composable
+private fun EmptyMessage(text: String) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(text, color = SubtleText, fontSize = 15.sp, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+private fun BookList(books: List<Book>, showTutorial: Boolean) {
+    Column {
+        if (showTutorial && books.isNotEmpty()) {
+            TutorialBadge(TutorialStep.OPEN_BOOK, "Tap a book to start reading", ArrowDir.DOWN, Modifier.padding(start = 24.dp, bottom = 2.dp), arrowAlign = Alignment.Start)
+        }
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(books, key = { it.id }) { BookRow(it) }
+        }
+    }
+}
+
+@Composable
+private fun CategoryList(categories: List<Pair<String, Int>>, open: (String) -> Unit) {
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        items(categories, key = { it.first }) { (name, count) ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF1A1A1A))
+                    .focusClick { open(name) }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(name, color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                HouseBadge(if (count == 1) "1 book" else "$count books")
+                Text("  ›", color = SubtleText, fontSize = 18.sp)
             }
         }
     }
+}
+
+/** Segmented "Library | Completed" switch. */
+@Composable
+private fun ShelfSwitch(current: Shelf, libraryCount: Int, completedCount: Int, onSelect: (Shelf) -> Unit) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color(0xFF1E1E1E))
+            .border(1.dp, HouseStyle.Hairline, RoundedCornerShape(50))
+            .padding(3.dp),
+    ) {
+        Shelf.entries.forEach { s ->
+            val selected = s == current
+            val count = if (s == Shelf.LIBRARY) libraryCount else completedCount
+            Text(
+                "${s.label}  $count",
+                color = if (selected) Color.Black else Color.White,
+                fontSize = 15.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(if (selected) Accent else Color.Transparent)
+                    .focusClick(RoundedCornerShape(50)) { onSelect(s) }
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
+            )
+        }
+    }
+}
+
+/** A magnifier that expands into a search field (title, author, series). */
+@Composable
+private fun SearchBox(open: Boolean, query: String, onOpen: () -> Unit, onQuery: (String) -> Unit, onClose: () -> Unit, modifier: Modifier) {
+    if (!open) {
+        Chip("🔍") { onOpen() }
+        return
+    }
+    val focus = remember { FocusRequester() }
+    Row(
+        modifier
+            .widthIn(min = 180.dp, max = 360.dp)
+            .clip(RoundedCornerShape(50))
+            .background(Color(0xFF2E2E2E))
+            .padding(start = 14.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("🔍", fontSize = 14.sp)
+        Spacer(Modifier.width(8.dp))
+        Box(Modifier.weight(1f).padding(vertical = 8.dp)) {
+            if (query.isEmpty()) Text("Title, author or series", color = Color(0xFF888888), fontSize = 14.sp)
+            BasicTextField(
+                value = query,
+                onValueChange = onQuery,
+                singleLine = true,
+                textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
+                cursorBrush = SolidColor(Accent),
+                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+            )
+        }
+        Text(
+            "✕",
+            color = SubtleText,
+            fontSize = 14.sp,
+            modifier = Modifier.clip(RoundedCornerShape(50)).focusClick(RoundedCornerShape(50)) { onClose() }.padding(horizontal = 10.dp, vertical = 6.dp),
+        )
+    }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+}
+
+@Composable
+private fun SortPopup(shelf: Shelf, current: SortOrder, choose: (SortOrder) -> Unit) {
+    val first = remember { FocusRequester() }
+    Column(
+        Modifier
+            .width(220.dp)
+            .clip(HouseStyle.PanelShape)
+            .background(HouseStyle.PanelBackground)
+            .border(1.dp, HouseStyle.Hairline, HouseStyle.PanelShape)
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        PopupLabel("Sort by")
+        LibraryLogic.sortsFor(shelf).forEach { o ->
+            PopupItem(selected = o == current, focusRequester = if (o == current) first else null, onClick = { choose(o) }) {
+                PopupText(o.label, color = if (o == current) Accent else HouseStyle.TextColor)
+            }
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 }
 
 @Composable
@@ -105,26 +328,32 @@ private fun BookRow(book: Book) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .background(Color(0xFF1A1A1A))
-            .clickable { app.openBook(book.id) }
+            .focusClick { app.openBook(book.id) }
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         BookCover(book, Modifier.size(56.dp, 80.dp))
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            Text(book.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            book.author?.let { Text(it, color = SubtleText, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            val details = listOfNotNull(
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    book.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 2,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+                )
+                if (book.completed) Text(" ★", color = Gold, fontSize = 15.sp)
+            }
+            val byline = listOfNotNull(
+                book.author,
                 book.series?.let { s -> s + (book.seriesNumber?.let { " #" + formatNumber(it) } ?: "") },
-                runCatching { BookFormat.valueOf(book.format).label }.getOrDefault(book.format),
-                if (book.pageCount > 0) "${book.pageCount} pages" else null,
-                if (book.rtl) "right-to-left" else null,
-                if (book.lastOpenedAt > 0) "${(book.progress * 100).toInt()}% read" else null,
             ).joinToString("  ·  ")
-            Text(details, color = Color(0xFF888888), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (byline.isNotEmpty()) Text(byline, color = SubtleText, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(LibraryLogic.detailLine(book), color = Color(0xFF888888), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         BookModeButton(book)
     }
 }
+
+/** The completed star. */
+val Gold = Color(0xFFE8B84A)
 
 /** Square button showing the book's mode; opens the book's little popup. */
 @Composable
@@ -139,7 +368,7 @@ private fun BookModeButton(book: Book) {
                 .clip(RoundedCornerShape(12.dp))
                 .background(HouseStyle.Background)
                 .border(1.dp, HouseStyle.Hairline, RoundedCornerShape(12.dp))
-                .clickable { open = true },
+                .focusClick(RoundedCornerShape(12.dp)) { open = true },
             contentAlignment = Alignment.Center,
         ) {
             ModeIcon(mode, false, Modifier.size(32.dp, 26.dp))
@@ -201,6 +430,16 @@ private fun BookPopup(book: Book, mode: ReadingMode, close: () -> Unit) {
             HouseBadge(if (book.rtl) "On" else "Off", color = if (book.rtl) Accent else HouseStyle.Subtle)
         }
         if (book.series != null) PopupLabel("Applies to the whole series")
+        PopupDivider()
+        PopupItem(onClick = {
+            app.setCompleted(book, !book.completed)
+            close()
+        }) {
+            if (book.completed) PopupText("Mark as unread") else {
+                PopupText("Mark as completed", Modifier.weight(1f))
+                Text("★", color = Gold, fontSize = HouseStyle.ItemTextSize)
+            }
+        }
         PopupDivider()
         if (!confirmRemove) {
             PopupItem(onClick = { confirmRemove = true }) {

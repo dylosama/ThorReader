@@ -40,3 +40,9 @@ keystore.properties
 
 # --- Working notes (task prompts) ---
 step*.md
+*.azw3
+*.kf8
+*.cbt
+*.docx
+*.odt
+*.rtf

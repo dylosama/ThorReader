@@ -117,7 +117,8 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
                 throw e
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed to open ${initialBook.fileName}", t)
-                error = "Could not open this book.\n${t.message ?: t.javaClass.simpleName}"
+                error = if (t is dev.thorreader.app.convert.DrmProtectedException) t.message
+                else "Could not open this book.\n${t.message ?: t.javaClass.simpleName}"
                 return@launch
             } finally {
                 showStatus(null) // also clears "Unpacking comic…" if unpacking failed
@@ -129,7 +130,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
                     // Debounce: rapid font/margin taps only lay out once. A newer change cancels
                     // this one; that cancellation is normal and never shown as an error.
                     val prev = pagination?.config
-                    if (prev != null && (prev.fontPt != cfg.fontPt || prev.marginPx != cfg.marginPx || prev.headerPx != cfg.headerPx)) {
+                    if (prev != null && (prev.slotFontPt != cfg.slotFontPt || prev.fontPt != cfg.fontPt || prev.marginPx != cfg.marginPx || prev.headerPx != cfg.headerPx)) {
                         delay(SETTINGS_DEBOUNCE_MS)
                     }
                     try {
@@ -162,6 +163,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
                 if (pagination == null) status = "Preparing pages…"
                 val views = onEngine { eng.paginate(cfg) { f -> report("Preparing pages… ${(f * 100).toInt()}%") } }
                 publish(Pagination(cfg, views, ++generation))
+                rememberPageCount()
                 Log.i(TAG, "Paginated for mode ${cfg.mode.number} rtl=${cfg.rtl}: ${views.size} views in ${SystemClock.uptimeMillis() - t0} ms")
             }
         }
@@ -207,9 +209,38 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
             }
         }
         if (pagination?.complete != true || pagination?.layoutId != id) publishRange(true)
+        rememberPageCount()
         showStatus(null)
         onEngine { eng.saveCache() }
         Log.i(TAG, "Full layout for mode ${cfg.mode.number}: ${pagination?.views?.size} views in ${SystemClock.uptimeMillis() - t0} ms")
+    }
+
+    /** The library shows this layout's page count ("412 pages"): save it once it is known. */
+    private fun rememberPageCount() {
+        val n = pagination?.takeIf { it.complete }?.pageCount ?: return
+        if (n == book.layoutPages) return
+        book = book.copy(layoutPages = n)
+        val id = book.id
+        app.scope.launch(Dispatchers.IO) { app.db.books().setLayoutPages(id, n) }
+    }
+
+    /**
+     * Reaching the last page marks the book completed (once; it stays completed until the user
+     * marks it unread). Called only for page turns / jumps, never for merely opening or saving.
+     */
+    private fun checkCompleted() {
+        val p = pagination ?: return
+        if (book.completedAt != null || !p.isLastView(viewIndex)) return
+        val at = System.currentTimeMillis()
+        book = book.copy(completedAt = at)
+        val id = book.id
+        app.scope.launch(Dispatchers.IO + NonCancellable) { app.db.books().setCompleted(id, at) }
+        Log.i(TAG, "Completed '${book.title}' (last page reached)")
+    }
+
+    /** Completion changed from the library popup while this book is open. */
+    fun applyCompleted(at: Long?) {
+        book = book.copy(completedAt = at)
     }
 
     /** Swap in a new pagination, staying on the same place in the book. */
@@ -276,6 +307,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         viewIndex = target
         prefetch()
         scheduleSave()
+        checkCompleted()
     }
 
     /** True if moving [delta] views would go past the real first/last page of the book. */
@@ -298,6 +330,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
                 true
             }
             atEdge(delta) -> {
+                if (delta > 0) checkCompleted() // e.g. a one-page book: trying to go on = finished
                 pulse(if (delta > 0) forwardSide else if (forwardSide == Side.RIGHT) Side.LEFT else Side.RIGHT)
                 false
             }
@@ -382,6 +415,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
             if (origin != null && pagination?.findView(origin) != viewIndex) recordJump(origin)
             prefetch()
             scheduleSave()
+            checkCompleted()
         } else if (origin != null) {
             pagination?.let { viewIndex = it.findView(origin).coerceIn(0, it.views.size - 1) }
             prefetch()

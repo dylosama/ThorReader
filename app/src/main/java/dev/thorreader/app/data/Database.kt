@@ -49,9 +49,22 @@ data class Book(
     val lastOpenedAt: Long = 0,
     /** This book's reading mode ([dev.thorreader.app.ReadingMode] name); null = not set yet. */
     val mode: String? = null,
+    /** When the last page was reached (epoch ms); null = not completed. */
+    val completedAt: Long? = null,
+    /** Page count of the book's most recent full layout (0 = never fully laid out). */
+    val layoutPages: Int = 0,
+    /** This book's text settings; null = not set yet (takes the current ones on first open). */
+    val fontTop: Float? = null,
+    val fontBottom: Float? = null,
+    val sameFont: Boolean? = null,
+    val marginLevel: Int? = null,
 ) {
     val rtl: Boolean get() = rtlOverride ?: mangaRtl
     val readingMode: ReadingMode? get() = mode?.let { runCatching { ReadingMode.valueOf(it) }.getOrNull() }
+    val completed: Boolean get() = completedAt != null
+
+    /** Pages to show in the library: this layout's count if known, else the source's. */
+    val displayPages: Int get() = if (layoutPages > 0) layoutPages else pageCount
 }
 
 @Dao
@@ -83,6 +96,15 @@ interface BookDao {
     @Query("UPDATE books SET mode = :mode WHERE id = :id")
     suspend fun setMode(id: Long, mode: String)
 
+    @Query("UPDATE books SET completedAt = :at WHERE id = :id")
+    suspend fun setCompleted(id: Long, at: Long?)
+
+    @Query("UPDATE books SET layoutPages = :pages WHERE id = :id")
+    suspend fun setLayoutPages(id: Long, pages: Int)
+
+    @Query("UPDATE books SET fontTop = :top, fontBottom = :bottom, sameFont = :same, marginLevel = :margin WHERE id = :id")
+    suspend fun setText(id: Long, top: Float, bottom: Float, same: Boolean, margin: Int)
+
     @Query("SELECT * FROM books WHERE series IS NOT NULL")
     suspend fun booksInAnySeries(): List<Book>
 
@@ -104,7 +126,7 @@ data class SeriesDirection(@PrimaryKey val seriesKey: String, val rtl: Boolean)
 fun seriesKey(series: String?): String? =
     series?.trim()?.replace(Regex("\\s+"), " ")?.lowercase()?.takeIf { it.isNotEmpty() }
 
-@Database(entities = [Book::class, SeriesDirection::class], version = 3, exportSchema = false)
+@Database(entities = [Book::class, SeriesDirection::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun books(): BookDao
 
@@ -122,6 +144,18 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE books ADD COLUMN mode TEXT")
+            }
+        }
+
+        /** v3 -> v4 (v0.2.0): completion date, layout page count, per-book text settings. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE books ADD COLUMN completedAt INTEGER")
+                db.execSQL("ALTER TABLE books ADD COLUMN layoutPages INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE books ADD COLUMN fontTop REAL")
+                db.execSQL("ALTER TABLE books ADD COLUMN fontBottom REAL")
+                db.execSQL("ALTER TABLE books ADD COLUMN sameFont INTEGER")
+                db.execSQL("ALTER TABLE books ADD COLUMN marginLevel INTEGER")
             }
         }
     }

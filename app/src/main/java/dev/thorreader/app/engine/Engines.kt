@@ -31,6 +31,10 @@ import dev.thorreader.app.io.ImageArchive
 import dev.thorreader.app.io.ImageHeader
 import dev.thorreader.app.io.SafFile
 import dev.thorreader.app.io.ZipImageArchive
+import dev.thorreader.app.io.TarImageArchive
+import dev.thorreader.app.io.SingleImageArchive
+import dev.thorreader.app.io.SafFolderImageArchive
+import dev.thorreader.app.convert.BookSource
 import java.io.Closeable
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -58,21 +62,44 @@ interface BookEngine : Closeable {
 object EngineFactory {
     fun open(context: Context, book: Book, progress: (String) -> Unit): BookEngine {
         val format = BookFormat.valueOf(book.format)
-        val file = SafFile.open(context, Uri.parse(book.uri))
         // Caches are tied to this exact file (id + size) so a replaced file is re-measured.
         val cacheName = "b${book.id}-${book.sizeBytes}"
         val dims = File(File(context.filesDir, "pagesizes").apply { mkdirs() }, "$cacheName.bin")
         val layouts = File(context.filesDir, "layouts").apply { mkdirs() }
+        // A folder of pictures has no single file to open.
+        if (format == BookFormat.IMAGES) {
+            return ImageArchiveEngine(SafFolderImageArchive(context, Uri.parse(book.uri)), null, book.title, dims)
+        }
+        val file = SafFile.open(context, Uri.parse(book.uri))
         try {
             return when (format) {
                 BookFormat.PDF, BookFormat.XPS -> MuPdfFixedEngine(MuPdf.open(file, book.fileName), file, book.title, dims)
-                BookFormat.EPUB, BookFormat.MOBI, BookFormat.FB2 ->
+                BookFormat.EPUB, BookFormat.FB2 ->
                     ReflowEngine(
                         MuPdf.open(file, book.fileName), file, book.title, layouts, cacheName,
                         epub = if (format == BookFormat.EPUB) runCatching { EpubSections(file) }.getOrNull() else null,
                     )
                 BookFormat.TXT -> ReflowEngine(MuPdf.openText(file), null, book.title, layouts, cacheName, null).also { file.close() }
+                BookFormat.MOBI, BookFormat.AZW, BookFormat.AZW3, BookFormat.HTML, BookFormat.MARKDOWN,
+                BookFormat.DOCX, BookFormat.ODT, BookFormat.RTF -> {
+                    if (format == BookFormat.AZW3 || format == BookFormat.DOCX || format == BookFormat.ODT || format == BookFormat.RTF) {
+                        progress("Preparing book…")
+                    }
+                    val o = BookSource.open(context, Uri.parse(book.uri), book.fileName, book.sizeBytes, format, file)
+                    Log.i(TAG, "Reading '${book.title}' (${format.label}) via ${o.how}")
+                    if (o.epub != null) {
+                        // Converted: everything now comes from our EPUB; the original isn't needed.
+                        file.close()
+                        ReflowEngine(o.doc, o.epub, book.title, layouts, cacheName, runCatching { EpubSections(o.epub) }.getOrNull())
+                    } else {
+                        // Read natively. HTML/Markdown were read into memory; MOBI streams from the file.
+                        ReflowEngine(o.doc, file, book.title, layouts, cacheName, null)
+                    }
+                }
                 BookFormat.CBZ -> ImageArchiveEngine(ZipImageArchive(file), file, book.title, dims)
+                BookFormat.CBT -> ImageArchiveEngine(TarImageArchive(file), file, book.title, dims)
+                BookFormat.IMAGE -> ImageArchiveEngine(SingleImageArchive(file, book.fileName), file, book.title, dims)
+                BookFormat.IMAGES -> throw IllegalStateException()
                 BookFormat.CBR, BookFormat.CB7 -> {
                     progress("Unpacking comic…")
                     val dir = ComicArchives.unpack(context, "book${book.id}", file, format) { f ->

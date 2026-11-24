@@ -25,8 +25,8 @@ android {
         applicationId = "dev.thorreader.app"
         minSdk = 33
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -47,6 +47,12 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (keystoreProps.isNotEmpty()) signingConfig = signingConfigs.getByName("release")
+        }
+        debug {
+            // Same key and same applicationId as release, so debug and release APKs install
+            // over each other without uninstalling (the library is kept). The launcher label
+            // differs: "Thor Reader (dev)" (src/debug/res/values/strings.xml).
             if (keystoreProps.isNotEmpty()) signingConfig = signingConfigs.getByName("release")
         }
     }
@@ -99,6 +105,9 @@ dependencies {
     implementation("com.github.junrar:junrar:7.5.5")
     implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("org.tukaani:xz:1.10")
+
+    // Markdown -> HTML when MuPDF can't open .md itself (BSD 2-Clause)
+    implementation("org.commonmark:commonmark:0.24.0")
 
     testImplementation("junit:junit:4.13.2")
 }
