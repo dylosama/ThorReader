@@ -1,5 +1,7 @@
 package dev.thorreader.app.ui
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -111,11 +113,24 @@ fun LibraryScreen() {
     var query by remember { mutableStateOf("") }
     var addOpen by remember { mutableStateOf(false) }
     var reviewOnly by remember { mutableStateOf(false) }
+    // List management: the entry showing "Hide?", the Add author/series flow, the bottom pill.
+    var revealed by remember { mutableStateOf<String?>(null) }
+    var addFlow by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf<Pair<String, (() -> Unit)?>?>(null) }
+    var noticeSeq by remember { mutableStateOf(0) }
+    LaunchedEffect(noticeSeq) {
+        if (notice != null) {
+            delay(4000)
+            notice = null
+        }
+    }
+    LaunchedEffect(settings.libraryChip, category) { revealed = null }
 
     // Leaving a category / search with Back or B.
     DisposableEffect(Unit) {
         app.libraryBack = {
             when {
+                revealed != null -> { revealed = null; true }
                 app.editInfoBook != null -> { app.editInfoBook = null; true }
                 app.settingsOpen -> { app.settingsOpen = false; true }
                 reviewOnly -> { reviewOnly = false; true }
@@ -228,7 +243,33 @@ fun LibraryScreen() {
                 }
                 BookList(inCat, app.tutorialShows(TutorialStep.OPEN_BOOK))
             }
-            else -> CategoryList(LibraryLogic.categories(matching, view, settings.groupAsc)) { category = it }
+            else -> CategoryList(
+                LibraryLogic.categories(matching, view, settings.groupAsc, hidden = settings.hiddenFor(view)),
+                view,
+                revealed,
+                onReveal = { revealed = it },
+                onHide = { name ->
+                    revealed = null
+                    settings.hide(view, name)
+                    android.util.Log.i(dev.thorreader.app.TAG, "Hidden ${view.label} '$name' from its list")
+                    notice = "Hidden" to { settings.unhide(view, name); notice = null }
+                    noticeSeq++
+                },
+                onAdd = if (view == LibraryView.AUTHORS || view == LibraryView.SERIES) ({ addFlow = true }) else null,
+            ) { category = it }
+        }
+    }
+    // "Hidden · Undo" / result of Add author/series, for about 4 s.
+    notice?.let { (text, undo) ->
+        LibraryNotice(text, undo, Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp))
+    }
+    if (addFlow) {
+        AddGroupFlow(view, books) { msg ->
+            addFlow = false
+            if (msg != null) {
+                notice = msg to null
+                noticeSeq++
+            }
         }
     }
     if (app.settingsOpen) SettingsPanel()
@@ -255,32 +296,56 @@ private fun BookList(books: List<Book>, showTutorial: Boolean) {
     }
 }
 
+/**
+ * The Author / Series / Genre / Type list: "Frank Herbert · 1" rows. Author, Series and Genre
+ * entries can be hidden (swipe left, hold, or X); Type can't. Author and Series end with a faint
+ * "+ Add author/series" line, and tapping the empty space below the list does the same.
+ */
 @Composable
-private fun CategoryList(categories: List<Pair<String, Int>>, open: (String) -> Unit) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        items(categories, key = { it.first }) { (name, count) ->
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF1A1A1A))
-                    .focusClick { open(name) }
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // "Frank Herbert · 1"
-                Text(
-                    androidx.compose.ui.text.buildAnnotatedString {
-                        append(name)
-                        pushStyle(androidx.compose.ui.text.SpanStyle(color = SubtleText))
-                        append(" · $count")
-                        pop()
-                    },
-                    color = Color.White, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+private fun CategoryList(
+    categories: List<Pair<String, Int>>,
+    view: LibraryView,
+    revealed: String?,
+    onReveal: (String?) -> Unit,
+    onHide: (String) -> Unit,
+    onAdd: (() -> Unit)?,
+    open: (String) -> Unit,
+) {
+    val canHide = view != LibraryView.TYPE
+    Column(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(categories, key = { it.first }) { (name, count) ->
+                ManagedRow(
+                    name, count, canHide,
+                    revealed = revealed == name,
+                    anyRevealed = revealed != null,
+                    onReveal = { show -> onReveal(if (show) name else null) },
+                    onHide = { onHide(name) },
+                    onOpen = { open(name) },
                 )
-                Text("›", color = SubtleText, fontSize = 18.sp)
+            }
+            if (onAdd != null) item(key = "+add") {
+                Text(
+                    if (view == LibraryView.SERIES) "+ Add series" else "+ Add author",
+                    color = Color(0xFF777777),
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .focusClick { if (revealed != null) onReveal(null) else onAdd() }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                )
             }
         }
+        // The empty space below the list: cancels a "Hide?", or starts "Add author/series".
+        Box(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                    if (revealed != null) onReveal(null) else onAdd?.invoke()
+                },
+        )
     }
 }
 

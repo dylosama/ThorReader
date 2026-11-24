@@ -186,6 +186,9 @@ fun SettingsPanel() {
             color = HouseStyle.Subtle, fontSize = 13.sp,
         )
 
+        SectionLabel("Library lists")
+        HiddenItemsSection()
+
         SectionLabel("Help")
         Chip("Show tutorial again") {
             app.restartTutorial()

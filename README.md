@@ -38,7 +38,9 @@ Each book remembers its own mode. Switch from the reader menu.
   in the reader menu); the text still flows from one screen to the next without losing a line.
 - Library: "Library | Completed" switch, search, and one row to sort the list (Recently read,
   Recently added, Progress, Title) or group it (Author, Series, Genre, Type: Books / Manga /
-  Comics); tap the active option again to reverse it. Each row shows where you are, the page
+  Comics); tap the active option again to reverse it. Names in the Author, Series and Genre
+  lists can be hidden (swipe left or hold; Settings shows them again), and you can add an
+  author or series to books yourself ("+ Add author" / "+ Add series"). Each row shows where you are, the page
   count, the year first published and the format ("277 / 1794 Pages · Published: 1965 · EPUB");
   finished books get a gold star and are also listed under "Completed". Works with the d-pad
   and A/B as well as touch.

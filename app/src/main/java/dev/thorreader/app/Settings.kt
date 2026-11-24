@@ -208,6 +208,45 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putString("lib_shelf", s.name).apply()
     }
 
+    // ---- hidden names in the Author / Series / Genre lists ----------------------------------
+
+    var hiddenAuthors by mutableStateOf(prefs.getStringSet("hidden_authors", emptySet())!!.toSet())
+        private set
+    var hiddenSeries by mutableStateOf(prefs.getStringSet("hidden_series", emptySet())!!.toSet())
+        private set
+    var hiddenGenres by mutableStateOf(prefs.getStringSet("hidden_genres", emptySet())!!.toSet())
+        private set
+
+    /** Names hidden from [view]'s list (Type and the flat list hide nothing). */
+    fun hiddenFor(view: LibraryView): Set<String> = when (view) {
+        LibraryView.AUTHORS -> hiddenAuthors
+        LibraryView.SERIES -> hiddenSeries
+        LibraryView.GENRE -> hiddenGenres
+        else -> emptySet()
+    }
+
+    val hiddenCount: Int get() = hiddenAuthors.size + hiddenSeries.size + hiddenGenres.size
+
+    private fun setHidden(view: LibraryView, set: Set<String>) {
+        when (view) {
+            LibraryView.AUTHORS -> hiddenAuthors = set
+            LibraryView.SERIES -> hiddenSeries = set
+            LibraryView.GENRE -> hiddenGenres = set
+            else -> return
+        }
+        val k = when (view) { LibraryView.AUTHORS -> "hidden_authors"; LibraryView.SERIES -> "hidden_series"; else -> "hidden_genres" }
+        prefs.edit().putStringSet(k, set).apply()
+    }
+
+    fun hide(view: LibraryView, name: String) = setHidden(view, hiddenFor(view) + name)
+
+    fun unhide(view: LibraryView, name: String) =
+        setHidden(view, hiddenFor(view).filterNot { dev.thorreader.app.ui.LibraryLogic.sameName(it, name) }.toSet())
+
+    fun unhideAll() {
+        listOf(LibraryView.AUTHORS, LibraryView.SERIES, LibraryView.GENRE).forEach { setHidden(it, emptySet()) }
+    }
+
     /** The active chip of the library row (same for Library and Completed). */
     var libraryChip by mutableStateOf(enumPref("lib_chip", LibraryChip.RECENTLY_READ))
         private set

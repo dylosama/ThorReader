@@ -637,3 +637,25 @@ Online lookup (`metadata/`), metadata only, never book content, never touches th
   fixed-layout -> swap screens" / "... -> page turn (...)". Menu label follows the mode:
   "Swap screens: swipe up or d-pad right" (Mode 1), "Swap screens: swipe up or Y" (Mode 2);
   the On/Off switch is for the swipe only, the buttons always work.
+
+### Library list management (step 19, still v0.2.0)
+- **Hide entries** (Author, Series, Genre lists; never Type): stored per list in prefs string sets
+  `hidden_authors` / `hidden_series` / `hidden_genres` (display names, matched ignoring case and
+  spaces). Only that grouped list drops the name; books stay everywhere else. Ways to ask:
+  swipe left on the right half of a row (row slides to reveal an eye-with-a-line icon + "Hide?"
+  pill; swipe back / tap elsewhere cancels), hold a row ~0.5 s (long press), or X on a focused
+  row (A confirms, B cancels; key code logged). Confirm -> the row collapses, then a "Hidden ·
+  Undo" pill for 4 s.
+- **Settings**: collapsible "Hidden items (N)" (collapsed by default) grouped Authors / Series /
+  Genres, each with "Unhide"; "Unhide all" asks to confirm.
+- **Add author / Add series** (those two lists only): faint "+ Add author/series" line at the end
+  of the list, or tap the empty space below it. Overlay flow: 1) pick books (search, multi-select),
+  2) per picked book that already has one: series "Move '<book>' from series 'X' to the new
+  series?" Move / Cancel; author "'<book>' is by 'X'. Move it to the new author, or add the new
+  author alongside?" Move / Add / Cancel (Cancel leaves that book out), 3) type the name
+  (suggestions from existing names), for series also a number per book (pre-filled). A name
+  matching an existing one (ignoring case) merges into it, and the result says so. Saved as
+  hand edits ("authors" / "series" / "number" in `editedFields`), so lookups never undo them.
+  Several authors are joined with " & ". Genre: hide only. Type: nothing.
+- Pure rules in `LibraryLogic` (`categories(... hidden)`, `matchExisting`, `withAuthor`,
+  `withSeries`), unit-tested in `ListManageTest`.

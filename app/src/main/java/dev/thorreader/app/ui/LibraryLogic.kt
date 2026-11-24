@@ -91,7 +91,39 @@ object LibraryLogic {
      * Group names with book counts. Names are matched ignoring case/spaces; shown as first seen.
      * [ascending]: A→Z (↓ = Z→A). Type keeps its own order Books, Manga, Comics (reversed on ↓).
      */
-    fun categories(books: List<Book>, view: LibraryView, ascending: Boolean = true): List<Pair<String, Int>> {
+    fun categories(books: List<Book>, view: LibraryView, ascending: Boolean = true, hidden: Set<String> = emptySet()): List<Pair<String, Int>> {
+        val hiddenKeys = hidden.map(::key).toSet()
+        return allCategories(books, view, ascending).filter { key(it.first) !in hiddenKeys }
+    }
+
+    /** Hidden names are compared like group names: ignoring case and extra spaces. */
+    fun sameName(a: String, b: String) = key(a) == key(b)
+
+    /** The existing name [typed] matches (ignoring case / spaces), so it merges instead of duplicating. */
+    fun matchExisting(typed: String, existing: Collection<String>): String? = existing.firstOrNull { sameName(it, typed) }
+
+    /** Existing author / series names of [books], for suggestions and merging. */
+    fun names(books: List<Book>, view: LibraryView): List<String> =
+        allCategories(books, view, true).map { it.first }.filter { it != UNKNOWN_AUTHOR }
+
+    /**
+     * [b] with author [name]: [move] replaces the current author(s), otherwise [name] is added
+     * alongside (joined with " & "). Marked as a hand edit.
+     */
+    fun withAuthor(b: Book, name: String, move: Boolean): Book {
+        val current = authorsOf(b.author)
+        val list = if (move || current.isEmpty()) listOf(name) else if (current.any { sameName(it, name) }) current else current + name
+        return b.copy(author = list.joinToString(" & "), editedFields = addEdited(b.editedFields, "authors"))
+    }
+
+    /** [b] in series [name] with volume/issue [number]. Marked as a hand edit. */
+    fun withSeries(b: Book, name: String, number: Float?): Book =
+        b.copy(series = name, seriesNumber = number, editedFields = addEdited(addEdited(b.editedFields, "series"), "number"))
+
+    private fun addEdited(fields: String?, f: String): String =
+        ((fields?.split(',').orEmpty()) + f).filter { it.isNotEmpty() }.distinct().joinToString(",")
+
+    private fun allCategories(books: List<Book>, view: LibraryView, ascending: Boolean): List<Pair<String, Int>> {
         val names = LinkedHashMap<String, String>()
         val counts = HashMap<String, Int>()
         for (b in books) for (c in categoriesOf(b, view).distinctBy(::key)) {
