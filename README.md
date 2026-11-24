@@ -30,7 +30,8 @@ Each book remembers its own mode. Switch from the reader menu.
   to see it on the big screen; swipe up again on the big screen to swap back.
 - Quick navigation: page scrubber, go to page, chapter list, and "back to where I was".
 - Page turns by tap, swipe, d-pad and shoulder buttons (hold to flip quickly), always in the
-  physically right direction for the current mode.
+  physically right direction for the current mode. In right-to-left manga the shoulders are
+  swapped by default so the easy one goes forward ("Swap L1/R1 for manga" in the reader menu).
 - Reading position, mode and text settings are remembered per book.
 - Book modes can use a different text size on each screen ("Same text size on both screens" off
   in the reader menu); the text still flows from one screen to the next without losing a line.
