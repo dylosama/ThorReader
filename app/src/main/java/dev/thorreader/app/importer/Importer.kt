@@ -296,6 +296,10 @@ class Importer(private val context: Context, private val dao: BookDao, private v
     private fun muInfo(doc: Document, m: ExtractedMeta) {
         if (m.title == null) m.title = MuPdf.meta(doc, Document.META_INFO_TITLE)
         if (m.authors.isEmpty()) MuPdf.meta(doc, Document.META_INFO_AUTHOR)?.let { m.authors += it }
+        // PDF / XPS: the document's creation date ("D:1997...") is the best year the file has.
+        if (m.year == null) MuPdf.meta(doc, Document.META_INFO_CREATIONDATE)?.let { d ->
+            Regex("(1[5-9]|20)\\d\\d").find(d)?.value?.toIntOrNull()?.let { m.year = it }
+        }
         if (m.genres.isEmpty()) {
             MuPdf.meta(doc, Document.META_INFO_SUBJECT)?.let { m.genres += it }
             MuPdf.meta(doc, Document.META_INFO_KEYWORDS)?.let { k -> m.genres += k.split(',', ';').map { it.trim() }.filter { it.isNotEmpty() } }
@@ -353,7 +357,7 @@ fun withFileMeta(b: Book, meta: ExtractedMeta): Book {
         mangaRtl = meta.mangaRtl || b.mangaRtl,
         isManga = meta.isManga || b.isManga,
         publisher = meta.publisher ?: b.publisher,
-        year = meta.year ?: parsed.year ?: b.year,
+        year = keep("year", b.year, meta.year ?: parsed.year ?: b.year),
         isbn = meta.isbn ?: b.isbn,
     )
 }

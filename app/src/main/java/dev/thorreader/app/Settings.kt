@@ -71,7 +71,11 @@ enum class SortOrder(val label: String) {
     TITLE("Title"),
     AUTHOR("Author"),
     PROGRESS("Progress"),
-    DATE_COMPLETED("Date completed"),
+    PUBLISHED("Published"),
+    DATE_COMPLETED("Completed");
+
+    /** Starting direction: A→Z for text, newest / highest first for the rest. */
+    val defaultAscending: Boolean get() = this == TITLE || this == AUTHOR
 }
 
 /** First-run tutorial steps, shown once each, in this order. */
@@ -202,9 +206,23 @@ class Settings(private val prefs: SharedPreferences) {
 
     fun sortFor(s: Shelf) = if (s == Shelf.COMPLETED) sortCompleted else sortLibrary
 
-    fun updateSort(s: Shelf, order: SortOrder) {
-        if (s == Shelf.COMPLETED) sortCompleted = order else sortLibrary = order
-        prefs.edit().putString(if (s == Shelf.COMPLETED) "sort_completed" else "sort_library", order.name).apply()
+    /** Ascending (↑) or descending (↓) for each shelf. */
+    var sortAscLibrary by mutableStateOf(prefs.getBoolean("sort_library_asc", sortLibrary.defaultAscending))
+        private set
+    var sortAscCompleted by mutableStateOf(prefs.getBoolean("sort_completed_asc", sortCompleted.defaultAscending))
+        private set
+
+    fun sortAscFor(s: Shelf) = if (s == Shelf.COMPLETED) sortAscCompleted else sortAscLibrary
+
+    /**
+     * Tap on a sort option: the active one flips its direction; another one becomes active
+     * with its own starting direction.
+     */
+    fun tapSort(s: Shelf, order: SortOrder) {
+        val asc = if (order == sortFor(s)) !sortAscFor(s) else order.defaultAscending
+        if (s == Shelf.COMPLETED) { sortCompleted = order; sortAscCompleted = asc } else { sortLibrary = order; sortAscLibrary = asc }
+        val k = if (s == Shelf.COMPLETED) "sort_completed" else "sort_library"
+        prefs.edit().putString(k, order.name).putBoolean("${k}_asc", asc).apply()
     }
 
     // ---- online book info --------------------------------------------------------------

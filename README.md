@@ -34,9 +34,11 @@ Each book remembers its own mode. Switch with the **Select** button or from the 
 - Book modes can use a different text size on each screen ("Same text size on both screens" off
   in the reader menu); the text still flows from one screen to the next without losing a line.
 - Library: "Library | Completed" switch, views by Authors, Series, Type (Books / Manga / Comics)
-  and Genre, search, and sorting (recently read, recently added, title, author, progress).
-  Each row shows pages, format and progress; finished books get a gold star and are also listed under
-  "Completed". Works with the d-pad and A/B as well as touch.
+  and Genre, search, and sorting (recently read, recently added, title, author, progress,
+  published; tap the active one again to reverse it). Each row shows where you are, the page
+  count, the year first published and the format ("277 / 1794 Pages · Published: 1965 · EPUB");
+  finished books get a gold star and are also listed under "Completed". Works with the d-pad
+  and A/B as well as touch.
 - A bookmark per book, shown as a ribbon on the page (choose its colour; swipe it up to remove).
   Closing the lid or leaving the app bookmarks your page automatically, and the ribbon slides
   away again when you come straight back.

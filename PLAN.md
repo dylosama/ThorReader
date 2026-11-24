@@ -555,3 +555,28 @@ Online lookup (`metadata/`), metadata only, never book content, never touches th
   with the new rules, then all books are looked up online.
 - Room DB v6 (`MIGRATION_5_6`): description, isManga, country, publisher, year, isbn,
   storyArc, typeOverride, editedFields, lookupState, needsReview, lookupAt.
+
+### Library layout polish (step 14, still v0.2.0)
+- **Row**: line 1 title (+ gold star), line 2 author (grey #B8B8B8, SemiBold, 15 sp - between
+  the 17 sp title and the 13 sp third line), line 3 "277 / 1794 Pages · Published: 1965 · EPUB"
+  (current page in the bookmark colour; completed "1794 / 1794 Pages" in green; "Not started /
+  1794 Pages · ..."). No "Published" part when the year is unknown. The library background is
+  always dark (page themes only affect reading), so contrast is checked against #1A1A1A.
+- **Published year** (`Book.year`): the first published / release year. The online first-published
+  year (Open Library first_publish_year, AniList start year, ComicVine cover year) replaces
+  the year from the file (ComicInfo Year, EPUB dc:date, PDF creation date), unless edited in
+  Edit info ("Published" field, edited-field "year"). `meta_version` 3 re-scans once more so
+  existing books get their year (lookups come from the 30-day cache).
+- **Sort row** below the view chips: Recently read · Recently added · Title · Author · Progress ·
+  Published (+ "Completed" date in the Completed shelf). Active one shows ↑/↓; tapping it again
+  flips the direction; another option starts with its default (newest first for dates, A→Z for
+  text, highest first for progress). Remembered per shelf (`sort_*`, `sort_*_asc`). Applies to
+  the All list, category lists (Title/Author sort by name; others order categories by their
+  best book) and inside categories (inside a series, "Title" means volume/issue order).
+  Books never opened / without a year always go last.
+- **Empty library**: only "Add your books to get started" and two big buttons (Add files / Add
+  folder) in the centre; the "Add your books here" badge points at them.
+- **Top bar with books**: centre = "Library | Completed" switch with counts + round search
+  button that expands into a search field in place (× clears and closes); right = round "+"
+  (popup: Add files / Add folder) and round gear (Settings: online lookup, ComicVine key, Show
+  tutorial again); left = small status badges (importing, looking up). Old Add/⚙/sort chips removed.

@@ -309,6 +309,6 @@ class MetadataLookup(private val app: ThorApp) {
     private fun fmt(f: Float) = if (f == f.toLong().toFloat()) f.toLong().toString() else f.toString()
 
     companion object {
-        const val META_VERSION = 2
+        const val META_VERSION = 3
     }
 }

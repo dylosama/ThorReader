@@ -186,6 +186,12 @@ fun SettingsPanel() {
             color = HouseStyle.Subtle, fontSize = 13.sp,
         )
 
+        SectionLabel("Help")
+        Chip("Show tutorial again") {
+            app.restartTutorial()
+            app.settingsOpen = false
+        }
+
         SectionLabel("All books")
         Chip("Look up all books again") {
             scope.launch(Dispatchers.IO) {
@@ -237,6 +243,7 @@ fun EditInfoPanel(book: Book) {
     var authors by remember { mutableStateOf(book.author ?: "") }
     var series by remember { mutableStateOf(book.series ?: "") }
     var number by remember { mutableStateOf(book.seriesNumber?.let { formatNumber(it) } ?: "") }
+    var published by remember { mutableStateOf(book.year?.toString() ?: "") }
     var type by remember { mutableStateOf(book.typeOverride) } // null = automatic
     var genres by remember { mutableStateOf(Genres.split(book.genres).joinToString(", ")) }
     var description by remember { mutableStateOf(book.description ?: "") }
@@ -273,6 +280,7 @@ fun EditInfoPanel(book: Book) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.weight(3f)) { Field("Series", series, { series = it }) }
             Box(Modifier.weight(1f)) { Field("Number", number, { number = it.filter { c -> c.isDigit() || c == '.' } }) }
+            Box(Modifier.weight(1f)) { Field("Published", published, { published = it.filter { c -> c.isDigit() }.take(4) }, hint = "Year") }
         }
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Type", color = HouseStyle.Subtle, fontSize = HouseStyle.TextSize)
@@ -322,6 +330,7 @@ fun EditInfoPanel(book: Book) {
                     if (full.authors.isNotEmpty()) authors = full.authors.joinToString(", ")
                     full.series?.let { series = it }
                     full.number?.let { number = formatNumber(it) }
+                    full.year?.let { published = it.toString() }
                     if (full.genres.isNotEmpty()) genres = (Genres.split(genres.replace(',', ';')) + full.genres).distinct().joinToString(", ")
                     full.description?.let { description = it }
                     if (full.isManga == true) type = LibraryLogic.MANGA
@@ -338,6 +347,7 @@ fun EditInfoPanel(book: Book) {
                     author = authors.trim().ifEmpty { null },
                     series = series.trim().ifEmpty { null },
                     seriesNumber = number.toFloatOrNull(),
+                    year = published.toIntOrNull()?.takeIf { it in 1000..2999 },
                     typeOverride = type,
                     genres = newGenres,
                     description = description.trim().ifEmpty { null },
@@ -348,6 +358,7 @@ fun EditInfoPanel(book: Book) {
                     if (updated.author != book.author) add("authors")
                     if (updated.series != book.series) add("series")
                     if (updated.seriesNumber != book.seriesNumber) add("number")
+                    if (updated.year != book.year) add("year")
                     if (updated.genres != book.genres) add("genres")
                     if (updated.description != book.description) add("description")
                     if (updated.typeOverride != book.typeOverride) add("type")

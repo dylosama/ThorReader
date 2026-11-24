@@ -38,23 +38,31 @@ object LibraryLogic {
 
     private val byTitle = Comparator<Book> { a, b -> NaturalOrder.compare(a.title, b.title) }
 
-    fun sort(books: List<Book>, order: SortOrder): List<Book> = when (order) {
-        // Books never opened go after the ones you've read, newest additions first.
-        SortOrder.RECENTLY_READ -> books.sortedWith(compareByDescending<Book> { it.lastOpenedAt }.thenByDescending { it.addedAt }.then(byTitle))
-        SortOrder.RECENTLY_ADDED -> books.sortedWith(compareByDescending<Book> { it.addedAt }.then(byTitle))
-        SortOrder.TITLE -> books.sortedWith(byTitle)
-        SortOrder.AUTHOR -> books.sortedWith(
-            Comparator<Book> { a, b ->
-                when {
-                    a.author == null && b.author == null -> 0
-                    a.author == null -> 1
-                    b.author == null -> -1
-                    else -> a.author.compareTo(b.author, ignoreCase = true)
-                }
-            }.then(seriesOrder).then(byTitle),
-        )
-        SortOrder.PROGRESS -> books.sortedWith(compareByDescending<Book> { it.progress }.then(byTitle))
-        SortOrder.DATE_COMPLETED -> books.sortedWith(compareByDescending<Book> { it.completedAt ?: 0L }.then(byTitle))
+    /**
+     * Sort [books] by [order]. [ascending] = ↑ (A→Z, oldest / lowest first). Books without a
+     * value for this order (never opened, no year, no author, not completed) always come last.
+     */
+    fun sort(books: List<Book>, order: SortOrder, ascending: Boolean = order.defaultAscending): List<Book> {
+        val (has, none) = books.partition { hasValue(it, order) }
+        val asc: Comparator<Book> = when (order) {
+            SortOrder.RECENTLY_READ -> compareBy { it.lastOpenedAt }
+            SortOrder.RECENTLY_ADDED -> compareBy { it.addedAt }
+            SortOrder.TITLE -> byTitle
+            SortOrder.AUTHOR -> Comparator<Book> { a, b -> (a.author ?: "").compareTo(b.author ?: "", ignoreCase = true) }.then(seriesOrder)
+            SortOrder.PROGRESS -> compareBy { if (it.completed) 1f else it.progress }
+            SortOrder.PUBLISHED -> compareBy { it.year ?: 0 }
+            SortOrder.DATE_COMPLETED -> compareBy { it.completedAt ?: 0L }
+        }
+        val rest = if (order == SortOrder.RECENTLY_READ) compareByDescending<Book> { it.addedAt }.then(byTitle) else byTitle
+        return has.sortedWith((if (ascending) asc else asc.reversed()).then(byTitle)) + none.sortedWith(rest)
+    }
+
+    private fun hasValue(b: Book, order: SortOrder) = when (order) {
+        SortOrder.RECENTLY_READ -> b.lastOpenedAt > 0
+        SortOrder.AUTHOR -> !b.author.isNullOrBlank()
+        SortOrder.PUBLISHED -> b.year != null
+        SortOrder.DATE_COMPLETED -> b.completedAt != null
+        else -> true
     }
 
     private val seriesOrder = Comparator<Book> { a, b ->
@@ -86,8 +94,18 @@ object LibraryLogic {
 
     const val UNKNOWN_AUTHOR = "Unknown author"
 
-    /** Categories with book counts. Names are matched ignoring case/spaces; shown as first seen. */
-    fun categories(books: List<Book>, view: LibraryView): List<Pair<String, Int>> {
+    /**
+     * Categories with book counts. Names are matched ignoring case/spaces; shown as first seen.
+     * Order: Type is always Books, Manga, Comics; with Title or Author sorting, by name (A→Z or
+     * Z→A); otherwise by each category's best book in that sort (e.g. the author you read most
+     * recently first).
+     */
+    fun categories(
+        books: List<Book>,
+        view: LibraryView,
+        order: SortOrder = SortOrder.TITLE,
+        ascending: Boolean = order.defaultAscending,
+    ): List<Pair<String, Int>> {
         val names = LinkedHashMap<String, String>()
         val counts = HashMap<String, Int>()
         for (b in books) for (c in categoriesOf(b, view).distinctBy(::key)) {
@@ -99,51 +117,71 @@ object LibraryLogic {
         return if (view == LibraryView.TYPE) {
             listOf(BOOKS, MANGA, COMICS).mapNotNull { t -> list.firstOrNull { it.first == t } }
         } else {
-            list.sortedWith { a, b -> NaturalOrder.compare(a.first, b.first) }
+            when (order) {
+                SortOrder.TITLE, SortOrder.AUTHOR -> {
+                    val byName = list.sortedWith { a, b -> NaturalOrder.compare(a.first, b.first) }
+                    if (ascending) byName else byName.reversed()
+                }
+                else -> {
+                    val rank = HashMap<String, Int>()
+                    sort(books, order, ascending).forEachIndexed { i, b -> categoriesOf(b, view).forEach { rank.putIfAbsent(key(it), i) } }
+                    list.sortedWith(compareBy<Pair<String, Int>> { rank[key(it.first)] ?: Int.MAX_VALUE }.thenComparator { a, b -> NaturalOrder.compare(a.first, b.first) })
+                }
+            }
         }
     }
 
-    /** Books in category [name]; a series is listed in volume order. */
-    fun booksIn(books: List<Book>, view: LibraryView, name: String, order: SortOrder): List<Book> {
+    /**
+     * Books in category [name], in the chosen sort. Inside a series, "Title" sorting means
+     * volume / issue order (↑ first volume first).
+     */
+    fun booksIn(books: List<Book>, view: LibraryView, name: String, order: SortOrder, ascending: Boolean = order.defaultAscending): List<Book> {
         val k = key(name)
         val inCat = books.filter { b -> categoriesOf(b, view).any { key(it) == k } }
-        return if (view == LibraryView.SERIES) inCat.sortedWith(seriesOrder.then(byTitle)) else sort(inCat, order)
+        if (view == LibraryView.SERIES && order == SortOrder.TITLE) {
+            val byNumber = inCat.sortedWith(seriesOrder.then(byTitle))
+            return if (ascending) byNumber else byNumber.reversed()
+        }
+        return sort(inCat, order, ascending)
     }
 
     private fun key(s: String) = s.trim().replace(Regex("\\s+"), " ").lowercase()
 
     /**
-     * Row line under the author, in two parts: [current] (the page you're on, shown in the
-     * bookmark colour) and the [rest]: "277" + " / 1794 · EPUB", or "Not started · EPUB".
+     * The row's third line in three parts: [prefix], [current] (the page you're on, shown in the
+     * bookmark colour, or green when completed) and the [rest]:
+     * "277" + " / 1794 Pages · Published: 1965 · EPUB", or "Not started / 1794 Pages · ...".
      */
-    data class PageLine(val current: String?, val rest: String, val completed: Boolean = false) {
-        override fun toString() = (current ?: "") + rest
+    data class PageLine(val current: String?, val rest: String, val completed: Boolean = false, val prefix: String = "") {
+        override fun toString() = prefix + (current ?: "") + rest
     }
 
     /**
      * Current page and total come from the book's last-used layout; the total falls back to the
      * source's page count, and a current page not saved yet (books read before v0.2.0) is
-     * estimated from the reading progress.
+     * estimated from the reading progress. "Published" is left out when the year is unknown.
      */
     fun detailLine(b: Book): PageLine {
         val format = runCatching { BookFormat.valueOf(b.format).label }.getOrDefault(b.format)
+        val tail = listOfNotNull(b.year?.let { "Published: $it" }, format).joinToString(" · ", prefix = " · ")
         val total = b.displayPages
-        // Completed: "22 / 22" (shown in green), even if the last view started on page 21 or
+        val pages = if (total > 0) " / $total Pages" else ""
+        // Completed: "1794 / 1794 Pages" (green), even if the last view started on page 1793 or
         // the book was marked completed without being read to the end.
         if (b.completed) {
-            return if (total > 0) PageLine("$total", " / $total · $format", completed = true)
-            else PageLine(null, "Completed · $format", completed = true)
+            return if (total > 0) PageLine("$total", pages + tail, completed = true)
+            else PageLine(null, "Completed$tail", completed = true)
         }
-        if (b.lastOpenedAt == 0L) return PageLine(null, "Not started · $format")
+        if (b.lastOpenedAt == 0L) return PageLine(null, "Not started$pages$tail")
         val current = when {
             b.lastPage > 0 -> if (total > 0) b.lastPage.coerceAtMost(total) else b.lastPage
             total > 0 -> Math.round(b.progress * total).coerceIn(1, total)
             else -> null
         }
         return when {
-            current != null && total > 0 -> PageLine("$current", " / $total · $format")
-            current != null -> PageLine("$current", " · $format")
-            else -> PageLine(null, format)
+            current != null && total > 0 -> PageLine("$current", pages + tail)
+            current != null -> PageLine("$current", tail, prefix = "Page ")
+            else -> PageLine(null, tail.removePrefix(" · "))
         }
     }
 }

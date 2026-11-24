@@ -70,7 +70,10 @@ object MetaApply {
             // Japanese manga reads right-to-left. Only the automatic flag: a direction set by
             // hand (rtlOverride) always wins over it.
             mangaRtl = b.mangaRtl || (manga && c.country == "JP"),
-            country = c.country ?: b.country, publisher = b.publisher ?: c.publisher, year = b.year ?: c.year,
+            country = c.country ?: b.country, publisher = b.publisher ?: c.publisher,
+            // First published / release year: the online one is the original, the file often has
+            // an edition date. A year typed in Edit info stays.
+            year = if (!b.edited("year") && c.year != null) c.year else b.year,
             storyArc = c.storyArc ?: b.storyArc,
         )
     }

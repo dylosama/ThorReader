@@ -253,14 +253,20 @@ class V020Test {
     fun rowSecondLine() {
         val a = LibraryLogic.detailLine(book("a", pages = 300, layoutPages = 1794, opened = 1, lastPage = 277))
         assertEquals("277", a.current)
-        assertEquals("277 / 1794 · EPUB", a.toString())
-        assertEquals("Not started · PDF", LibraryLogic.detailLine(book("b", BookFormat.PDF, pages = 120)).toString())
+        assertEquals("277 / 1794 Pages · EPUB", a.toString())
+        // With a known year: "Published: 1965"; without one the part is left out entirely.
+        assertEquals("277 / 1794 Pages · Published: 1965 · EPUB", LibraryLogic.detailLine(book("a", pages = 1794, opened = 1, lastPage = 277).copy(year = 1965)).toString())
+        assertEquals("Not started / 120 Pages · PDF", LibraryLogic.detailLine(book("b", BookFormat.PDF, pages = 120)).toString())
+        assertEquals("Not started / 1794 Pages · Published: 1965 · EPUB", LibraryLogic.detailLine(book("b2", pages = 1794).copy(year = 1965)).toString())
         // Read before the page was saved: estimated from progress, against the source count.
-        assertEquals("30 / 120 · PDF", LibraryLogic.detailLine(book("c", BookFormat.PDF, pages = 120, opened = 1, progress = 0.25f)).toString())
-        assertEquals("1 / 1 · Image", LibraryLogic.detailLine(book("d", BookFormat.IMAGE, pages = 1, opened = 1)).toString())
-        // Completed: total / total (green in the UI), even if the last view started on page 21.
-        val done = LibraryLogic.detailLine(book("e", BookFormat.CBR, pages = 22, opened = 1, lastPage = 21, completedAt = 3))
-        assertEquals("22 / 22 · CBR", done.toString())
+        assertEquals("30 / 120 Pages · PDF", LibraryLogic.detailLine(book("c", BookFormat.PDF, pages = 120, opened = 1, progress = 0.25f)).toString())
+        assertEquals("1 / 1 Pages · Image", LibraryLogic.detailLine(book("d", BookFormat.IMAGE, pages = 1, opened = 1)).toString())
+        // No page count known at all.
+        assertEquals("Page 5 · EPUB", LibraryLogic.detailLine(book("f", opened = 1, lastPage = 5)).toString())
+        // Completed: total / total (green in the UI), even if the last view started on page 1793.
+        val done = LibraryLogic.detailLine(book("e", BookFormat.CBR, pages = 1794, opened = 1, lastPage = 1793, completedAt = 3))
+        assertEquals("1794 / 1794 Pages · CBR", done.toString())
+        assertEquals("1794", done.current)
         assertTrue(done.completed)
         assertEquals(dev.thorreader.app.Settings.BOOKMARK_PRESETS[5], dev.thorreader.app.Settings.DEFAULT_BOOKMARK_COLOR)
     }
@@ -322,5 +328,57 @@ class BookmarkTest {
         assertFalse(dev.thorreader.app.engine.unitHolds(dev.thorreader.app.engine.FixedUnit(8, dev.thorreader.app.engine.Part.WHOLE), right))
         assertEquals(0, dev.thorreader.app.engine.leftUnitIndex(false))
         assertEquals(1, dev.thorreader.app.engine.leftUnitIndex(true))
+    }
+}
+
+/** Step 14: sort options, directions and where they apply. */
+class SortTest {
+    private fun b(title: String, author: String? = null, year: Int? = null, opened: Long = 0, added: Long = 0, progress: Float = 0f, series: String? = null, n: Float? = null) = Book(
+        uri = "u:$title", fileName = "$title.epub", format = BookFormat.EPUB.name, sizeBytes = 1, title = title, author = author,
+        year = year, lastOpenedAt = opened, addedAt = added, progress = progress, series = series, seriesNumber = n,
+    )
+
+    private val books = listOf(
+        b("Dune", "Frank Herbert", 1965, opened = 30, added = 1, progress = 0.5f),
+        b("Emma", "Jane Austen", 1815, opened = 10, added = 3, progress = 0.9f),
+        b("Zed", null, null, opened = 0, added = 2, progress = 0f),
+    )
+
+    private fun titles(l: List<Book>) = l.map { it.title }
+
+    @Test
+    fun defaultsAndFlipping() {
+        assertTrue(SortOrder.TITLE.defaultAscending)
+        assertTrue(SortOrder.AUTHOR.defaultAscending)
+        assertFalse(SortOrder.PUBLISHED.defaultAscending)
+        assertFalse(SortOrder.PROGRESS.defaultAscending)
+        assertFalse(SortOrder.RECENTLY_READ.defaultAscending)
+        assertEquals(listOf("Dune", "Emma", "Zed"), titles(LibraryLogic.sort(books, SortOrder.TITLE)))
+        assertEquals(listOf("Zed", "Emma", "Dune"), titles(LibraryLogic.sort(books, SortOrder.TITLE, ascending = false)))
+        // Newest first; a book without a year always goes last, in both directions.
+        assertEquals(listOf("Dune", "Emma", "Zed"), titles(LibraryLogic.sort(books, SortOrder.PUBLISHED)))
+        assertEquals(listOf("Emma", "Dune", "Zed"), titles(LibraryLogic.sort(books, SortOrder.PUBLISHED, ascending = true)))
+        // Never opened goes last for "Recently read".
+        assertEquals(listOf("Dune", "Emma", "Zed"), titles(LibraryLogic.sort(books, SortOrder.RECENTLY_READ)))
+        assertEquals(listOf("Emma", "Dune", "Zed"), titles(LibraryLogic.sort(books, SortOrder.RECENTLY_READ, ascending = true)))
+        assertEquals(listOf("Emma", "Zed", "Dune"), titles(LibraryLogic.sort(books, SortOrder.RECENTLY_ADDED)))
+        assertEquals(listOf("Emma", "Dune", "Zed"), titles(LibraryLogic.sort(books, SortOrder.PROGRESS)))
+        // No author: last.
+        assertEquals(listOf("Dune", "Emma", "Zed"), titles(LibraryLogic.sort(books, SortOrder.AUTHOR)))
+        assertTrue(SortOrder.PUBLISHED in LibraryLogic.sortsFor(Shelf.LIBRARY))
+    }
+
+    @Test
+    fun categoriesFollowTheSort() {
+        // By name for Author sort, Z-A when flipped.
+        assertEquals(listOf("Frank Herbert", "Jane Austen", LibraryLogic.UNKNOWN_AUTHOR), LibraryLogic.categories(books, LibraryView.AUTHORS, SortOrder.AUTHOR).map { it.first })
+        assertEquals(listOf(LibraryLogic.UNKNOWN_AUTHOR, "Jane Austen", "Frank Herbert"), LibraryLogic.categories(books, LibraryView.AUTHORS, SortOrder.AUTHOR, false).map { it.first })
+        // By each author's best book for the other sorts (most recently read first).
+        assertEquals(listOf("Frank Herbert", "Jane Austen", LibraryLogic.UNKNOWN_AUTHOR), LibraryLogic.categories(books, LibraryView.AUTHORS, SortOrder.RECENTLY_READ).map { it.first })
+        assertEquals("Jane Austen", LibraryLogic.categories(books, LibraryView.AUTHORS, SortOrder.PROGRESS).first().first)
+        // Inside a series, "Title" = volume order; flipping reverses it.
+        val s = listOf(b("C", series = "S", n = 3f), b("A", series = "S", n = 1f), b("B", series = "S", n = 2f))
+        assertEquals(listOf("A", "B", "C"), titles(LibraryLogic.booksIn(s, LibraryView.SERIES, "S", SortOrder.TITLE)))
+        assertEquals(listOf("C", "B", "A"), titles(LibraryLogic.booksIn(s, LibraryView.SERIES, "S", SortOrder.TITLE, false)))
     }
 }
