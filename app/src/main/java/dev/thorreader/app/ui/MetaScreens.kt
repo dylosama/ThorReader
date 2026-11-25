@@ -133,7 +133,7 @@ private fun SettingsTabs(current: SettingsTab, onSelect: (SettingsTab) -> Unit) 
 }
 
 /** Settings is split into these tabs (the long groups get their own). */
-enum class SettingsTab(val label: String) { GENERAL("General"), ANIMATIONS("Animations"), LIBRARY("Library"), SYNC("Sync") }
+enum class SettingsTab(val label: String) { GENERAL("General"), ANIMATIONS("Animations"), LIBRARY("Library"), ONLINE("Online") }
 
 /** One labelled text field. */
 @Composable
@@ -185,7 +185,10 @@ fun SettingsPanel() {
             SettingsTab.GENERAL -> GeneralTab()
             SettingsTab.ANIMATIONS -> AnimationsTab()
             SettingsTab.LIBRARY -> LibraryTab()
-            SettingsTab.SYNC -> SyncSection()
+            SettingsTab.ONLINE -> {
+                SyncSection()
+                CatalogsSection()
+            }
         }
     }
 }
@@ -467,6 +470,99 @@ private fun SyncSection() {
         )
     }
     message?.let { Text(it, color = if (sync.signedIn) HouseStyle.Subtle else HouseStyle.Warning, fontSize = 13.sp) }
+}
+
+// ---- Catalogs (OPDS) ---------------------------------------------------------------------------
+
+/**
+ * OPDS catalogs: Calibre (content server or Calibre-Web), Kavita, Komga, or free ones. Open one
+ * to browse and download books straight into the library.
+ */
+@Composable
+private fun CatalogsSection() {
+    val app = ThorApp.instance
+    val catalogs = app.catalogs
+    val scope = rememberCoroutineScope()
+    var adding by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf("https://") }
+    var user by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+
+    SectionLabel("Catalogs (OPDS)")
+    Text(
+        "Browse a book catalog and download books straight into your library (they are saved in Download/Thor Reader): " +
+            "Calibre's content server or Calibre-Web, Kavita, Komga, or free catalogs.",
+        color = HouseStyle.Subtle, fontSize = 13.sp,
+    )
+    catalogs.list.forEach { c ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(c.name, color = Color.White, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(c.host + if (c.user != null) " · signed in as ${c.user}" else "", color = HouseStyle.Subtle, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Chip("Open", true) {
+                app.settingsOpen = false
+                app.browsing = c
+            }
+            Chip("Remove") { catalogs.remove(c) }
+        }
+    }
+    // Free catalogs not added yet: one tap.
+    val free = dev.thorreader.app.opds.Catalogs.FREE.filter { (_, u) -> catalogs.list.none { it.url == u } }
+    if (free.isNotEmpty()) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Free:", color = HouseStyle.Subtle, fontSize = 13.sp)
+            free.forEach { (label, u) ->
+                Chip("+ $label") {
+                    if (busy) return@Chip
+                    busy = true
+                    message = null
+                    scope.launch {
+                        message = catalogs.add(label, u, null, null)?.let { "$label: $it" }
+                        busy = false
+                    }
+                }
+            }
+        }
+    }
+    if (!adding) {
+        Chip("+ Add a catalog") { adding = true }
+    } else {
+        Field("Name (optional)", name, { name = it }, hint = "e.g. My Calibre")
+        Field("Catalog address", url, { url = it }, hint = "https://your-server/opds")
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.weight(1f)) { Field("Username (if needed)", user, { user = it }) }
+            Box(Modifier.weight(1f)) { Field("Password (if needed)", password, { password = it }, hidden = true) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Chip(if (busy) "Checking…" else "Add", true) {
+                if (busy) return@Chip
+                busy = true
+                message = null
+                scope.launch {
+                    val err = catalogs.add(name, url, user, password)
+                    busy = false
+                    if (err == null) {
+                        adding = false
+                        name = ""; url = "https://"; user = ""; password = ""
+                        message = "Catalog added."
+                    } else {
+                        message = err
+                    }
+                }
+            }
+            Chip("Cancel") { adding = false; message = null }
+        }
+        Text(
+            "Calibre: Preferences → Sharing over the net, then use https://<address>/opds. Calibre-Web: https://<address>/opds. " +
+                "Kavita: the OPDS link in your user settings. Komga: https://<address>/opds/v1.2/catalog. Only https addresses work.",
+            color = HouseStyle.Subtle, fontSize = 12.sp,
+        )
+    }
+    message?.let { Text(it, color = if (it == "Catalog added.") HouseStyle.Subtle else HouseStyle.Warning, fontSize = 13.sp) }
 }
 
 // ---- Edit info ---------------------------------------------------------------------------------

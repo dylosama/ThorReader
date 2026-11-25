@@ -47,13 +47,20 @@ class ThorApp : Application() {
     lateinit var importer: Importer
         private set
     lateinit var lookup: dev.thorreader.app.metadata.MetadataLookup
+        private set
 
     /** The Settings tab shown (kept while the app runs, so Settings reopens where you were). */
     var settingsTab by mutableStateOf(dev.thorreader.app.ui.SettingsTab.GENERAL)
 
-    /** Reading progress sync with a KOReader / CrossPoint sync server (Settings → Sync). */
+    /** Reading progress sync with a KOReader / CrossPoint sync server (Settings → Online). */
     lateinit var progressSync: dev.thorreader.app.sync.ProgressSync
-        private set
+
+    /** OPDS catalogs (Settings → Online → Catalogs). */
+    lateinit var catalogs: dev.thorreader.app.opds.Catalogs
+
+    /** The catalog being browsed (over the library), or null. */
+    var browsing by mutableStateOf<dev.thorreader.app.opds.Catalog?>(null)
+
     val scope = MainScope()
 
     var screens by mutableStateOf(ScreenMetrics.DEFAULT)
@@ -158,6 +165,7 @@ class ThorApp : Application() {
         importer = Importer(this, db.books(), scope)
         lookup = dev.thorreader.app.metadata.MetadataLookup(this).also { it.start() }
         progressSync = dev.thorreader.app.sync.ProgressSync(this)
+        catalogs = dev.thorreader.app.opds.Catalogs(this)
         settings.onTextChanged = ::saveBookText
         registerScreenReceiver()
         trimCaches()

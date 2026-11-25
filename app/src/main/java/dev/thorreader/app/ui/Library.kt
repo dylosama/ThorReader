@@ -275,6 +275,7 @@ fun LibraryScreen() {
         }
     }
     if (app.settingsOpen) SettingsPanel()
+    app.browsing?.let { c -> androidx.compose.runtime.key(c.id) { CatalogBrowser(c) } }
     app.editInfoBook?.let { b -> androidx.compose.runtime.key(b.id) { EditInfoPanel(b) } }
     }
 }
@@ -772,11 +773,12 @@ private object BelowEnd : PopupPositionProvider {
 
 @Composable
 private fun AddPopup(close: () -> Unit) {
+    val app = ThorApp.instance
     val host = LocalHost.current
     val first = remember { FocusRequester() }
     Column(
         Modifier
-            .width(220.dp)
+            .width(260.dp)
             .clip(HouseStyle.PanelShape)
             .background(HouseStyle.PanelBackground)
             .border(1.dp, HouseStyle.Hairline, HouseStyle.PanelShape)
@@ -785,6 +787,17 @@ private fun AddPopup(close: () -> Unit) {
     ) {
         PopupItem(focusRequester = first, onClick = { close(); host?.pickFiles() }) { PopupText("Add files") }
         PopupItem(onClick = { close(); host?.pickFolder() }) { PopupText("Add folder") }
+        // OPDS: straight into the one catalog, else Settings → Online to pick / add one.
+        PopupItem(onClick = {
+            close()
+            val saved = app.catalogs.list
+            if (saved.size == 1) {
+                app.browsing = saved[0]
+            } else {
+                app.settingsTab = SettingsTab.ONLINE
+                app.settingsOpen = true
+            }
+        }) { PopupText("Get books from a catalog") }
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 }

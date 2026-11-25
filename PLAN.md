@@ -1157,6 +1157,34 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   after a fresh start - every turn a curl, setup 20-100 ms, p95 after setup 16.8-16.9 ms, curl
   never switched off.
 
+### v0.3.0: OPDS catalogs; the Sync tab is now "Online" (main)
+- Settings → Online: Reading progress (the sync) and Catalogs (OPDS). Saved catalogs (Open /
+  Remove), one-tap free ones (Project Gutenberg, Internet Archive), "+ Add a catalog" (name,
+  address, optional username / password, checked before it is saved), with hints for Calibre,
+  Calibre-Web, Kavita and Komga. The library's + menu has "Get books from a catalog" (opens the
+  only catalog, else Settings → Online).
+- `engine/Opds`: OPDS 1 (Atom XML, javax.xml without DTDs) and OPDS 2 (JSON: navigation,
+  publications, groups) → folders and books; best format EPUB > PDF > CBZ > CBR > FB2 > Kindle
+  formats; buying / borrowing / samples, DRM (Adobe, LCP), audiobooks and web pages are never
+  offered; rel="next" pages; search via OpenSearch {searchTerms} or OPDS 2 {?query}; lenient
+  address resolving (servers send unescaped [ ] | and accents).
+- `opds/Catalogs`: HTTPS only; the sign-in (HTTP Basic) only to the catalog's own host;
+  redirects followed by hand (and the Internet Archive's JSON-wrapped redirects); passwords
+  encrypted with an Android Keystore AES key. Downloads go to Download/Thor Reader (MediaStore,
+  visible, can be copied to the X4) and through the normal importer; a reply that isn't a book
+  (a JSON / HTML page, under 1 KB) is refused and deleted. "In library ✓" only while that file
+  is still in the library. Covers cached in memory (12 MB).
+- `ui/CatalogBrowser`: over the library; folders ›, books with cover, author, description and
+  "Download EPUB/PDF…" (progress %), Load more, search; Back / B up a folder, then closes.
+- Tests: OpdsTest (144 in total). Checked on the Thor: the Online tab; Internet Archive added,
+  browsed (root → "eBooks Open Access & Public Domain"), a 12 MB PDF downloaded through its
+  wrapped + two real redirects, imported (320 pages), "In library ✓"; an item the Archive can't
+  serve gives the clear message; Back / B; + menu. Afterwards the test book, its file and the
+  catalog were removed. Project Gutenberg answered HTTP 503 from this network (PC and Thor) -
+  their side; Standard Ebooks needs a paid login, so it is not a free preset.
+- Not possible yet: catalogs on plain http:// (e.g. Calibre at home without https) - the app is
+  HTTPS-only by its network rules.
+
 ### v0.3.0: Settings in tabs; one-tap sync servers (main)
 - Settings has four tabs, pinned under the title (a segmented pill like Library | Completed;
   `OverlayPanel` got a fixed `header` and resets its scroll per tab; the tab is remembered while
@@ -1308,7 +1336,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: Settings in tabs; one-tap sync servers".
+  "v0.3.0: OPDS catalogs (Settings → Online)".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1335,7 +1363,8 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   the Thor with Dune.
 - Edit info: pick your own front cover, spine and back cover pictures (↺ to go back).
 - Burn-in protection: black screens after no input (Settings → Screen), slow pixel shift.
-- Reading progress sync with CrossPoint (Xteink X4) / KOReader (Settings → Sync).
+- Reading progress sync with CrossPoint (Xteink X4) / KOReader (Settings → Online).
+- OPDS catalogs: browse, search and download books into the library (Settings → Online, + menu).
 - Grid view: each cover has a small tab at the bottom right with the icon of the mode it opens in
   (its own mode, else the last book mode), styled like the ★ tab. Checked on the Thor (Blue
   Period 1 shows Mode 4, the others Mode 1). Settings → Library → "Mode icons on grid covers"
@@ -1379,7 +1408,7 @@ Thor Reader (main):
     adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-debug.apk
     adb shell am start -n dev.thorreader.app/.MainActivity
     .\gradlew assembleRelease      -> app\build\outputs\apk\release\ThorReader-0.3.0.apk
-    .\gradlew testDebugUnitTest    (137 tests)
+    .\gradlew testDebugUnitTest    (144 tests)
 Bookloader branch (both apps):
     git switch bookloader
     .\gradlew assembleDebug

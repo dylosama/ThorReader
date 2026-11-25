@@ -104,6 +104,9 @@ interface BookDao {
     @Query("SELECT uri FROM books")
     suspend fun allUris(): List<String>
 
+    @Query("SELECT COUNT(*) FROM books WHERE uri = :uri")
+    suspend fun countWithUri(uri: String): Int
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(book: Book): Long
 
