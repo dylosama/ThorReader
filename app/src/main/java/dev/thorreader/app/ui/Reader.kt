@@ -79,6 +79,7 @@ import dev.thorreader.app.engine.SlotSize
 import dev.thorreader.app.engine.bookUnitIndexFor
 import dev.thorreader.app.engine.unitHolds
 import dev.thorreader.app.engine.screenPages
+import dev.thorreader.app.engine.isSplitSpread
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -108,7 +109,7 @@ fun ReaderScreen(session: ReaderSession, screen: Screen, mode: ReadingMode) {
                         val swapped = session.isSwapped(mode)
                         // Swipe up on the small (bottom) screen swaps; on the big one while swapped swaps back.
                         val swipeUp: (() -> Unit)? =
-                            if (!session.reflowable && ThorApp.instance.settings.swipeSwap && (swapped == (screen == Screen.TOP))) {
+                            if (!session.reflowable && ThorApp.instance.settings.swipeSwap && (swapped == (screen == Screen.TOP) || (swapped && isSplitSpread(view)))) {
                                 { session.toggleSwap(mode, "swipe up on the ${if (screen == Screen.TOP) "big" else "small"} screen") }
                             } else {
                                 null
@@ -131,12 +132,19 @@ fun ReaderScreen(session: ReaderSession, screen: Screen, mode: ReadingMode) {
                         ) { (vi, sw) ->
                             // Same mapping as the pre-rendering (screenPages / prefetchRequests).
                             val (unit, slot) = screenPages(p, vi, mode, screen, sw).firstOrNull() ?: (BlankUnit to p.slotFor(view, idx))
-                            PageSlot(
-                                session, p, unit, slot, screen, setOf(if (screenIsLeft) Side.LEFT else Side.RIGHT),
-                                Modifier.fillMaxSize(), onSwipeUp = swipeUp,
-                            )
+                            Box(Modifier.fillMaxSize()) {
+                                PageSlot(
+                                    session, p, unit, slot, screen, setOf(if (screenIsLeft) Side.LEFT else Side.RIGHT),
+                                    Modifier.fillMaxSize(), onSwipeUp = swipeUp,
+                                )
+                                // A swapped double-page spread: the small screen shows it dimmed, with a hint.
+                                if (sw && screen == Screen.BOTTOM && isSplitSpread(p.views.getOrNull(vi) ?: view)) {
+                                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)))
+                                    HouseBadge("⇄ Swipe up to split", Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp))
+                                }
+                            }
                         }
-                        // "Page 7 ⇄" / "Spread can't be swapped" on the big screen, fading out.
+                        // "Page 7 ⇄" / "Page 7 ⇄ whole spread" on the big screen, fading out.
                         if (screen == Screen.TOP) SwapPillOverlay(session)
                     }
                     view.wide || view.units.size == 1 ->

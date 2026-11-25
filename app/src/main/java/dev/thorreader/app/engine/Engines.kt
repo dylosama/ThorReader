@@ -120,8 +120,6 @@ object EngineFactory {
 // Fixed layout (PDF, XPS, comics)
 // ------------------------------------------------------------------------------------------
 
-/** A page counts as a double-page spread when it is clearly wider than tall. */
-private const val SPREAD_ASPECT = 1.15f
 
 /** A page much taller than its page area (e.g. a long strip) is shown full-width and scrolls. */
 private const val TALL_FACTOR = 1.6f
@@ -170,7 +168,12 @@ abstract class FixedEngine(private val title: String, private val sizeCache: Fil
 
     fun paginate(cfg: LayoutConfig, progress: (Float) -> Unit): List<PageView> {
         val s = ensureSizes(progress)
-        val views = paginateFixed(pageCount, { p -> s[2 * p] > s[2 * p + 1] * SPREAD_ASPECT }, ::labelFor, cfg)
+        // Spreads: clearly double pages only (see spreadDecision), or the book's own choice.
+        val ratios = List(pageCount) { p -> s[2 * p] / s[2 * p + 1].coerceAtLeast(1f) }
+        val typical = typicalRatio(ratios)
+        val spread = BooleanArray(pageCount) { p -> spreadDecision(ratios[p], typical, cfg.splitWide) }
+        logSpreads(ratios, typical, spread, cfg.splitWide)
+        val views = paginateFixed(pageCount, { p -> spread[p] }, ::labelFor, cfg)
         // Log pages that won't fit their page area (they will scroll).
         views.forEachIndexed { vi, v ->
             v.units.forEachIndexed { ui, u ->
@@ -190,6 +193,18 @@ abstract class FixedEngine(private val title: String, private val sizeCache: Fil
             }
         }
         return views
+    }
+
+    private var loggedSpreadsFor: SplitWide? = null
+
+    /** Every page's width/height ratio and whether it is split as a spread (once per setting). */
+    private fun logSpreads(ratios: List<Float>, typical: Float, spread: BooleanArray, mode: SplitWide) {
+        if (loggedSpreadsFor == mode) return
+        loggedSpreadsFor = mode
+        Log.d(TAG, "Spreads in '$title' (split wide pages: ${mode.label}, typical page ratio %.2f): ${spread.count { it }} of ${ratios.size} split".format(typical))
+        ratios.indices.chunked(12).forEach { chunk ->
+            Log.d(TAG, "  " + chunk.joinToString("  ") { p -> "p${p + 1} %.2f%s".format(ratios[p], if (spread[p]) " SPREAD" else "") })
+        }
     }
 
     protected fun isTall(rw: Float, rh: Float, slot: SlotSize) = rh / rw > (slot.h.toFloat() / slot.w) * TALL_FACTOR

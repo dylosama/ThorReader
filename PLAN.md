@@ -727,8 +727,11 @@ Fix:
   PrefetchTest): current, next, previous, then ±2. Normal priority: it shares the one render
   thread with the page being waited for; it stays bounded by the cache and the ±2 views.
 - A page turn also ends a screen swap (`show()`); the swap belongs to the view on screen.
-- NOT yet confirmed on the Thor: the device was disconnected while this was built. The
-  per-turn log lines above will show whether forward turns are cache hits.
+- Checked on the Thor (debug build, Blue Period Vol. 2, right-to-left, book mode): 14 turns
+  (8 forward, 3 back, 3 forward) were all "slot0 hit, slot1 hit"; both screens showed the new
+  view within 1 ms of each other, 24-46 ms after the key press. Spread swap with Y on page 5:
+  whole spread fitted on the big screen; Y again split it. Auto split 5 of 192 pages (ratio
+  1.40 vs typical 0.70).
 - Atomic turns: the screens draw `shownIndex`, not `viewIndex`. A turn commits (both screens
   switch together) only when every page of the new view is rendered; until then the old pages
   stay up, and a house "Loading…" badge appears only after 300 ms.
@@ -736,3 +739,19 @@ Fix:
   normal one-step turn is logged as a warning) and "Screen TOP/BOTTOM shows view N, X ms after
   the turn".
 - versionName 0.2.1, versionCode 3.
+
+### v0.2.1 addition: swapping a double-page spread, better spread detection
+- Swap on a split spread (swipe up, Y, or d-pad right in Mode 1) no longer says "Spread can't
+  be swapped": the big (top) screen shows the WHOLE spread fitted to it (aspect kept, black
+  around, double-tap / pinch zoom work), the small screen shows the same spread dimmed with a
+  house pill "⇄ Swipe up to split"; swiping up on either screen (or Y / d-pad right) splits it
+  again. Same slide animation (~300 ms). Turning the page ends it. Modes 1/2, LTR and RTL.
+  Code: `screenPages(... swapped)` returns FixedUnit(page, WHOLE) at each screen's own slot for
+  a swapped split spread; `isSplitSpread(view)`; toggleSwap pre-renders the whole spread at
+  both slot sizes first.
+- Spread detection (`spreadDecision` in Layout.kt, unit-tested): Auto = width/height >= 1.2
+  AND >= 1.5 x the book's typical (median) page ratio, so a single page with wide margins or
+  landscape pages in a landscape book aren't split; Always = every page wider than tall
+  (>= 1.05); Never = no splitting. Per-book reader-menu option "Split wide pages: Auto /
+  Always / Never" (pref `split_wide`, "bookId:MODE" entries; part of LayoutConfig so changing
+  it re-paginates). Every page's ratio and decision is logged once per book and mode (debug).

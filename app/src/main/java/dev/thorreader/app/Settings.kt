@@ -312,6 +312,22 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putStringSet("shoulder_swap_off", shoulderSwapOff).apply()
     }
 
+    /** "Split wide pages" per book (comics / PDF); books not listed use Auto. */
+    private var splitWideByBook by mutableStateOf(
+        prefs.getStringSet("split_wide", emptySet())!!.mapNotNull { e ->
+            val id = e.substringBefore(':').toLongOrNull() ?: return@mapNotNull null
+            val m = runCatching { dev.thorreader.app.engine.SplitWide.valueOf(e.substringAfter(':')) }.getOrNull() ?: return@mapNotNull null
+            id to m
+        }.toMap(),
+    )
+
+    fun splitWideFor(bookId: Long): dev.thorreader.app.engine.SplitWide = splitWideByBook[bookId] ?: dev.thorreader.app.engine.SplitWide.AUTO
+
+    fun updateSplitWide(bookId: Long, mode: dev.thorreader.app.engine.SplitWide) {
+        splitWideByBook = if (mode == dev.thorreader.app.engine.SplitWide.AUTO) splitWideByBook - bookId else splitWideByBook + (bookId to mode)
+        prefs.edit().putStringSet("split_wide", splitWideByBook.map { (id, m) -> "$id:${m.name}" }.toSet()).apply()
+    }
+
     /** Comics in book modes: swipe up to swap the pages between the screens (default on). */
     var swipeSwap by mutableStateOf(prefs.getBoolean("swipe_swap", true))
         private set

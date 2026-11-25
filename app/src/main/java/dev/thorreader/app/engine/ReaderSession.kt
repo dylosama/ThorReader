@@ -127,7 +127,10 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
                 showStatus(null) // also clears "Unpacking comic…" if unpacking failed
             }
             Log.i(TAG, "Opened '${initialBook.title}' (${format.label}) in ${SystemClock.uptimeMillis() - t0} ms")
-            snapshotFlow { LayoutConfig.build(app.settings.mode, book.rtl, app.screens, app.settings) }
+            snapshotFlow {
+                LayoutConfig.build(app.settings.mode, book.rtl, app.screens, app.settings)
+                    .copy(splitWide = if (reflowable) SplitWide.AUTO else app.settings.splitWideFor(book.id))
+            }
                 .distinctUntilChanged()
                 .collectLatest { cfg ->
                     // Debounce: rapid font/margin taps only lay out once. A newer change cancels
@@ -701,7 +704,8 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
 
     /**
      * Swap / unswap the pages of the current view between the screens ([source] is logged).
-     * Only fixed-layout books in book modes; split double-page spreads can't be swapped.
+     * Only fixed-layout books in book modes. A split double-page spread becomes ONE whole
+     * spread on the big screen (the small screen shows it dimmed); swapping again splits it.
      */
     fun toggleSwap(mode: ReadingMode, source: String) {
         if (!mode.isBook || reflowable) return
@@ -711,18 +715,15 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
             Log.i(TAG, "Swap ($source): not possible here (single page)")
             return
         }
-        if (v.units.any { it is FixedUnit && it.part != Part.WHOLE }) {
-            Log.i(TAG, "Swap ($source): split double-page spread, can't swap")
-            showSwapPill("Spread can't be swapped")
-            return
-        }
         if (swappedView != viewIndex) {
-            // Render each page for the OTHER screen's size first (max 0.6 s), so the slide shows
-            // real pages, not black.
+            // Render what each screen will show first (max 0.6 s; the same mapping the screens
+            // use), so the slide shows real pages, not black.
             val target = viewIndex
             scope.launch {
                 withTimeoutOrNull(600) {
-                    v.units.forEachIndexed { i, u -> render(p, u, p.slotFor(v, 1 - i), 1f) }
+                    for (screen in dev.thorreader.app.Screen.entries) {
+                        for ((u, slot) in screenPages(p, target, mode, screen, swapped = true)) render(p, u, slot, 1f)
+                    }
                 }
                 if (viewIndex == target && pagination === p) {
                     dev.thorreader.app.Background.markBusy() // the swap animation runs now
@@ -737,8 +738,11 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
     }
 
     private fun announceSwap(mode: ReadingMode, p: Pagination, v: PageView, on: Boolean, source: String) {
-        Log.i(TAG, "Swap ($source): pages ${if (on) "swapped" else "back to normal"} on view ${viewIndex + 1}")
-        if (on) {
+        val spread = isSplitSpread(v)
+        Log.i(TAG, "Swap ($source): ${if (spread) "spread ${if (on) "shown whole on the big screen" else "split again"}" else "pages ${if (on) "swapped" else "back to normal"}"} on view ${viewIndex + 1}")
+        if (on && spread) {
+            p.pageNumber(v.units[0])?.let { showSwapPill("Page $it ⇄ whole spread") }
+        } else if (on) {
             // The page now on the big (top) screen.
             val bigIdx = 1 - bookUnitIndexFor(dev.thorreader.app.Screen.TOP, mode, book.rtl)
             p.pageNumber(v.units[bigIdx])?.let { showSwapPill("Page $it ⇄") }

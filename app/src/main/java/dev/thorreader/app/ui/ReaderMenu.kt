@@ -259,8 +259,23 @@ fun ReaderMenu(session: ReaderSession) {
                     }
                     Text(
                         "In book modes: swipe up on the small screen's page to see it on the big screen; swipe up " +
-                            "on the big screen to swap back. Buttons: d-pad right or Y in Mode 1, Y in Mode 2. " +
-                            "On/Off turns the swipe on or off; the buttons always work.",
+                            "on the big screen to swap back. On a double-page spread, swapping shows the whole spread " +
+                            "on the big screen (zoom works); swipe up again to split it. Buttons: d-pad right or Y in " +
+                            "Mode 1, Y in Mode 2. On/Off turns the swipe on or off; the buttons always work.",
+                        color = SubtleText,
+                        fontSize = 13.sp,
+                    )
+                    // Which wide pages count as double-page spreads (split across the two screens).
+                    val split = settings.splitWideFor(book.id)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Split wide pages", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        dev.thorreader.app.engine.SplitWide.entries.forEach { m ->
+                            Chip(m.label, split == m) { settings.updateSplitWide(book.id, m) }
+                        }
+                    }
+                    Text(
+                        "Auto splits only clear double pages (much wider than this book's other pages). Always " +
+                            "splits every page wider than tall; Never shows every page whole. This book only.",
                         color = SubtleText,
                         fontSize = 13.sp,
                     )

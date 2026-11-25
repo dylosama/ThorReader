@@ -46,6 +46,8 @@ data class LayoutConfig(
     val headerPx: Int = 0,
     /** Text size of each slot (reading order). Differs only in book modes with "same size" off. */
     val slotFontPt: List<Float> = List(slots.size) { fontPt },
+    /** Comics / PDF: which wide pages are split across the two screens in book modes. */
+    val splitWide: SplitWide = SplitWide.AUTO,
 ) {
     val perView: Int get() = slots.size
 
@@ -408,6 +410,12 @@ fun screenPages(p: Pagination, i: Int, mode: ReadingMode, screen: Screen, swappe
     val v = p.views.getOrNull(i) ?: return emptyList()
     val rtl = p.config.rtl
     return when {
+        // A swapped split spread: both screens show the WHOLE spread at their own size (the big
+        // screen full, the small one dimmed by the UI).
+        mode.isBook && swapped && isSplitSpread(v) -> {
+            val idx = bookUnitIndexFor(screen, mode, rtl)
+            listOf(FixedUnit((v.units[0] as FixedUnit).page, Part.WHOLE, v.units[0].label) to p.slotFor(v, idx))
+        }
         mode.isBook -> {
             val idx = bookUnitIndexFor(screen, mode, rtl)
             listOf(v.units.getOrElse(if (swapped) 1 - idx else idx) { BlankUnit } to p.slotFor(v, idx))
@@ -417,4 +425,35 @@ fun screenPages(p: Pagination, i: Int, mode: ReadingMode, screen: Screen, swappe
         v.wide || v.units.size == 1 -> listOf(v.units[0] to p.slotFor(v, 0))
         else -> v.units.indices.map { k -> v.units[k] to p.slotFor(v, k) }
     }
+}
+
+// ---- double-page spreads ------------------------------------------------------------------
+
+/** "Split wide pages" (per book): AUTO decides per page, ALWAYS splits every wide page, NEVER none. */
+enum class SplitWide(val label: String) { AUTO("Auto"), ALWAYS("Always"), NEVER("Never") }
+
+/**
+ * Is a page with this width/height [ratio] a double-page spread to split across the screens?
+ * AUTO: clearly a double page - at least 1.2 wide per 1 tall AND at least 1.5x as wide as the
+ * book's [typical] page (the median ratio), so a single page with wide margins or a wide panel,
+ * or a book that is landscape throughout, isn't split by mistake.
+ */
+fun spreadDecision(ratio: Float, typical: Float, mode: SplitWide): Boolean = when (mode) {
+    SplitWide.NEVER -> false
+    SplitWide.ALWAYS -> ratio >= 1.05f
+    SplitWide.AUTO -> ratio >= 1.2f && ratio >= typical * 1.5f
+}
+
+/** The median width/height ratio of a book's pages. */
+fun typicalRatio(ratios: List<Float>): Float {
+    if (ratios.isEmpty()) return 0.7f
+    val s = ratios.sorted()
+    return if (s.size % 2 == 1) s[s.size / 2] else (s[s.size / 2 - 1] + s[s.size / 2]) / 2f
+}
+
+/** A view showing one double-page spread split in two halves (book modes). */
+fun isSplitSpread(v: PageView): Boolean {
+    val u = v.units
+    return u.size == 2 && u.all { it is FixedUnit && it.part != Part.WHOLE } &&
+        (u[0] as FixedUnit).page == (u[1] as FixedUnit).page
 }
