@@ -1516,7 +1516,7 @@ Observation (by design, unchanged): Night inverts reflowable text only; PDFs and
 their own page colours (Harry Potter PDF shows white pages in Night).
 Test hygiene: Mode 4 sends Back / B to the focused (top) display - target `input -d 4`.
 ### Next
-1. Run the test list above; fix what it finds.
+1. Check pinch zoom in Inspect by hand (adb can't do two fingers).
 2. Release 0.3.0: final signed ThorReader-0.3.0.apk, tag 0.3.0 (only when asked), publish.
 3. v0.4: the Bookshelf (see "3. Bookshelf" in the plan at the top - a visual shelf with each
    book as a generated spine). NOTE: there is no step23.md in the folder; the bookshelf spec
