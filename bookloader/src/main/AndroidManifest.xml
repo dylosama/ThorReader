@@ -3,6 +3,14 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!--
+      Thor Reader's import permission, declared here too (same name, same signature level, same
+      key): whichever app is installed first defines it, so Bookloader always gets it - even when
+      it is installed before Thor Reader. Apps signed with any other key still can't.
+    -->
+    <permission
+        android:name="dev.thorreader.permission.IMPORT"
+        android:protectionLevel="signature" />
     <!-- Thor Reader's import API: granted only because we're signed with the same key. -->
     <uses-permission android:name="dev.thorreader.permission.IMPORT" />
 

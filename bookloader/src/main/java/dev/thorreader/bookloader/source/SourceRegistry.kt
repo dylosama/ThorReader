@@ -23,6 +23,7 @@ class SourceRegistry(private val prefs: SharedPreferences) {
     private val builtIns: List<SourceProvider> = listOf(
         GutendexSource(),
         MangaDexSource(),
+        PepperCarrotSource(),
         OpdsSource(EXAMPLE_FEED),
     )
 

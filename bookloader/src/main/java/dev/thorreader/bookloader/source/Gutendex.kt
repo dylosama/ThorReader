@@ -41,6 +41,9 @@ class GutendexSource : SourceProvider {
                 // Gutenberg writes "Shelley, Mary Wollstonecraft": show it as "Mary Wollstonecraft Shelley".
                 authors = b.optJSONArray("authors").objects().map { flipName(it.optString("name")) }.filter { it.isNotBlank() },
                 coverUrl = formats.optStringOrNull("image/jpeg"),
+                // gutenberg.org is sometimes down: Open Library usually has the same book's cover.
+                altCoverUrl = "openlibrary:" + b.optString("title").substringBefore(";").substringBefore(":").trim() + "|" +
+                    (b.optJSONArray("authors").objects().firstOrNull()?.optString("name")?.substringBefore(",")?.trim() ?: ""),
                 type = ContentType.BOOK,
                 summary = b.optJSONArray("summaries").strings().firstOrNull(),
                 extra = JSONObject()

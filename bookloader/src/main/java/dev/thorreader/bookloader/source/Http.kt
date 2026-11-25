@@ -28,7 +28,7 @@ object Http {
     /** Optional HTTP Basic credentials (OPDS servers like Komga), sent only over HTTPS. */
     data class Auth(val user: String, val password: String)
 
-    private fun open(url: String, auth: Auth?, accept: String?): HttpURLConnection {
+    private fun open(url: String, auth: Auth?, accept: String?, polite: Boolean = true): HttpURLConnection {
         val u = URL(url)
         if (u.protocol != "https") throw IOException("Only https:// addresses are allowed")
         val wait = synchronized(lastCall) {
@@ -37,7 +37,7 @@ object Http {
             lastCall[u.host] = maxOf(now, next)
             next - now
         }
-        if (wait > 0) Thread.sleep(wait)
+        if (wait > 0 && polite) Thread.sleep(wait)
         val r = route
         val proxy = r.proxy()
         val c = (if (proxy == null) u.openConnection() else u.openConnection(proxy)) as HttpURLConnection
@@ -93,8 +93,9 @@ object Http {
         }
     }
 
-    fun bytes(url: String, max: Long = 64L shl 20, auth: Auth? = null): ByteArray {
-        val c = open(url, auth, null)
+    /** [polite] = false for pictures (covers): no pause between requests to the same host. */
+    fun bytes(url: String, max: Long = 64L shl 20, auth: Auth? = null, polite: Boolean = true): ByteArray {
+        val c = open(url, auth, null, polite)
         try {
             return c.inputStream.use { readCapped(it, max) }
         } finally {

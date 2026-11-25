@@ -84,8 +84,10 @@ class DetailsState(val item: CatalogItem) {
     var override by mutableStateOf(MetaOverride())
     var warning by mutableStateOf<String?>(null)
     var queued by mutableStateOf<String?>(null)
+    /** Show whole volumes instead of chapters (MangaDex). */
+    var byVolume by mutableStateOf(false)
 
-    fun chosen(): List<Entry> = details?.entries.orEmpty().filter { it.id in selected }
+    fun chosen(): List<Entry> = details?.let { d -> if (byVolume && d.volumes.isNotEmpty()) d.volumes else d.entries }.orEmpty().filter { it.id in selected }
 
     /** The metadata each chosen entry will be saved / imported with. */
     fun metas(): List<Pair<Entry, BookMeta>> {
@@ -147,7 +149,7 @@ fun DetailsScreen(s: DetailsState) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)) {
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                Cover(s.item.coverUrl, Modifier.size(140.dp, 210.dp))
+                Cover(s.item.coverUrl, Modifier.size(140.dp, 210.dp), s.item.altCoverUrl)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(s.item.authors.joinToString(", ").ifEmpty { "Unknown author" }, color = House.Subtle, fontSize = 16.sp)
                     Text("${s.item.type.label}  ·  ${d?.formatLabel ?: "…"}", color = House.Faint, fontSize = 14.sp)
@@ -182,17 +184,25 @@ fun DetailsScreen(s: DetailsState) {
                     }
                 }
             }
+            val list = if (s.byVolume && d.volumes.isNotEmpty()) d.volumes else d.entries
             item {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SectionLabel("${d.entriesLabel} (${d.entries.size})")
-                    if (d.entries.size > 1) {
-                        Chip("Select all") { s.selected.clear(); s.selected += d.entries.map { it.id } }
+                    if (d.volumes.isNotEmpty()) {
+                        // Thor Reader's sort-row chips: one chapter per file, or a whole volume per file.
+                        RowChip("${d.entriesLabel} (${d.entries.size})", !s.byVolume) { s.byVolume = false; s.selected.clear() }
+                        RowChip("Volumes (${d.volumes.size})", s.byVolume) { s.byVolume = true; s.selected.clear() }
+                    } else {
+                        SectionLabel("${d.entriesLabel} (${d.entries.size})")
+                    }
+                    if (list.size > 1) {
+                        Chip("Select all") { s.selected.clear(); s.selected += list.map { it.id } }
                         Chip("Select none") { s.selected.clear() }
                     }
                 }
             }
-            if (d.entries.isEmpty()) item { Message("Nothing downloadable here.") }
-            items(d.entries, key = { it.id }) { e ->
+            if (s.byVolume && d.volumes.isNotEmpty()) item { Message("Each volume is downloaded chapter by chapter and saved as one book.", House.Faint) }
+            if (list.isEmpty()) item { Message("Nothing downloadable here.") }
+            items(list, key = { it.id }) { e ->
                 val on = e.id in s.selected
                 Row(
                     Modifier

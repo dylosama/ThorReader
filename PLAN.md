@@ -1197,3 +1197,28 @@ Part B - new module :bookloader ("Thor Bookloader", dev.thorreader.bookloader, 0
   the 32 bars, loop 66 s, no clipping, no silent gaps, seamless seam, deterministic; effects).
   MusicPreview writes bookloader/build/music-preview.wav to listen on a PC. Not yet heard on
   the Thor (disconnected).
+
+### Step 25d: fixes after the first test on the Thor (bookloader branch)
+- "Thor Reader won't accept imports": the Thor still had main's Thor Reader 0.3.0 (no import
+  service, no permission). Install the branch build (0.3.0-bookloader). Also: Bookloader now
+  declares the same signature permission itself, so the install order of the two apps no longer
+  matters (a signature permission requested before its defining app was installed is never
+  granted later; defining it in both apps, same key, avoids that).
+- Book covers: gutenberg.org was down for maintenance (HTTP 503), so its cover pictures failed.
+  Fallback: Open Library's cover for the same title / author. Covers now load 4 at a time
+  without the per-host pause used for searches (they appeared one by one before).
+- Manga by volume: MangaDex chapters carry their volume number, so Details gets
+  "Chapters | Volumes"; a volume is downloaded chapter by chapter and packed into ONE CBZ
+  ("Chainsaw Man, Vol. 3", ComicInfo Volume / Number 3). Chapters not in a volume yet are offered
+  as one group. (No legal public API offers whole official manga volumes for download; your own
+  Komga / Kavita through OPDS also gives volumes.)
+- Comics: Pepper&Carrot by David Revoy (CC BY 4.0, free culture), from its official JSON
+  catalogue: 39 episodes, English pages, each episode packed into a CBZ with title page and
+  credits, licence and author in ComicInfo. Considered and rejected: the Internet Archive's comic
+  collections - uploaders mark copyrighted books (Fables, Spider-Man...) as "public domain", so
+  its labels can't be trusted; the Library of Congress API was down.
+- Status 2026-11-24: on the Thor - Thor Reader 0.3.0-bookloader + Bookloader installed,
+  dev.thorreader.permission.IMPORT granted=true for Bookloader; the shell (uid 2000, other key)
+  is refused by both the service and the folder activity ("requires
+  dev.thorreader.permission.IMPORT"); ImportPermissionTest OK (3 tests, via am instrument; the
+  test app was uninstalled afterwards). Tests: 121 (:app) + 18 (:bookloader, SourcesTest new).

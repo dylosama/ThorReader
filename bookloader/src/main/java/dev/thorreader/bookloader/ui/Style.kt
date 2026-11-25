@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import dev.thorreader.bookloader.source.Http
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withPermit
 
 /** Thor Reader's house style, Bookloader's copy: black, translucent panels, hairlines, one accent. */
 object House {
@@ -239,23 +240,49 @@ fun Field(
 
 /** Cover thumbnails: fetched once, decoded small (about 240 px tall), kept in a small cache. */
 object Covers {
-    private val cache = object : LruCache<String, ImageBitmap>(48) {}
+    private val cache = object : LruCache<String, ImageBitmap>(64) {}
+    /** At most 4 pictures downloading at once (no pause between them, unlike searches). */
+    private val slots = kotlinx.coroutines.sync.Semaphore(4)
 
-    suspend fun load(url: String): ImageBitmap? = cache.get(url) ?: withContext(Dispatchers.IO) {
-        runCatching {
-            val bytes = Http.bytes(url, max = 8L shl 20)
-            val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
-            var s = 1
-            while (o.outHeight / (s * 2) >= 240) s *= 2
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = s })?.asImageBitmap()
-        }.getOrNull()?.also { cache.put(url, it) }
+    /** The first of [urls] that loads ("openlibrary:title|author" = look the cover up on Open Library). */
+    suspend fun load(urls: List<String>): ImageBitmap? {
+        for (u in urls) {
+            cache.get(u)?.let { return it }
+            val img = slots.withPermit { withContext(Dispatchers.IO) { fetch(u) } }
+            if (img != null) {
+                cache.put(u, img)
+                return img
+            }
+        }
+        return null
+    }
+
+    private fun fetch(url: String): ImageBitmap? = runCatching {
+        val real = if (url.startsWith(OPEN_LIBRARY)) openLibraryCover(url.removePrefix(OPEN_LIBRARY)) ?: return null else url
+        val bytes = Http.bytes(real, max = 8L shl 20, polite = false)
+        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
+        var s = 1
+        while (o.outHeight / (s * 2) >= 240) s *= 2
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = s })?.asImageBitmap()
+    }.onFailure { android.util.Log.d(dev.thorreader.bookloader.TAG, "Cover not loaded: ${it.message}") }.getOrNull()
+
+    const val OPEN_LIBRARY = "openlibrary:"
+
+    /** Open Library's cover for "title|author" (one small search, then the picture). */
+    private fun openLibraryCover(q: String): String? {
+        val (title, author) = q.split('|').let { it[0] to it.getOrNull(1).orEmpty() }
+        val url = "https://openlibrary.org/search.json?limit=1&fields=cover_i&title=${Http.enc(title)}" +
+            (if (author.isNotBlank()) "&author=${Http.enc(author)}" else "")
+        val o = org.json.JSONObject(Http.text(url, accept = "application/json").first)
+        val id = o.optJSONArray("docs")?.optJSONObject(0)?.optLong("cover_i", 0L) ?: 0L
+        return if (id > 0) "https://covers.openlibrary.org/b/id/$id-M.jpg" else null
     }
 }
 
 @Composable
-fun Cover(url: String?, modifier: Modifier) {
-    val img by produceState<ImageBitmap?>(null, url) { value = url?.let { Covers.load(it) } }
+fun Cover(url: String?, modifier: Modifier, alt: String? = null) {
+    val img by produceState<ImageBitmap?>(null, url, alt) { value = Covers.load(listOfNotNull(url, alt)) }
     Box(modifier.clip(RoundedCornerShape(6.dp)).background(House.Chip)) {
         img?.let { Image(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
     }

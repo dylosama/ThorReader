@@ -44,26 +44,35 @@ class MangaDexSource : SourceProvider {
     }
 
     override fun download(item: CatalogItem, entry: Entry, meta: BookMeta, dir: File, progress: (Float) -> Unit): File {
-        val pages = parseAtHome(Http.text("$API/at-home/server/${entry.id}", accept = "application/json").first)
-        if (pages.isEmpty()) throw IOException("This chapter has no pages on MangaDex")
-        val pageDir = File(dir, "pages-${entry.id}").apply { mkdirs() }
+        val x = runCatching { JSONObject(entry.extra) }.getOrDefault(JSONObject())
+        // A volume = its chapters one after another in one CBZ; a chapter = just itself.
+        val chapters = x.optJSONArray("chapters").objects().map(Entry::fromJson).ifEmpty { listOf(entry) }
+        val pageDir = File(dir, "pages-${entry.id.replace(':', '-')}").apply { mkdirs() }
         try {
-            val files = pages.mapIndexed { i, (full, saver) ->
-                val ext = full.substringAfterLast('.', "jpg").substringBefore('?')
-                val f = File(pageDir, "%04d.%s".format(i + 1, ext))
-                f.writeBytes(fetchPage(full, saver))
-                progress((i + 1f) / pages.size * 0.95f)
-                f
+            val files = ArrayList<File>()
+            val groups = LinkedHashSet<String>()
+            chapters.forEachIndexed { c, ch ->
+                val pages = parseAtHome(Http.text("$API/at-home/server/${ch.id}", accept = "application/json").first)
+                if (pages.isEmpty()) throw IOException("${ch.title} has no pages on MangaDex")
+                runCatching { JSONObject(ch.extra).optStringOrNull("group") }.getOrNull()?.let { groups += it }
+                pages.forEachIndexed { i, (full, saver) ->
+                    val ext = full.substringAfterLast('.', "jpg").substringBefore('?')
+                    val f = File(pageDir, "%05d.%s".format(files.size + 1, ext))
+                    f.writeBytes(fetchPage(full, saver))
+                    files += f
+                    progress((c + (i + 1f) / pages.size) / chapters.size * 0.95f)
+                }
             }
-            val x = runCatching { JSONObject(entry.extra) }.getOrDefault(JSONObject())
+            val volume = x.optStringOrNull("volume")
+                ?: runCatching { JSONObject(chapters.first().extra).optStringOrNull("volume") }.getOrNull()
             val info = Cbz.comicInfo(
                 meta,
                 pageCount = files.size,
                 summary = item.summary,
-                web = "https://mangadex.org/chapter/${entry.id}",
-                translator = x.optStringOrNull("group"),
+                web = if (chapters.size == 1) "https://mangadex.org/chapter/${chapters[0].id}" else "https://mangadex.org/title/${item.id}",
+                translator = groups.joinToString(", ").ifEmpty { null },
                 language = LANG,
-                volume = x.optStringOrNull("volume"),
+                volume = volume,
             )
             val out = File(dir, safeName(meta.title ?: "${item.title} ${entry.title}") + ".cbz")
             Cbz.write(out, files, info)
@@ -157,14 +166,40 @@ class MangaDexSource : SourceProvider {
         fun dedupe(entries: List<Entry>): List<Entry> =
             entries.distinctBy { it.number ?: it.id }.sortedWith(compareBy(nullsLast()) { it.number })
 
+        /**
+         * Chapters grouped by the volume MangaDex lists for them: "Vol. 3 (Ch. 14-20)", in volume
+         * order; chapters without a volume yet form one last group. Each group is one entry whose
+         * extra holds its chapters, downloaded into ONE CBZ.
+         */
+        fun volumesOf(entries: List<Entry>): List<Entry> {
+            fun vol(e: Entry) = runCatching { JSONObject(e.extra).optStringOrNull("volume") }.getOrNull()
+            fun num(f: Float?) = f?.let { if (it % 1f == 0f) it.toInt().toString() else it.toString() } ?: "?"
+            val groups = entries.groupBy { vol(it) }
+            val numbered = groups.filterKeys { it != null }.toList().sortedWith(compareBy({ it.first!!.toFloatOrNull() ?: Float.MAX_VALUE }, { it.first }))
+            val loose = groups[null].orEmpty()
+            fun entry(v: String?, chs: List<Entry>): Entry {
+                val range = "Ch. ${num(chs.first().number)}" + if (chs.size > 1) "–${num(chs.last().number)}" else ""
+                return Entry(
+                    id = "vol:${v ?: "none"}",
+                    title = if (v != null) "Vol. $v ($range)" else "Not in a volume yet ($range)",
+                    number = v?.toFloatOrNull(),
+                    format = "CBZ",
+                    extra = JSONObject().put("volume", v).put("chapters", org.json.JSONArray(chs.map { it.toJson() })).toString(),
+                )
+            }
+            return numbered.map { (v, chs) -> entry(v, chs) } + (if (loose.isNotEmpty()) listOf(entry(null, loose)) else emptyList())
+        }
+
         fun detailsFrom(item: CatalogItem, entries: List<Entry>): ItemDetails {
             val x = runCatching { JSONObject(item.extra) }.getOrDefault(JSONObject())
+            val volumes = volumesOf(entries)
             return ItemDetails(
                 item = item,
                 synopsis = item.summary,
                 tags = x.optJSONArray("tags").strings(),
-                formatLabel = "CBZ (one per chapter)",
+                formatLabel = if (volumes.isNotEmpty()) "CBZ (per chapter or per volume)" else "CBZ (one per chapter)",
                 entries = entries,
+                volumes = if (volumes.any { it.id != "vol:none" }) volumes else emptyList(),
                 rtl = x.optString("originalLanguage") == "ja",
                 entriesLabel = "Chapters",
                 note = "Chapters are uploaded to MangaDex by scanlation groups (credited in each file). Please support official releases.",

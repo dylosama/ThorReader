@@ -25,12 +25,14 @@ data class CatalogItem(
     val type: ContentType = ContentType.BOOK,
     val summary: String? = null,
     val folderUrl: String? = null,
+    /** A second place to get the cover from when [coverUrl] fails (e.g. "openlibrary:title|author"). */
+    val altCoverUrl: String? = null,
     val extra: String = "",
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("sourceId", sourceId).put("id", id).put("title", title)
         .put("authors", JSONArray(authors)).put("coverUrl", coverUrl).put("type", type.name)
-        .put("summary", summary).put("folderUrl", folderUrl).put("extra", extra)
+        .put("summary", summary).put("folderUrl", folderUrl).put("altCoverUrl", altCoverUrl).put("extra", extra)
 
     companion object {
         fun fromJson(o: JSONObject) = CatalogItem(
@@ -42,6 +44,7 @@ data class CatalogItem(
             type = runCatching { ContentType.valueOf(o.getString("type")) }.getOrDefault(ContentType.BOOK),
             summary = o.optStringOrNull("summary"),
             folderUrl = o.optStringOrNull("folderUrl"),
+            altCoverUrl = o.optStringOrNull("altCoverUrl"),
             extra = o.optString("extra"),
         )
     }
@@ -83,6 +86,8 @@ data class ItemDetails(
     val rtl: Boolean = false,
     /** "Chapters", "Issues", "Editions"... */
     val entriesLabel: String = "Editions",
+    /** Whole volumes (MangaDex): each packs several chapters into one CBZ. Empty = none. */
+    val volumes: List<Entry> = emptyList(),
     /** Shown under the details (licence / attribution, e.g. the scanlation group). */
     val note: String? = null,
 )
@@ -124,8 +129,10 @@ data class BookMeta(
         fun defaults(d: ItemDetails, e: Entry, indexInSelection: Int): BookMeta {
             val item = d.item
             val chapters = item.type != ContentType.BOOK && (d.entries.size > 1 || e.number != null)
+            // A volume entry is listed as "Vol. 3 (Ch. 14-20)"; the book is just "Series, Vol. 3".
+            val label = if (e.id.startsWith("vol:")) e.title.substringBefore(" (") else e.title
             return BookMeta(
-                title = if (chapters) "${item.title}, ${e.title}" else item.title,
+                title = if (chapters) "${item.title}, $label" else item.title,
                 authors = item.authors,
                 series = if (chapters) item.title else null,
                 seriesNumber = if (chapters) (e.number ?: (indexInSelection + 1).toFloat()) else null,

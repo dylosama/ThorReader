@@ -253,7 +253,7 @@ private fun ResultRow(item: CatalogItem, inThor: Boolean, sourceName: String, on
                 Text("▤", color = House.Accent, fontSize = 26.sp)
             }
         } else {
-            Cover(item.coverUrl, Modifier.size(56.dp, 80.dp))
+            Cover(item.coverUrl, Modifier.size(56.dp, 80.dp), item.altCoverUrl)
         }
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             Text(item.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
