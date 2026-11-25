@@ -1166,8 +1166,9 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 - Now (`PageTurnMath.dragFold`): only the curl peels the grabbed corner. Flip / Slide / Fade
   use a straight grab at the touch point, so every start along the edge responds like the
   middle (finger drift sideways ignored). The curl is unchanged. Tests: DragStartTest (119).
-- Not checked by hand on the Thor: adb's simulated strokes are too slow (each step a separate
-  command), so the reader menu's press-and-hold fired instead. Try it by finger.
+- Checked by finger on the Thor (Flip, book mode, big screen): corner swipes now feel like the
+  middle one. (adb's simulated strokes can't test this: each step is a separate command, so the
+  reader menu's press-and-hold fires instead.)
 
 ### v0.3.0: page theme back at the top of the reader menu (main)
 - Paper / Sepia / Night are three round swatches at the end of the bookmark row
