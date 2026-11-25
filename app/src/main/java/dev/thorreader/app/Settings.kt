@@ -328,6 +328,59 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putStringSet("split_wide", splitWideByBook.map { (id, m) -> "$id:${m.name}" }.toSet()).apply()
     }
 
+    // ---- page-turn animation (step 22) -------------------------------------------------------
+
+    /** "Page turn" for all books (default Curl). */
+    var turnStyle by mutableStateOf(
+        runCatching { dev.thorreader.app.engine.TurnStyle.valueOf(prefs.getString("turn_style", "CURL")!!) }
+            .getOrDefault(dev.thorreader.app.engine.TurnStyle.CURL),
+    )
+        private set
+
+    fun updateTurnStyle(s: dev.thorreader.app.engine.TurnStyle) {
+        turnStyle = s
+        prefs.edit().putString("turn_style", s.name).apply()
+    }
+
+    /** Per-book override ("This book"); books not listed use [turnStyle]. */
+    private var turnStyleByBook by mutableStateOf(
+        prefs.getStringSet("turn_style_book", emptySet())!!.mapNotNull { e ->
+            val id = e.substringBefore(':').toLongOrNull() ?: return@mapNotNull null
+            val s = runCatching { dev.thorreader.app.engine.TurnStyle.valueOf(e.substringAfter(':')) }.getOrNull() ?: return@mapNotNull null
+            id to s
+        }.toMap(),
+    )
+
+    /** The book's own override, or null = same as all books. */
+    fun turnStyleOverride(bookId: Long): dev.thorreader.app.engine.TurnStyle? = turnStyleByBook[bookId]
+
+    fun turnStyleFor(bookId: Long): dev.thorreader.app.engine.TurnStyle = turnStyleByBook[bookId] ?: turnStyle
+
+    fun updateTurnStyleOverride(bookId: Long, s: dev.thorreader.app.engine.TurnStyle?) {
+        turnStyleByBook = if (s == null) turnStyleByBook - bookId else turnStyleByBook + (bookId to s)
+        prefs.edit().putStringSet("turn_style_book", turnStyleByBook.map { (id, v) -> "$id:${v.name}" }.toSet()).apply()
+    }
+
+    var turnSpeed by mutableStateOf(
+        runCatching { dev.thorreader.app.engine.TurnSpeed.valueOf(prefs.getString("turn_speed", "NORMAL")!!) }
+            .getOrDefault(dev.thorreader.app.engine.TurnSpeed.NORMAL),
+    )
+        private set
+
+    fun updateTurnSpeed(s: dev.thorreader.app.engine.TurnSpeed) {
+        turnSpeed = s
+        prefs.edit().putString("turn_speed", s.name).apply()
+    }
+
+    /** Below 15 % battery (not charging): use the simpler Fade. Default on. */
+    var simplerTurnOnLowBattery by mutableStateOf(prefs.getBoolean("turn_low_battery", true))
+        private set
+
+    fun updateSimplerTurnOnLowBattery(on: Boolean) {
+        simplerTurnOnLowBattery = on
+        prefs.edit().putBoolean("turn_low_battery", on).apply()
+    }
+
     /** Comics in book modes: swipe up to swap the pages between the screens (default on). */
     var swipeSwap by mutableStateOf(prefs.getBoolean("swipe_swap", true))
         private set

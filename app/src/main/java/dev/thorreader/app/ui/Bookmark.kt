@@ -73,6 +73,32 @@ fun inRibbonZone(pos: Offset, widthPx: Int, side: Side, d: Density): Boolean = w
     pos.x in (left - pad)..(left + w + pad) && pos.y <= RIBBON_H_DP.dp.toPx() + pad * 1.5f
 }
 
+/**
+ * The same ribbon drawn with a plain Android canvas, for the page pictures of the page-turn
+ * animation (so the ribbon moves with its page). [pageW] = the page area's width in px.
+ */
+fun drawRibbonNative(c: android.graphics.Canvas, color: Int, side: Side, pageW: Float, density: Float) {
+    val w = RIBBON_W_DP * density
+    val h = RIBBON_H_DP * density
+    val inset = RIBBON_INSET_DP * density
+    val notch = RIBBON_NOTCH_DP * density
+    val left = if (side == Side.LEFT) inset else pageW - inset - w
+    val path = android.graphics.Path().apply {
+        moveTo(left, 0f); lineTo(left + w, 0f); lineTo(left + w, h); lineTo(left + w / 2f, h - notch); lineTo(left, h); close()
+    }
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    c.save()
+    c.translate(1.5f, 2f)
+    paint.color = android.graphics.Color.argb(56, 0, 0, 0)
+    c.drawPath(path, paint)
+    c.restore()
+    paint.color = color
+    c.drawPath(path, paint)
+    paint.color = android.graphics.Color.argb(46, 255, 255, 255)
+    paint.strokeWidth = 1.5f
+    c.drawLine(left + w / 2f, 0f, left + w / 2f, h - notch, paint)
+}
+
 /** The slim notched ribbon shape, [w] x [h] px, top edge at y = 0. */
 private fun DrawScope.ribbon(color: Color) {
     val w = size.width

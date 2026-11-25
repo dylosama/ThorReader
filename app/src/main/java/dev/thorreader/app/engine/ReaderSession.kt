@@ -7,6 +7,7 @@ import android.util.Log
 import android.util.LruCache
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import dev.thorreader.app.Screen
 import androidx.compose.runtime.mutableStateOf
@@ -341,6 +342,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         swappedView = null // a new layout (e.g. another mode) shows pages in normal order
         pagination = p
         viewIndex = p.findView(anchor).coerceIn(0, p.views.size - 1)
+        finishTurnNow("new layout")
         shownIndex = viewIndex // a new layout replaces the pages anyway; no waiting
         commitJob?.cancel()
         turnWaiting = false
@@ -414,22 +416,38 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         private set
     private var commitJob: Job? = null
 
-    /** Both screens switch to view [i] (in the same frame: one state change). */
-    private fun show(i: Int) {
-        if (i != shownIndex) swappedView = null // a page turn ends a screen swap
+    /**
+     * Both screens switch to view [i] (in the same frame: one state change). With a [cause]
+     * the switch is animated (page-turn style); the overlay covers the pages until it ends.
+     */
+    private fun show(i: Int, cause: TurnCause? = null, stepsFrom: Int = shownIndex) {
+        if (i == shownIndex) return
+        val from = shownIndex
+        val fromSwapped = isSwapped(app.settings.mode)
+        finishTurnNow("new turn") // a turn mid-animation completes instantly; no queue
+        swappedView = null // a page turn ends a screen swap
         shownIndex = i
+        if (cause != null) startTurn(from, i, cause, i - stepsFrom, fromSwapped)
     }
 
-    /** Show view [viewIndex] on both screens as soon as all its pages are rendered. */
-    private fun commitWhenReady() {
+    /** Are all pages of view [i] rendered (at the slot sizes the screens use)? */
+    private fun viewReady(p: Pagination, i: Int): Boolean {
+        val v = p.views.getOrNull(i) ?: return false
+        return v.units.withIndex().all { (k, u) -> u is BlankUnit || cached(p, u, p.slotFor(v, k), 1f) != null }
+    }
+
+    /**
+     * Show view [viewIndex] on both screens as soon as all its pages are rendered. Animated
+     * ([cause]) only if they are ready right away: a turn that had to wait commits instantly.
+     */
+    private fun commitWhenReady(cause: TurnCause? = null, stepsFrom: Int = shownIndex) {
         val p = pagination ?: return
         val target = viewIndex
         val v = p.views.getOrNull(target) ?: return
         commitJob?.cancel()
         turnWaiting = false
-        val ready = v.units.withIndex().all { (i, u) -> u is BlankUnit || cached(p, u, p.slotFor(v, i), 1f) != null }
-        if (ready) {
-            show(target)
+        if (viewReady(p, target)) {
+            show(target, cause, stepsFrom)
             return
         }
         commitJob = scope.launch {
@@ -461,16 +479,275 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         else Log.d(TAG, line)
     }
 
+    // ---- page-turn animation (step 22) ---------------------------------------------------
+    //
+    // ONE shared clock for both screens: [turnProgress] is advanced by a single coroutine on the
+    // main thread's frame clock; the overlay on each screen (MainActivity window on display 0,
+    // Presentation on display 4) reads it in its draw phase, so both move in the same frame.
+    // Nothing runs while no turn is active.
+
+    /** One animated turn from view [from] to view [to]. */
+    class Turn(
+        val id: Int,
+        val from: Int,
+        val to: Int,
+        val style: TurnStyle,
+        val durationMs: Int,
+        /** Was the old view shown swapped between the screens (comics)? Its pictures follow that. */
+        val fromSwapped: Boolean,
+        /** Started by a finger drag (follows the finger until released). */
+        val interactive: Boolean,
+    ) {
+        val forward: Boolean get() = to > from
+
+        /** Released: where t was, its tilt then, and where it is heading (1 = done, 0 = back). */
+        var released = !interactive
+        var releaseT = 0f
+        var releaseTheta = 0f
+        var target = 1f
+    }
+
+    /** The turn being animated, or null (then nothing is drawn or computed for animations). */
+    var turn by mutableStateOf<Turn?>(null)
+        private set
+
+    private val turnT = mutableFloatStateOf(0f)
+
+    /** Progress of [turn], 0..1 (eased). Read in the draw phase only. */
+    val turnProgress: Float get() = turnT.floatValue
+
+    /** The curl the finger is holding: on which screen / page area, in that area's frame. */
+    class DragCurl(val screen: Screen, val regionSide: Side?, val curl: Curl)
+
+    var dragCurl by mutableStateOf<DragCurl?>(null)
+        private set
+
+    /** Set by ThorApp while a held button flips continuously (fast slide instead of a curl). */
+    var repeatingTurns = false
+
+    private var turnSeq = 0
+    private var turnJob: Job? = null
+    private var dragFraction = 0f
+    private var slowCurlTurns = 0
+
+    /** Debug builds only: `adb shell setprop debug.thorreader.turnms 4000` slows turns down for screen recordings. */
+    private val debugTurnMs: Int? by lazy {
+        if (app.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) return@lazy null
+        runCatching {
+            val p = Runtime.getRuntime().exec(arrayOf("getprop", "debug.thorreader.turnms"))
+            p.inputStream.bufferedReader().readText().trim().toIntOrNull()?.takeIf { it in 50..20_000 }
+        }.getOrNull()
+    }
+
+    private var batteryCheckedAt = 0L
+    private var batteryLow = false
+
+    /** Below 15 % and not charging (checked at most once a minute; the sticky intent, no receiver). */
+    private fun lowBattery(): Boolean {
+        if (!app.settings.simplerTurnOnLowBattery) return false
+        val now = SystemClock.uptimeMillis()
+        if (batteryCheckedAt == 0L || now - batteryCheckedAt > 60_000) {
+            batteryCheckedAt = now
+            val i = app.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+            val b = i?.let { dev.thorreader.app.ui.BatteryState.from(it) }
+            batteryLow = b != null && b.percent < PageTurnMath.LOW_BATTERY && !b.charging
+        }
+        return batteryLow
+    }
+
+    private fun chooseStyle(cause: TurnCause, steps: Int): Pair<TurnStyle, Int> {
+        val (style, ms) = PageTurnMath.chooseStyle(
+            cause, steps, app.settings.turnStyleFor(book.id), app.settings.turnSpeed, lowBattery(), TurnSupport.curlDisabledReason == null,
+        )
+        return style to (if (cause == TurnCause.NORMAL) debugTurnMs ?: ms else ms)
+    }
+
+    /** Animate the switch that [show] just made (the old view's pages must still be rendered). */
+    private fun startTurn(from: Int, to: Int, cause: TurnCause, steps: Int, fromSwapped: Boolean) {
+        val p = pagination ?: return
+        val (style, ms) = chooseStyle(cause, steps)
+        if (style == TurnStyle.NONE || ms <= 0) return
+        if (!viewReady(p, from)) {
+            Log.d(TAG, "Turn ${from + 1} -> ${to + 1}: old pages no longer rendered, no animation")
+            return
+        }
+        val t = Turn(++turnSeq, from, to, style, ms, fromSwapped, interactive = false)
+        turn = t
+        turnT.floatValue = 0f
+        runTurn(t, 1f, PageTurnMath::easeInOut)
+    }
+
+    /** Advance [t] to [toT] on the frame clock, then end it. */
+    private fun runTurn(t: Turn, toT: Float, easing: (Float) -> Float) {
+        turnJob?.cancel()
+        turnJob = scope.launch(androidx.compose.ui.platform.AndroidUiDispatcher.Main) {
+            val fromT = turnT.floatValue
+            val dur = (t.durationMs * kotlin.math.abs(toT - fromT)).coerceAtLeast(60f)
+            val intervals = ArrayList<Float>(64)
+            var start = -1L
+            var last = -1L
+            while (true) {
+                val now = androidx.compose.runtime.withFrameNanos { it }
+                if (start < 0) start = now
+                if (last >= 0) intervals += (now - last) / 1_000_000f
+                last = now
+                val x = ((now - start) / 1_000_000f / dur).coerceIn(0f, 1f)
+                turnT.floatValue = fromT + (toT - fromT) * easing(x)
+                if (x >= 1f) break
+            }
+            endTurn(t, intervals)
+        }
+    }
+
+    private fun endTurn(t: Turn, intervals: List<Float>) {
+        if (turn !== t) return
+        val p50 = PageTurnMath.percentile(intervals, 50f)
+        val p95 = PageTurnMath.percentile(intervals, 95f)
+        Log.d(
+            TAG,
+            "Turn anim ${t.style.name.lowercase()}${if (t.interactive) " (drag)" else ""} view ${t.from + 1}->${t.to + 1}" +
+                "${if (t.target == 0f) " cancelled" else ""}: ${intervals.size + 1} frames, frame interval p50 ${"%.1f".format(p50)} ms, p95 ${"%.1f".format(p95)} ms",
+        )
+        // Too slow for the curl on this device: after a few slow curls in a row, use Slide.
+        if (t.style == TurnStyle.CURL && intervals.size >= 5) {
+            slowCurlTurns = if (p95 > PageTurnMath.SLOW_P95_MS) slowCurlTurns + 1 else 0
+            if (slowCurlTurns >= PageTurnMath.SLOW_TURNS_TO_FALL_BACK) {
+                TurnSupport.disableCurl("too slow: frame interval p95 ${"%.1f".format(p95)} ms in $slowCurlTurns curl turns in a row")
+            }
+        }
+        turn = null
+        dragCurl = null
+        turnT.floatValue = 0f
+        turnJob = null
+    }
+
+    /**
+     * Finish the running turn instantly (a new turn, the menu, a mode change, the lid closing).
+     * A drag still held is completed if it was past the threshold, else dropped.
+     */
+    fun finishTurnNow(reason: String) {
+        val t = turn ?: return
+        turnJob?.cancel()
+        turnJob = null
+        if (t.interactive && !t.released && shownIndex == t.from && PageTurnMath.shouldComplete(dragFraction, 0f)) {
+            commitDrag(t)
+        }
+        turn = null
+        dragCurl = null
+        turnT.floatValue = 0f
+        Log.d(TAG, "Turn animation finished early ($reason)")
+    }
+
+    // ---- drags: the page follows the finger ----
+
+    /**
+     * A horizontal drag toward [side] began. Starts an interactive turn if the page there is
+     * already rendered and animations are on; returns its id, or null (then the old swipe-on-
+     * release behaviour applies).
+     */
+    fun beginDrag(side: Side): Int? {
+        val p = pagination ?: return null
+        if (scrubPos != null || viewIndex != shownIndex) return null
+        val delta = if ((side == Side.RIGHT) != book.rtl) 1 else -1
+        val target = shownIndex + delta
+        if (target !in p.views.indices || !viewReady(p, target) || !viewReady(p, shownIndex)) return null
+        val (style, ms) = chooseStyle(TurnCause.NORMAL, delta)
+        if (style == TurnStyle.NONE) return null
+        finishTurnNow("drag started")
+        val t = Turn(++turnSeq, shownIndex, target, style, ms, isSwapped(app.settings.mode), interactive = true)
+        dragFraction = 0f
+        turnT.floatValue = 0f
+        turn = t
+        return t.id
+    }
+
+    /**
+     * The finger moved. [w] x [h] = the touched page area; [start] / [finger] in its pixels;
+     * [radius] = the curl radius there. The grabbed corner follows the finger on the page that
+     * turns (curl); otherwise the progress follows the distance moved.
+     */
+    fun dragTo(id: Int, screen: Screen, regionSide: Side?, w: Int, h: Int, start: androidx.compose.ui.geometry.Offset, finger: androidx.compose.ui.geometry.Offset, radius: Float) {
+        val t = turn ?: return
+        if (t.id != id || t.released) return
+        val p = pagination ?: return
+        val mode = app.settings.mode
+        val rtl = book.rtl
+        val hinge = turnHasHinge(p, t, mode)
+        val startSide = PageTurnMath.startSide(t.forward, rtl)
+        val role = when {
+            hinge && regionSide != null -> PageTurnMath.roleOf(regionSide, startSide)
+            !hinge && regionSide == null -> RegionRole.SINGLE
+            else -> null // page areas don't match this turn's layout: follow the distance only
+        }
+        val wf = w.toFloat()
+        // Travel toward the turn: the finger moves away from the side the sheet starts on.
+        val moved = (if (startSide == Side.RIGHT) start.x - finger.x else finger.x - start.x).coerceAtLeast(0f)
+        dragFraction = (moved / wf).coerceIn(0f, 1f)
+        val tracksCorner = role == RegionRole.SOURCE || (role == RegionRole.SINGLE && t.forward)
+        if (tracksCorner && role != null) {
+            val mirror = PageTurnMath.freeEdgeLeft(role, regionSide, rtl)
+            val fx = if (mirror) wf - finger.x else finger.x
+            val cy = PageTurnMath.grabbedCornerY(start.y, h.toFloat())
+            val curl = PageTurnMath.curlFromDrag(wf, cy, fx, finger.y, radius, h.toFloat())
+            if (curl != null) {
+                dragCurl = DragCurl(screen, regionSide, curl)
+                turnT.floatValue = PageTurnMath.progressForAxis(role, curl.a, wf, radius)
+            } else {
+                dragCurl = null
+                turnT.floatValue = 0f
+            }
+        } else {
+            dragCurl = null
+            turnT.floatValue = if (hinge) dragFraction * PageTurnMath.HANDOFF else dragFraction
+        }
+    }
+
+    /** The finger let go; [velocity] = px/s toward the turn. Completes or springs back. */
+    fun endDrag(id: Int, velocity: Float) {
+        val t = turn ?: return
+        if (t.id != id || t.released) return
+        val complete = PageTurnMath.shouldComplete(dragFraction, velocity)
+        t.released = true
+        t.releaseT = turnT.floatValue
+        t.releaseTheta = dragCurl?.curl?.theta ?: 0f
+        t.target = if (complete) 1f else 0f
+        dragCurl = null
+        if (complete) commitDrag(t)
+        Log.d(TAG, "Drag released at ${"%.0f".format(dragFraction * 100)} % of the page, ${"%.0f".format(velocity)} px/s -> ${if (complete) "turn" else "spring back"}")
+        runTurn(t, t.target, PageTurnMath::easeOut)
+    }
+
+    /** A drag turn completes: the reader moves to the new view (position, prefetch, save). */
+    private fun commitDrag(t: Turn) {
+        val p = pagination ?: return
+        if (viewIndex == t.to) return
+        logTurn(viewIndex, t.to, p)
+        viewIndex = t.to
+        turnStartedAt = SystemClock.uptimeMillis()
+        swappedView = null
+        shownIndex = t.to // the overlay covers the pages until the animation ends
+        Background.markBusy()
+        prefetch()
+        scheduleSave()
+        checkCompleted()
+    }
+
+    /** Does [t] fold at a hinge (two page areas) or turn as one sheet? */
+    fun turnHasHinge(p: Pagination, t: Turn, mode: ReadingMode): Boolean {
+        fun twoPages(i: Int) = p.views.getOrNull(i)?.let { !it.wide && it.units.size == 2 } == true
+        return PageTurnMath.hasHinge(mode.isBook, twoPages(t.from), twoPages(t.to))
+    }
+
     // ---- navigation -----------------------------------------------------------------------
 
-    fun goTo(index: Int) {
+    fun goTo(index: Int, cause: TurnCause = TurnCause.NORMAL) {
         val p = pagination ?: return
         val target = index.coerceIn(0, p.views.size - 1)
         if (target == viewIndex) return
         logTurn(viewIndex, target, p)
         viewIndex = target
         turnStartedAt = SystemClock.uptimeMillis()
-        commitWhenReady()
+        commitWhenReady(if (repeatingTurns && cause == TurnCause.NORMAL) TurnCause.REPEAT else cause)
         dev.thorreader.app.Background.markBusy() // background work waits while pages are being turned
         prefetch()
         scheduleSave()
@@ -488,12 +765,12 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
     private val forwardSide: Side get() = if (book.rtl) Side.LEFT else Side.RIGHT
 
     /** Turn [delta] views. Returns false if it couldn't move (edge of the book / not laid out). */
-    private fun step(delta: Int): Boolean {
+    private fun step(delta: Int, cause: TurnCause = TurnCause.NORMAL): Boolean {
         val p = pagination ?: return false
         val t = viewIndex + delta
         return when {
             t in p.views.indices -> {
-                goTo(t)
+                goTo(t, cause)
                 true
             }
             atEdge(delta) -> {
@@ -505,12 +782,12 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         }
     }
 
-    fun forward() = step(1)
-    fun back() = step(-1)
+    fun forward(cause: TurnCause = TurnCause.NORMAL) = step(1, cause)
+    fun back(cause: TurnCause = TurnCause.NORMAL) = step(-1, cause)
 
     /** Turn toward the page that is physically on the right (next page, or previous in RTL). */
-    fun physicalRight() = step(if (book.rtl) -1 else 1)
-    fun physicalLeft() = step(if (book.rtl) 1 else -1)
+    fun physicalRight(cause: TurnCause = TurnCause.NORMAL) = step(if (book.rtl) -1 else 1, cause)
+    fun physicalLeft(cause: TurnCause = TurnCause.NORMAL) = step(if (book.rtl) 1 else -1, cause)
 
     // ---- scrubber & jumps ------------------------------------------------------------------
     //
@@ -582,9 +859,10 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         scrubPos = null
         scrubScreen = null
         if (confirm) {
+            val before = shownIndex
             viewIndex = target.coerceIn(0, (pagination?.views?.size ?: 1) - 1)
             turnStartedAt = SystemClock.uptimeMillis()
-            commitWhenReady()
+            commitWhenReady(TurnCause.JUMP, stepsFrom = before)
             if (origin != null && pagination?.findView(origin) != viewIndex) recordJump(origin)
             prefetch()
             scheduleSave()
@@ -598,17 +876,17 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
     }
 
     /** Jump to view [index] (chapter list, -10/+10, go-to-page), remembering where we were. */
-    fun jumpTo(index: Int) {
+    fun jumpTo(index: Int, cause: TurnCause = TurnCause.JUMP) {
         val p = pagination ?: return
         val target = index.coerceIn(0, p.views.size - 1)
         if (target == viewIndex) return
         val origin = currentAnchor()
-        goTo(target)
+        goTo(target, cause)
         recordJump(origin)
     }
 
-    /** Jump by [delta] views in reading order. */
-    fun jumpBy(delta: Int) = jumpTo(viewIndex + delta)
+    /** Jump by [delta] views in reading order (reader menu ±1 / ±10: the full animation). */
+    fun jumpBy(delta: Int) = jumpTo(viewIndex + delta, TurnCause.NORMAL)
 
     /** Go to printed page [n]. Returns false if that page doesn't exist (yet). */
     fun jumpToPage(n: Int): Boolean {
@@ -623,7 +901,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         val p = pagination ?: return
         backTarget = null
         backPillVisible = false
-        goTo(p.findView(a))
+        goTo(p.findView(a), TurnCause.JUMP)
         Log.i(TAG, "Back to position before the jump")
     }
 
@@ -670,6 +948,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
 
     /** The book's own saved mode changed (the screens already switched). */
     fun applyMode(mode: ReadingMode) {
+        finishTurnNow("mode change")
         book = book.copy(mode = mode.name)
         swappedView = null
     }
@@ -781,6 +1060,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
     }
 
     fun close() {
+        finishTurnNow("book closed")
         savePosition()
         showStatus(null)
         scope.cancel()
@@ -799,5 +1079,18 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
 
         /** A turn whose pages aren't ready yet shows "Loading…" only after this long. */
         const val TURN_BADGE_DELAY_MS = 300L
+    }
+}
+
+/** Whether the GPU curl can be used (it falls back to Slide for the rest of the session, logged once). */
+object TurnSupport {
+    @Volatile
+    var curlDisabledReason: String? = null
+        private set
+
+    fun disableCurl(reason: String) {
+        if (curlDisabledReason != null) return
+        curlDisabledReason = reason
+        Log.w(TAG, "Page curl off for this session, using Slide instead: $reason")
     }
 }

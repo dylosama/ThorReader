@@ -805,3 +805,93 @@ Fix:
   Genre lists 252-1043 px (791 px, same as the flat list), last entry fully reachable, d-pad
   focus scrolls into view. Regression test: LayoutRulesTest (fails on the old code).
   Also: the series-number fields now really get the number pad.
+
+### Step 22 (v0.3.0, versionCode 4): page-turn animations
+Settings (reader menu): "Page turn" Curl / Flip / Slide / Fade / None (default Curl, global;
+"This book" row = Same as all / a style, per-book override, pref `turn_style_book`), speed
+Fast / Normal / Slow (220 / 350 / 600 ms, ease-in-out cubic), Settings: "Simpler animation on
+low battery" (default On: below 15 % and not charging -> Fade).
+
+Design (all code in `engine/PageTurn.kt` = pure geometry/timing, unit-tested, and
+`ui/PageTurnOverlay.kt` = drawing):
+- ONE shared clock: `ReaderSession.turn` (from view, to view, direction, style, duration) and
+  `turnT` (0..1, a snapshot state). A single driver coroutine on the main thread's frame clock
+  (Choreographer, `withFrameNanos`) advances `turnT`; both windows (MainActivity on display 0,
+  Presentation on display 4) read the same value in their draw phase, so they move in the same
+  frame. Nothing runs when no turn is active: the overlay is only composed while `turn != null`.
+- Atomic commits stay (Step 21): an animation starts only when the target view's pages are
+  already rendered (prefetch). If a turn had to wait for pages it commits WITHOUT animation
+  ("Loading…" after 300 ms, as before). `shownIndex` switches at the start of the turn; the
+  overlay is opaque over each page area, so the live (new) page underneath appears exactly
+  when the overlay is removed - no flash.
+- Each page area is a REGION. A turn is either one region (a single page / a wide spread
+  turns as one sheet) or two regions on either side of a HINGE (book modes 1/2: the two
+  screens; modes 3/4: the two halves of a spread, folding at the centre).
+  Two regions: the sheet starts on side S (forward = the next-page side: right in LTR, left in
+  RTL; backward = the other side). Region on S = SOURCE (phase 1, t 0..0.5): its old page curls
+  from the outer edge to the hinge, revealing its new page. Other region = DESTINATION (phase 2,
+  t 0.5..1): its new page unrolls from the hinge onto the old page. Axis at the hinge on both
+  sides at t = 0.5, angle forced straight there, one easing over the whole t -> continuous
+  speed across the hinge. One region: forward = old page curls off from the next-page edge
+  over the new page; backward = the same played in reverse with the new page as the sheet.
+- Textures: per region, the old and new page are recorded as a `Picture` (rendered bitmap +
+  theme colours + bookmark ribbon + comic page-number pill; books' running header and number
+  are already in the bitmap) - so they move with their page. Curl needs bitmaps: the picture is
+  rasterised on the GPU into a HARDWARE bitmap (books full size = crisp; PDF/comics at half
+  size); recycled when the turn ends (max 4 per screen, ~bounded). Slide/Fade/Flip draw the
+  pictures directly (no bitmap at all).
+- CURL = a GPU cylinder-deformation fragment shader (AGSL `RuntimeShader`, Android 13+, which
+  Android's renderer compiles to OpenGL ES 3.2 on the Thor's Adreno 740). Per pixel it inverts
+  the cylinder mapping: back of the folded flap (faint mirrored, lightened copy = 85 % paper
+  tone; comics: plain paper tone, dark grey in Night), the bent part with a lighting gradient,
+  the flat page, and the page underneath with a soft shadow at the cylinder edge and under the
+  flap. Night: back and shadows stay dark. Chosen over a separate GLSurfaceView: no extra
+  surface / EGL context per screen, no touch interop problems over the page, nothing alive
+  when idle. Radius = 0.28 inch converted with each screen's real dpi, so the bend has the same
+  physical size on both screens (the two screens have different pixel densities).
+- FLIP: the sheet rotates about the hinge (Camera rotateY, slight perspective, darkening near
+  90°); two regions: phase 1 0->90° on the source, phase 2 90->0° on the destination.
+  SLIDE: old moves out, new moves in, soft shadow on the leading edge. FADE: crossfade.
+- Input: a horizontal drag starts an interactive turn if the target view is already rendered:
+  the curl corner tracks the finger (axis = perpendicular bisector of corner->finger, corrected
+  for the cylinder so the corner lands under the finger), top/bottom thirds lift that corner,
+  middle curls straight. Release: complete if t >= 0.35 or a fast flick (> 1000 px/s) in the
+  turn direction, else spring back. Taps, d-pad, shoulders, menu ±1/±10: full animation.
+  Held buttons (repeat) and one-view jumps from scrubber / go to page / chapters / bookmark: a
+  fast Slide (120 ms); bigger jumps: no animation. A new turn mid-animation finishes the
+  current one instantly, then starts (no queue). Edge-of-book shadow unchanged.
+- Safety: the menu opening, a mode change, the app stopping / lid closing / screen off all
+  finish the turn instantly (the position is already saved by goTo). Shader creation failure
+  or a hardware-bitmap failure -> Slide for the session, logged. Too slow: a turn whose p95
+  frame interval > 34 ms (two frames at 60 Hz) counts as slow; 3 slow curl turns in a row ->
+  Slide, logged with the numbers.
+- Frame rate stays at the Step 20 60 Hz hint: switching the display to 120 Hz for each turn
+  costs a mode switch (a dropped frame) on each screen plus power; measured frame times decide.
+- Logs: "Turn anim <style> view a->b: N frames, p50 x ms, p95 y ms" (debug) and fallbacks.
+- Tests (PageTurnTest): curl projection (flat part unchanged, fold lands on the axis at height
+  2r, corner tracks the finger), hinge handoff timing / continuity, RTL mirroring of sides and
+  roles, completion threshold and flick.
+Checked on the Thor (debug build, Mode 1):
+- Dune (EPUB, Paper), turn slowed to 4-10 s with the debug-only `debug.thorreader.turnms`
+  property for screenshots: at ~30 % the right page (bottom screen) lifts from its outer edge
+  and folds back toward the hinge, the flap shows the faint mirrored page (its number "5"
+  readable mirrored), the next page "7" underneath, soft shadows; at ~60 % the new left page
+  "6" lands on the top screen from the hinge outward with the old page's last strip at the
+  outer edge. Backward turns the same, mirrored. Flip: the page swings up toward the reader
+  around the hinge, darkening, and lands on the other screen.
+- Blue Period (CBZ manga, right-to-left), finger drag: the page follows the finger from the
+  left page's outer edge; released at 51 % -> completes. Plain paper back, only as wide as the
+  printed page (comic textures keep the margins transparent; first try painted the back over
+  the black side bars - fixed).
+- Frame times, 10 normal-speed curl turns (350 ms): animation clock frame interval p50 16.7 ms,
+  p95 16.8 ms (one 33 ms frame in the very first turn); gfxinfo over both windows: 492 frames,
+  render time p50 5 ms, p90 6 ms, p95 21 ms, 13 janky (2.6 %) = about one per turn: the first
+  frame, which creates the GPU textures before anything moves.
+- Idle after a turn: 0 frames rendered and 10 ms of CPU in 15 s (gfxinfo, /proc stat).
+- Rapid input (6 presses 80 ms apart): each turn "finished early (new turn)", every page
+  pre-rendered ("hit"), no crash. Menu (Start) mid-turn: "finished early (menu opened)". Screen
+  off right after a turn: position saved, automatic bookmark on, removed on screen on.
+- Not tested on the device: Modes 3/4 (one-screen spreads folding at the centre), the low-
+  battery Fade (the Thor was charging), and the slow-device fallback (never triggered).
+- Debug tool: `adb shell setprop debug.thorreader.turnms 4000` (debug builds only, read when a
+  book opens) slows normal turns down for screen recordings; `setprop ... 0` turns it off.

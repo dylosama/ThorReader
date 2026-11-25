@@ -185,6 +185,17 @@ fun SettingsPanel() {
             color = HouseStyle.Subtle, fontSize = 13.sp,
         )
 
+        SectionLabel("Page turn")
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Simpler animation on low battery", color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+            Chip("On", settings.simplerTurnOnLowBattery) { settings.updateSimplerTurnOnLowBattery(true) }
+            Chip("Off", !settings.simplerTurnOnLowBattery) { settings.updateSimplerTurnOnLowBattery(false) }
+        }
+        Text(
+            "Below 15 % (not charging), pages fade instead of curling. The style and speed are in the reader menu.",
+            color = HouseStyle.Subtle, fontSize = 13.sp,
+        )
+
         SectionLabel("Storage")
         StorageSection()
 

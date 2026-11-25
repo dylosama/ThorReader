@@ -58,6 +58,7 @@ class ThorApp : Application() {
     var menuScreen: Screen?
         get() = menuScreenState.value
         set(value) {
+            if (value != null && menuScreenState.value == null) session?.finishTurnNow("menu opened")
             menuScreenState.value = value
             if (value != null) tutorialDone(TutorialStep.OPEN_MENU)
         }
@@ -194,6 +195,7 @@ class ThorApp : Application() {
             Log.i(TAG, "Mode ${settings.mode.number} -> ${mode.number} (${mode.title}); open book: ${session?.book?.title}")
             lastModeChangeAt = SystemClock.uptimeMillis()
             stopRepeating() // the key-up may arrive at another window during the screen handover
+            session?.finishTurnNow("mode change")
             settings.updateMode(mode)
         }
         session?.let { s ->
@@ -419,6 +421,7 @@ class ThorApp : Application() {
 
     private fun onLeave(reason: String) {
         Log.i(TAG, "Leaving: $reason")
+        session?.finishTurnNow("leaving: $reason") // lid closed mid-turn: finish instantly (position is saved below)
         val s = session ?: return
         returnJob?.cancel()
         if (autoBookmarkBook == s.book.id && s.bookmarkHere) return // already done (screen off + stop)
@@ -594,7 +597,11 @@ class ThorApp : Application() {
             delay(REPEAT_FIRST_DELAY_MS)
             var interval = REPEAT_START_MS
             while (true) {
-                if (!action()) break // reached the edge of the book
+                // Held button: continuous flipping uses a fast slide, never the slow curl.
+                val s = session
+                s?.repeatingTurns = true
+                val moved = try { action() } finally { s?.repeatingTurns = false }
+                if (!moved) break // reached the edge of the book
                 delay(interval)
                 interval = (interval * REPEAT_ACCEL).toLong().coerceAtLeast(REPEAT_FASTEST_MS)
             }

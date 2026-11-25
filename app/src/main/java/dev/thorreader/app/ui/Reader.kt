@@ -156,6 +156,8 @@ fun ReaderScreen(session: ReaderSession, screen: Screen, mode: ReadingMode) {
                         PageSlot(session, p, view.units[1 - leftIdx], p.slotFor(view, 1 - leftIdx), screen, setOf(Side.RIGHT), Modifier.weight(1f).fillMaxHeight())
                     }
                 }
+                // The page-turn animation (only composed while a turn runs; one shared clock).
+                PageTurnOverlay(session, p, screen, mode)
                 // Per-turn log: when this screen actually shows the new view.
                 LaunchedEffect(index) {
                     val t = session.turnStartedAt
@@ -266,6 +268,7 @@ fun PageSlot(
     val ribbonSide = if (edges.size == 1) edges.first() else if (rtl) Side.RIGHT else Side.LEFT
     val currentMarked by rememberUpdatedState(marked)
     val currentRibbonSide by rememberUpdatedState(ribbonSide)
+    val dpi = androidx.compose.ui.platform.LocalContext.current.resources.displayMetrics.xdpi
 
     /** How far an overflowing page can scroll, for a box of [size]. */
     fun maxScroll(size: IntSize): Float {
@@ -317,6 +320,11 @@ fun PageSlot(
                     var vertical = false
                     var menuOpened = false
                     var pulled = false
+                    // A drag that turns the page with the finger (page-turn animation).
+                    var dragTried = false
+                    var dragTurn: Int? = null
+                    var dragSide = Side.RIGHT
+                    val velocity = androidx.compose.ui.input.pointer.util.VelocityTracker()
                     while (true) {
                         val waitingForHold = !dragging && !multi && !menuOpened
                         val remaining = holdMs - (now - down.uptimeMillis)
@@ -367,12 +375,25 @@ fun PageSlot(
                                 else -> {
                                     // Swiping toward the end of the book: the edge resists.
                                     val side = if (total.x < 0) Side.RIGHT else Side.LEFT
-                                    if (session.sideBlocked(side)) {
+                                    if (session.sideBlocked(side) && dragTurn == null) {
                                         if (!pulled) app.tick()
                                         pulled = true
                                         session.edgePull = side to abs(total.x)
-                                    } else if (session.edgePull != null) {
-                                        session.edgePull = null
+                                    } else {
+                                        if (session.edgePull != null) session.edgePull = null
+                                        // The page follows the finger (if the page there is ready).
+                                        if (!dragTried) {
+                                            dragTried = true
+                                            dragSide = side
+                                            dragTurn = session.beginDrag(side)
+                                        }
+                                        dragTurn?.let { id ->
+                                            velocity.addPosition(ch.uptimeMillis, ch.position)
+                                            session.dragTo(
+                                                id, screen, currentEdges.singleOrNull(), size.width, size.height, down.position, ch.position,
+                                                dev.thorreader.app.engine.PageTurnMath.radiusPx(dpi, size.width.toFloat()),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -381,6 +402,13 @@ fun PageSlot(
                     }
                     hold = null
                     session.edgePull = null // eases back
+                    // A finger-driven turn: complete it or spring back (a second finger cancels).
+                    dragTurn?.let { id ->
+                        val vx = velocity.calculateVelocity().x
+                        val toward = if (dragSide == Side.RIGHT) -vx else vx
+                        session.endDrag(id, if (multi) -Float.MAX_VALUE else toward)
+                        return@awaitEachGesture
+                    }
                     if (menuOpened || multi) return@awaitEachGesture
                     if (dragging) {
                         // Horizontal swipe turns the page (finger moving left = page on the right).

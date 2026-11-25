@@ -281,6 +281,33 @@ fun ReaderMenu(session: ReaderSession) {
                     )
                 }
 
+                // --- Page-turn animation ---
+                Section("Page turn")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    dev.thorreader.app.engine.TurnStyle.entries.forEach { s ->
+                        Chip(s.label, settings.turnStyle == s) { settings.updateTurnStyle(s) }
+                    }
+                }
+                val override = settings.turnStyleOverride(book.id)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("This book", color = Color.White, fontSize = 14.sp)
+                    FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Chip("Same as all", override == null) { settings.updateTurnStyleOverride(book.id, null) }
+                        dev.thorreader.app.engine.TurnStyle.entries.forEach { s ->
+                            Chip(s.label, override == s) { settings.updateTurnStyleOverride(book.id, s) }
+                        }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Speed", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    dev.thorreader.app.engine.TurnSpeed.entries.forEach { s ->
+                        Chip(s.label, settings.turnSpeed == s) { settings.updateTurnSpeed(s) }
+                    }
+                }
+                dev.thorreader.app.engine.TurnSupport.curlDisabledReason?.let {
+                    Text("Curl isn't available on this device right now, so Slide is used.", color = SubtleText, fontSize = 13.sp)
+                }
+
                 // --- Page furniture ---
                 Section("Header & page number")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
