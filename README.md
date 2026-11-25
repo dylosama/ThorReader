@@ -34,7 +34,8 @@ Each book remembers its own mode. Switch from the reader menu.
   physically right direction for the current mode. In right-to-left manga the shoulders are
   swapped by default so the easy one goes forward ("Swap L1/R1 for manga" in the reader menu).
 - Page-turn animations (reader menu, "Page turn"): a realistic paper curl drawn on the GPU,
-  Flip, Slide, Fade or None, per book if you like, at Fast / Normal / Slow speed. In the book
+  Flip, Slide, Fade or None, per book if you like, at Fast / Normal / Slow speed. Buttons and
+  taps curl the page from its bottom (or top) outer corner. In the book
   modes one sheet turns across the hinge from one screen to the other; swipes make the page
   follow your finger. Held buttons and jumps use a quick slide; below 15 % battery pages fade.
 - Reading position, mode and text settings are remembered per book.

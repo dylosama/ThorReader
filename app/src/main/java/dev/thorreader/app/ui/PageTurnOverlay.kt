@@ -98,11 +98,12 @@ private fun buildRegions(
     val style = Pictures(session, p, density)
     val hinge = session.turnHasHinge(p, turn, mode)
 
-    fun region(left: Int, width: Int, side: Side?, role: RegionRole, oldPic: Picture?, newPic: Picture?): TurnRegion? {
+    fun region(left: Int, width: Int, side: Side?, role: RegionRole, oldPic: Picture?, newPic: Picture?, oldBack: Int, newBack: Int): TurnRegion? {
         if (oldPic == null || newPic == null) return null
         return TurnRegion(
             left.toFloat(), width, h, role, side, PageTurnMath.freeEdgeLeft(role, side, rtl), oldPic, newPic,
             PageTurnMath.radiusPx(dpi, width.toFloat()), if (session.reflowable) 1f else 0.5f, style.theme, session.reflowable, start,
+            oldBack, newBack,
         )
     }
 
@@ -111,31 +112,40 @@ private fun buildRegions(
             // One page area per screen; the hinge is between the screens.
             val screenIsLeft = (screen == Screen.TOP) == (mode == ReadingMode.BOOK)
             val side = if (screenIsLeft) Side.LEFT else Side.RIGHT
+            fun content(vi: Int, swapped: Boolean) = screenPages(p, vi, mode, screen, swapped).firstOrNull()
             fun pic(vi: Int, swapped: Boolean): Picture? {
                 val v = p.views[vi]
-                val (unit, slot) = screenPages(p, vi, mode, screen, swapped).firstOrNull() ?: return style.blank(w, h)
+                val (unit, slot) = content(vi, swapped) ?: return style.blank(w, h)
                 val dim = swapped && screen == Screen.BOTTOM && isSplitSpread(v)
                 return style.page(unit, slot, w, h, side, dim)
             }
-            listOfNotNull(region(0, w, side, PageTurnMath.roleOf(side, start), pic(turn.from, turn.fromSwapped), pic(turn.to, false)))
-                .takeIf { it.size == 1 }
+            fun back(vi: Int, swapped: Boolean): Int = content(vi, swapped)?.let { (u, s) -> style.backColor(u, s) } ?: style.backColor(null, null)
+            listOfNotNull(
+                region(
+                    0, w, side, PageTurnMath.roleOf(side, start), pic(turn.from, turn.fromSwapped), pic(turn.to, false),
+                    back(turn.from, turn.fromSwapped), back(turn.to, false),
+                ),
+            ).takeIf { it.size == 1 }
         }
         hinge -> {
             // Two pages side by side: each half is a page area, folding at the centre.
             val half = w / 2
             val leftIdx = if (rtl) 1 else 0
-            fun pic(v: dev.thorreader.app.engine.PageView, vi: Int, left: Boolean): Picture? {
-                val k = if (left) leftIdx else 1 - leftIdx
-                return style.page(v.units[k], p.slotFor(v, k), if (left) half else w - half, h, if (left) Side.LEFT else Side.RIGHT, false)
-            }
+            fun k(left: Boolean) = if (left) leftIdx else 1 - leftIdx
+            fun pic(v: dev.thorreader.app.engine.PageView, left: Boolean): Picture? =
+                style.page(v.units[k(left)], p.slotFor(v, k(left)), if (left) half else w - half, h, if (left) Side.LEFT else Side.RIGHT, false)
+            fun back(v: dev.thorreader.app.engine.PageView, left: Boolean): Int = style.backColor(v.units[k(left)], p.slotFor(v, k(left)))
             listOfNotNull(
-                region(0, half, Side.LEFT, PageTurnMath.roleOf(Side.LEFT, start), pic(oldV, turn.from, true), pic(newV, turn.to, true)),
-                region(half, w - half, Side.RIGHT, PageTurnMath.roleOf(Side.RIGHT, start), pic(oldV, turn.from, false), pic(newV, turn.to, false)),
+                region(0, half, Side.LEFT, PageTurnMath.roleOf(Side.LEFT, start), pic(oldV, true), pic(newV, true), back(oldV, true), back(newV, true)),
+                region(half, w - half, Side.RIGHT, PageTurnMath.roleOf(Side.RIGHT, start), pic(oldV, false), pic(newV, false), back(oldV, false), back(newV, false)),
             ).takeIf { it.size == 2 }
         }
         else -> {
             // One sheet over the whole screen (a single page, a wide spread, or mixed views).
-            listOfNotNull(region(0, w, null, RegionRole.SINGLE, style.view(oldV, w, h, rtl), style.view(newV, w, h, rtl))).takeIf { it.size == 1 }
+            fun back(v: dev.thorreader.app.engine.PageView): Int = style.backColor(v.units[0], p.slotFor(v, 0))
+            listOfNotNull(
+                region(0, w, null, RegionRole.SINGLE, style.view(oldV, w, h, rtl), style.view(newV, w, h, rtl), back(oldV), back(newV)),
+            ).takeIf { it.size == 1 }
         }
     }
 }
@@ -149,6 +159,22 @@ private class Pictures(val session: ReaderSession, val p: Pagination, val densit
         if (reflow) colorFilter = ColorMatrixColorFilter(theme.colorMatrix.values)
     }
     private val background = if (reflow) theme.paper.toArgb() else android.graphics.Color.BLACK
+
+    /**
+     * The colour of the back of the turning page. Books: the theme's paper (Night stays dark).
+     * Comics / PDF: the page's own paper colour (sampled from its border), dimmed a little in
+     * Night so it isn't glaring; near-white if it can't be sampled.
+     */
+    fun backColor(unit: PageUnit?, slot: SlotSize?): Int {
+        if (reflow) return theme.paper.toArgb()
+        val bmp = if (unit != null && slot != null && unit !is BlankUnit) session.cached(p, unit, slot, 1f)?.bitmap else null
+        val c = bmp?.let { paperColorOf(it) } ?: FALLBACK_BACK
+        return if (theme == PageTheme.NIGHT) dim(c, 0.88f) else c
+    }
+
+    private fun dim(c: Int, k: Float): Int = android.graphics.Color.rgb(
+        (android.graphics.Color.red(c) * k).toInt(), (android.graphics.Color.green(c) * k).toInt(), (android.graphics.Color.blue(c) * k).toInt(),
+    )
 
     fun blank(w: Int, h: Int): Picture = Picture().also { pic ->
         pic.beginRecording(w, h).let { if (reflow) it.drawColor(background) }
@@ -235,6 +261,54 @@ private class Pictures(val session: ReaderSession, val p: Pagination, val densit
     }
 }
 
+/** Near-white paper, when a page's own colour can't be sampled. */
+private val FALLBACK_BACK = android.graphics.Color.rgb(244, 241, 234)
+
+/** Sampled paper colours, one per rendered page bitmap (dropped with the bitmap). */
+private val paperColors = java.util.WeakHashMap<Bitmap, Int>()
+
+/**
+ * A comic / PDF page's paper colour: the median colour of a thin strip along its four edges.
+ * Near-black pixels are ignored (black scan borders / letterboxing). Null if sampling fails.
+ */
+fun paperColorOf(b: Bitmap): Int? {
+    paperColors[b]?.let { return it }
+    val c = runCatching { samplePaper(b) }.getOrNull() ?: return null
+    paperColors[b] = c
+    return c
+}
+
+private fun samplePaper(b: Bitmap): Int? {
+    if (b.isRecycled || b.config == Bitmap.Config.HARDWARE) return null
+    val w = b.width
+    val h = b.height
+    if (w < 16 || h < 16) return null
+    val strip = max(2, (min(w, h) * 0.02f).toInt())
+    val step = max(1, max(w, h) / 300)
+    val rs = ArrayList<Int>(4096)
+    val gs = ArrayList<Int>(4096)
+    val bs = ArrayList<Int>(4096)
+    fun take(x: Int, y: Int) {
+        val px = b.getPixel(x, y)
+        val r = android.graphics.Color.red(px)
+        val g = android.graphics.Color.green(px)
+        val bl = android.graphics.Color.blue(px)
+        if (r + g + bl < 30) return // black border, not paper
+        rs += r; gs += g; bs += bl
+    }
+    for (x in 0 until w step step) for (d in 0 until strip step 2) {
+        take(x, d)
+        take(x, h - 1 - d)
+    }
+    for (y in 0 until h step step) for (d in 0 until strip step 2) {
+        take(d, y)
+        take(w - 1 - d, y)
+    }
+    if (rs.size < 20) return null
+    fun median(v: ArrayList<Int>): Int = v.sorted()[v.size / 2]
+    return android.graphics.Color.rgb(median(rs), median(gs), median(bs))
+}
+
 // ---- drawing one page area ----------------------------------------------------------------------
 
 /**
@@ -258,6 +332,9 @@ private class TurnRegion(
     val theme: PageTheme,
     val reflow: Boolean,
     val startSide: Side,
+    /** Colour of the back of the old / new page (books: theme paper; comics: sampled). */
+    val oldBack: Int,
+    val newBack: Int,
 ) {
     private var oldBmp: Bitmap? = null
     private var newBmp: Bitmap? = null
@@ -362,12 +439,23 @@ private class TurnRegion(
         val sheetOld = PageTurnMath.sheetIsOld(role, turn.forward)
         var a = PageTurnMath.axisAt(role, t, w.toFloat(), radius, turn.forward)
         var theta = 0f
+        var pivotY = h / 2f
         if (drag != null && !turn.released && drag.screen == screen && drag.regionSide == side) {
             a = drag.curl.a
             theta = drag.curl.theta
-        } else if (turn.released && role != RegionRole.DEST) {
+        } else if (turn.interactive && turn.released && role != RegionRole.DEST) {
             theta = PageTurnMath.thetaAt(turn.releaseTheta, turn.releaseT, turn.target, t)
+        } else if (turn.cornerTheta0 != 0f) {
+            // Button / tap: the outer bottom (or top) corner lifts first, straight at the hinge.
+            theta = PageTurnMath.cornerTheta(role, t, turn.cornerTheta0, turn.forward)
+            pivotY = PageTurnMath.cornerPivotY(turn.cornerTheta0, h.toFloat())
         }
+        val back = if (sheetOld) oldBack else newBack
+        s.setFloatUniform(
+            "paper",
+            android.graphics.Color.red(back) / 255f, android.graphics.Color.green(back) / 255f, android.graphics.Color.blue(back) / 255f, 1f,
+        )
+        s.setFloatUniform("pivotY", pivotY)
         s.setInputShader("sheet", textureShader(if (sheetOld) oldBmp!! else newBmp!!))
         s.setInputShader("under", textureShader(if (sheetOld) newBmp!! else oldBmp!!))
         s.setFloatUniform("size", w.toFloat(), h.toFloat())
@@ -398,16 +486,11 @@ private class TurnRegion(
             newBmp = texture(newPic)
             shader = RuntimeShader(CURL_AGSL).apply {
                 // Back of the page: books show a faint, lightened mirror image of the page (85 %
-                // paper tone); comics a plain paper-coloured back. Night stays dark.
-                val night = theme == PageTheme.NIGHT
-                val back = when {
-                    reflow -> theme.paper
-                    night -> androidx.compose.ui.graphics.Color(0xFF2A2A2A)
-                    else -> androidx.compose.ui.graphics.Color(0xFFE9E4D8)
-                }
-                setFloatUniform("paper", back.red, back.green, back.blue, 1f)
+                // theme paper; Night stays dark); comics / PDF their own sampled paper colour
+                // (set per frame from the sheet's page, see drawCurl).
                 setFloatUniform("backPlain", if (reflow) 0f else 1f)
-                setFloatUniform("shadowK", if (night && reflow) 0.5f else 0.32f)
+                // A soft shadow; only Night books get a stronger one (it's dark there anyway).
+                setFloatUniform("shadowK", if (theme == PageTheme.NIGHT && reflow) 0.45f else 0.2f)
             }
             true
         } catch (e: Throwable) {
@@ -450,6 +533,7 @@ uniform float radius;
 uniform float backPlain;
 uniform float4 paper;
 uniform float shadowK;
+uniform float pivotY;
 
 const float PI = 3.14159265;
 
@@ -477,7 +561,7 @@ half4 backOf(float2 q, float light) {
 half4 main(float2 frag) {
     float2 p = float2(mirror > 0.5 ? size.x - frag.x : frag.x, frag.y);
     float2 n = float2(cos(theta), sin(theta));
-    float2 A = float2(axisA, size.y * 0.5);
+    float2 A = float2(axisA, pivotY);
     float d = dot(p - A, n);
     float r = radius;
     if (d < 0.0) {

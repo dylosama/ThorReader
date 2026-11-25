@@ -455,7 +455,8 @@ fun PageSlot(
                         session.beginScrub(screen)
                         return@awaitEachGesture
                     }
-                    if (down.position.x < size.width / 2f) session.physicalLeft() else session.physicalRight()
+                    val tap = dev.thorreader.app.engine.TurnCause.BUTTON // tap zones curl from a corner, like buttons
+                    if (down.position.x < size.width / 2f) session.physicalLeft(tap) else session.physicalRight(tap)
                 }
             },
     ) {

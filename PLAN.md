@@ -895,3 +895,25 @@ Checked on the Thor (debug build, Mode 1):
   battery Fade (the Thor was charging), and the slow-device fallback (never triggered).
 - Debug tool: `adb shell setprop debug.thorreader.turnms 4000` (debug builds only, read when a
   book opens) slows normal turns down for screen recordings; `setprop ... 0` turns it off.
+
+#### Step 22 tweaks (still v0.3.0, not published yet)
+- Corner curl for buttons and taps (`TurnCause.BUTTON`: d-pad, shoulders, Page Up/Down and tap
+  zones): the Curl lifts the BOTTOM outer corner (setting "Button turn corner: Bottom / Top",
+  pref `turn_corner_bottom`, default Bottom). The fold pivots on that corner's edge (so nothing
+  lifts before t = 0), starts at ~26° (`CORNER_THETA` 0.45 rad), stays diagonal through most
+  of phase 1 (tilt × (1 − (t/0.5)²)) and is exactly straight at the hinge on both screens; on
+  the landing screen the same tilt mirrored (× sin(π·u)) so the leading corner touches down
+  first, straight again when flat (`cornerTheta`, `cornerPivotY`, tested). Mirrored for RTL and
+  backward turns by the region frame. Swipes unchanged (finger-driven); held buttons still a
+  fast slide. Bug found on the Thor: the source screen curled straight because every button
+  turn was treated as a "released drag" - fixed (only interactive turns use the release tilt).
+- Back of the page: comics / PDF use the page's own paper colour = median colour of a 2 %
+  strip along the four edges of the rendered page bitmap (near-black pixels ignored), cached per
+  bitmap (WeakHashMap), near-white #F4F1EA if sampling fails; in Night dimmed to 88 %. Books keep
+  the theme paper (faint mirrored text; Night dark). Shaded along the bend as before. Shadows
+  softer: 0.2 (Night books 0.45).
+- Checked on the Thor (Night theme, Mode 1, turns slowed to 6 s, recordings of both screens):
+  Spider-Man forward with Page Down - bottom screen: the bottom outer corner peels up
+  diagonally showing the next page, back in the comic's cream paper tone; top screen: the new
+  page lands corner-first diagonally next to the hinge. Dune: same corner lift; the flap shows
+  faint dark mirrored text, no bright flash. All turns frame interval p50 16.7 / p95 16.8 ms.

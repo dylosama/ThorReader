@@ -372,6 +372,15 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putString("turn_speed", s.name).apply()
     }
 
+    /** "Button turn corner": button / tap curls lift the bottom (default) or the top outer corner. */
+    var buttonTurnCornerBottom by mutableStateOf(prefs.getBoolean("turn_corner_bottom", true))
+        private set
+
+    fun updateButtonTurnCornerBottom(bottom: Boolean) {
+        buttonTurnCornerBottom = bottom
+        prefs.edit().putBoolean("turn_corner_bottom", bottom).apply()
+    }
+
     /** Below 15 % battery (not charging): use the simpler Fade. Default on. */
     var simplerTurnOnLowBattery by mutableStateOf(prefs.getBoolean("turn_low_battery", true))
         private set

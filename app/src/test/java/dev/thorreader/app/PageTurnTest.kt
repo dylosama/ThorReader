@@ -204,4 +204,40 @@ class PageTurnTest {
         val bottom = PageTurnMath.radiusPx(420f, 1080f)
         assertEquals(top / 367f, bottom / 420f, 0.001f)
     }
+
+    // ---- corner curl for buttons and taps ----
+
+    @Test
+    fun buttonTurnsLiftTheOuterCornerAndStraightenAtTheHinge() {
+        val t0 = PageTurnMath.cornerTheta0(bottom = true)
+        val pivot = PageTurnMath.cornerPivotY(t0, h)
+        fun curl(role: RegionRole, t: Float) =
+            Curl(PageTurnMath.axisAt(role, t, w, r), PageTurnMath.cornerTheta(role, t, t0, true), r, pivot)
+        // Nothing lifts before the turn starts.
+        val start = curl(RegionRole.SOURCE, 0f)
+        for ((x, y) in listOf(0f to 0f, w to 0f, 0f to h, w to h)) assertTrue(PageTurnMath.distance(x, y, start, h) <= 0.001f)
+        // Early on, the bottom outer corner (free edge x = W, y = H) is lifted, the top one not yet.
+        val early = curl(RegionRole.SOURCE, 0.08f)
+        assertTrue(PageTurnMath.distance(w, h, early, h) > 0f)
+        assertTrue(PageTurnMath.distance(w, 0f, early, h) < 0f)
+        // Straight at the handoff on both screens: the fold continues across the hinge.
+        assertEquals(0f, PageTurnMath.cornerTheta(RegionRole.SOURCE, PageTurnMath.HANDOFF, t0, true), 0.0001f)
+        assertEquals(0f, PageTurnMath.cornerTheta(RegionRole.DEST, PageTurnMath.HANDOFF, t0, true), 0.0001f)
+        assertEquals(0f, PageTurnMath.cornerTheta(RegionRole.DEST, PageTurnMath.HANDOFF + 0.001f, t0, true), 0.02f)
+        // Landing: mirrored tilt, so the same (bottom) corner touches down first...
+        val landing = curl(RegionRole.DEST, 0.75f)
+        assertTrue(landing.theta < 0f)
+        assertTrue(PageTurnMath.distance(w * 0.6f, h, landing, h) < PageTurnMath.distance(w * 0.6f, 0f, landing, h))
+        // ...and the page is flat at the end.
+        val end = curl(RegionRole.DEST, 1f)
+        for ((x, y) in listOf(0f to 0f, w to 0f, 0f to h, w to h)) assertTrue(PageTurnMath.distance(x, y, end, h) <= 0.001f)
+        // Top corner: the opposite tilt, pivoting on the top edge.
+        assertTrue(PageTurnMath.cornerTheta0(bottom = false) < 0f)
+        assertEquals(0f, PageTurnMath.cornerPivotY(PageTurnMath.cornerTheta0(false), h), 0f)
+        // Buttons get the full animation (curl), like taps.
+        assertEquals(TurnStyle.CURL to 350, PageTurnMath.chooseStyle(TurnCause.BUTTON, 1, TurnStyle.CURL, TurnSpeed.NORMAL, false, true))
+        // A single page (modes 3/4) also starts tilted and leaves straight.
+        assertEquals(t0, PageTurnMath.cornerTheta(RegionRole.SINGLE, 0f, t0, true), 0.0001f)
+        assertEquals(0f, PageTurnMath.cornerTheta(RegionRole.SINGLE, 1f, t0, true), 0.0001f)
+    }
 }

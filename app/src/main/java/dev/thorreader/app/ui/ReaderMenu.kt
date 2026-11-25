@@ -304,6 +304,11 @@ fun ReaderMenu(session: ReaderSession) {
                         Chip(s.label, settings.turnSpeed == s) { settings.updateTurnSpeed(s) }
                     }
                 }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Button turn corner", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Chip("Bottom", settings.buttonTurnCornerBottom) { settings.updateButtonTurnCornerBottom(true) }
+                    Chip("Top", !settings.buttonTurnCornerBottom) { settings.updateButtonTurnCornerBottom(false) }
+                }
                 dev.thorreader.app.engine.TurnSupport.curlDisabledReason?.let {
                     Text("Curl isn't available on this device right now, so Slide is used.", color = SubtleText, fontSize = 13.sp)
                 }

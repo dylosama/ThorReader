@@ -497,6 +497,8 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         val fromSwapped: Boolean,
         /** Started by a finger drag (follows the finger until released). */
         val interactive: Boolean,
+        /** Button / tap curl: the starting tilt (+ bottom corner, − top corner, 0 = straight). */
+        val cornerTheta0: Float = 0f,
     ) {
         val forward: Boolean get() = to > from
 
@@ -559,7 +561,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         val (style, ms) = PageTurnMath.chooseStyle(
             cause, steps, app.settings.turnStyleFor(book.id), app.settings.turnSpeed, lowBattery(), TurnSupport.curlDisabledReason == null,
         )
-        return style to (if (cause == TurnCause.NORMAL) debugTurnMs ?: ms else ms)
+        return style to (if (cause == TurnCause.NORMAL || cause == TurnCause.BUTTON) debugTurnMs ?: ms else ms)
     }
 
     /** Animate the switch that [show] just made (the old view's pages must still be rendered). */
@@ -571,7 +573,8 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
             Log.d(TAG, "Turn ${from + 1} -> ${to + 1}: old pages no longer rendered, no animation")
             return
         }
-        val t = Turn(++turnSeq, from, to, style, ms, fromSwapped, interactive = false)
+        val corner = if (cause == TurnCause.BUTTON && style == TurnStyle.CURL) PageTurnMath.cornerTheta0(app.settings.buttonTurnCornerBottom) else 0f
+        val t = Turn(++turnSeq, from, to, style, ms, fromSwapped, interactive = false, cornerTheta0 = corner)
         turn = t
         turnT.floatValue = 0f
         runTurn(t, 1f, PageTurnMath::easeInOut)
@@ -747,7 +750,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         logTurn(viewIndex, target, p)
         viewIndex = target
         turnStartedAt = SystemClock.uptimeMillis()
-        commitWhenReady(if (repeatingTurns && cause == TurnCause.NORMAL) TurnCause.REPEAT else cause)
+        commitWhenReady(if (repeatingTurns && (cause == TurnCause.NORMAL || cause == TurnCause.BUTTON)) TurnCause.REPEAT else cause)
         dev.thorreader.app.Background.markBusy() // background work waits while pages are being turned
         prefetch()
         scheduleSave()

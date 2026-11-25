@@ -16,6 +16,7 @@ import dev.thorreader.app.data.SeriesDirection
 import dev.thorreader.app.data.seriesKey
 import dev.thorreader.app.engine.MuPdf
 import dev.thorreader.app.engine.ReaderSession
+import dev.thorreader.app.engine.TurnCause
 import dev.thorreader.app.engine.ScreenMetrics
 import dev.thorreader.app.importer.Importer
 import kotlinx.coroutines.Dispatchers
@@ -681,13 +682,13 @@ class ThorApp : Application() {
                     KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_R2,
                     KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_L2,
                     -> shoulderAction(r, code)
-                    KeyEvent.KEYCODE_PAGE_DOWN -> r::forward
-                    KeyEvent.KEYCODE_PAGE_UP -> r::back
+                    KeyEvent.KEYCODE_PAGE_DOWN -> { { r.forward(TurnCause.BUTTON) } }
+                    KeyEvent.KEYCODE_PAGE_UP -> { { r.back(TurnCause.BUTTON) } }
                     else -> when (physical(code, settings.mode)) {
-                        Dir.RIGHT -> r::physicalRight
-                        Dir.LEFT -> r::physicalLeft
-                        Dir.DOWN -> r::forward
-                        Dir.UP -> r::back
+                        Dir.RIGHT -> { { r.physicalRight(TurnCause.BUTTON) } }
+                        Dir.LEFT -> { { r.physicalLeft(TurnCause.BUTTON) } }
+                        Dir.DOWN -> { { r.forward(TurnCause.BUTTON) } }
+                        Dir.UP -> { { r.back(TurnCause.BUTTON) } }
                         null -> null
                     }
                 }
@@ -714,10 +715,10 @@ class ThorApp : Application() {
                 t.label + if (t == Turn.PAGE_LEFT || t == Turn.PAGE_RIGHT) " = ${ShoulderButtons.meaning(t, rtl).label}" else "",
         )
         return when (t) {
-            Turn.NEXT -> r::forward
-            Turn.PREVIOUS -> r::back
-            Turn.PAGE_RIGHT -> r::physicalRight
-            Turn.PAGE_LEFT -> r::physicalLeft
+            Turn.NEXT -> { { r.forward(TurnCause.BUTTON) } }
+            Turn.PREVIOUS -> { { r.back(TurnCause.BUTTON) } }
+            Turn.PAGE_RIGHT -> { { r.physicalRight(TurnCause.BUTTON) } }
+            Turn.PAGE_LEFT -> { { r.physicalLeft(TurnCause.BUTTON) } }
         }
     }
 

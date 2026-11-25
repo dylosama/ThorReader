@@ -20,6 +20,9 @@ enum class TurnCause {
     /** Tap, swipe, d-pad, shoulders, menu ±1/±10: the full animation. */
     NORMAL,
 
+    /** A tap zone or a physical button (d-pad, shoulders): the full animation, curl from a corner. */
+    BUTTON,
+
     /** A held button flipping continuously: a fast Slide. */
     REPEAT,
 
@@ -39,7 +42,7 @@ enum class RegionRole { SOURCE, DEST, SINGLE }
  * spine, x = 0) to the free edge that lifts (x = W); y downwards. The axis line passes through
  * (a, H/2) and its normal (cos θ, sin θ) points toward the lifting side; r = cylinder radius.
  */
-data class Curl(val a: Float, val theta: Float, val r: Float)
+data class Curl(val a: Float, val theta: Float, val r: Float, val pivotY: Float? = null)
 
 /** Where a point of the page ends up after the curl: x, y in the region frame, z = height. */
 data class Projected(val x: Float, val y: Float, val z: Float)
@@ -164,6 +167,31 @@ object PageTurnMath {
         RegionRole.SINGLE -> ((w - a) / (w + PAST_EDGE_R * r)).coerceIn(0f, 1f)
     }
 
+    /** Tilt of a button / tap corner curl at the start (about 26°). */
+    const val CORNER_THETA = 0.45f
+
+    /** Initial tilt for a corner curl: + lifts the bottom corner first, − the top one. */
+    fun cornerTheta0(bottom: Boolean): Float = if (bottom) CORNER_THETA else -CORNER_THETA
+
+    /** The fold of a corner curl pivots on the grabbed corner's edge (so nothing lifts before t = 0). */
+    fun cornerPivotY(theta0: Float, h: Float): Float = if (theta0 >= 0f) h else 0f
+
+    /**
+     * Tilt of a button / tap corner curl at global progress [t]. SOURCE: starts diagonal (the
+     * outer corner lifts first) and straightens out exactly at the hinge. DEST: straight at the
+     * hinge, then the same diagonal mirrored, so the leading corner lands first, and straight
+     * again when flat. Both sides are straight at the handoff, so the fold is continuous across
+     * the hinge. SINGLE: diagonal at the start, straight when the page has gone.
+     */
+    fun cornerTheta(role: RegionRole, t: Float, theta0: Float, forward: Boolean): Float {
+        if (theta0 == 0f) return 0f
+        return when (role) {
+            RegionRole.SOURCE -> if (t <= HANDOFF) theta0 * (1f - (t / HANDOFF).let { it * it }) else 0f
+            RegionRole.DEST -> if (t >= HANDOFF) -theta0 * sin(PI.toFloat() * localProgress(role, t)) else 0f
+            RegionRole.SINGLE -> theta0 * (1f - singleU(t, forward))
+        }
+    }
+
     /** Does a turn between these two views fold at a hinge (two regions) or turn as one sheet? */
     fun hasHinge(bookMode: Boolean, oldTwoPages: Boolean, newTwoPages: Boolean): Boolean =
         bookMode || (oldTwoPages && newTwoPages)
@@ -179,7 +207,7 @@ object PageTurnMath {
 
     /** Signed distance of page point (x, y) from the axis (positive = lifted side). */
     fun distance(x: Float, y: Float, c: Curl, h: Float): Float =
-        (x - c.a) * cos(c.theta) + (y - h / 2f) * sin(c.theta)
+        (x - c.a) * cos(c.theta) + (y - (c.pivotY ?: (h / 2f))) * sin(c.theta)
 
     /**
      * Where page point (x, y) ends up. Points behind the axis stay flat; points past it wrap
@@ -267,7 +295,7 @@ object PageTurnMath {
         return when (cause) {
             TurnCause.REPEAT -> TurnStyle.SLIDE to FAST_SLIDE_MS
             TurnCause.JUMP -> if (abs(steps) == 1) TurnStyle.SLIDE to FAST_SLIDE_MS else TurnStyle.NONE to 0
-            TurnCause.NORMAL -> {
+            TurnCause.NORMAL, TurnCause.BUTTON -> {
                 val style = when {
                     lowBattery -> TurnStyle.FADE
                     preferred == TurnStyle.CURL && !curlAvailable -> TurnStyle.SLIDE
