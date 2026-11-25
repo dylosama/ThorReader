@@ -95,13 +95,14 @@ object CoverThumbs {
 
 /** The library as a grid of covers (grid view). Tap = Inspect; hold or X = the book's popup. */
 @Composable
-fun BookGrid(books: List<Book>, modifier: Modifier = Modifier) {
+fun BookGrid(books: List<Book>, modifier: Modifier = Modifier, stackSeries: Boolean = true) {
     BoxWithConstraints(modifier.fillMaxSize()) {
         val cols = gridColumns(maxWidth.value)
         val cellPx = with(LocalDensity.current) { ((maxWidth - LibraryGap * (cols - 1)) / cols).roundToPx() }
         val state = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
-        // A manga series with 2+ books is one stacked tile (it opens the series' collection).
-        val items = androidx.compose.runtime.remember(books) { MangaShelf.group(books) }
+        // A series with 2+ books is one stacked tile (it opens the series' collection); inside a
+        // Series group the books are shown one by one.
+        val items = androidx.compose.runtime.remember(books, stackSeries) { if (stackSeries) MangaShelf.group(books) else books.map { MangaShelf.Item.One(it) } }
         ShowLandingBook(items) { i ->
             val info = state.layoutInfo
             val item = info.visibleItemsInfo.firstOrNull { it.index == i }

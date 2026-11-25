@@ -1442,11 +1442,11 @@ Changes:
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: repair EPUB conversion damage".
+  "v0.3.0: pre-release test run fixes".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
-- The Thor currently has main's Thor Reader 0.3.0 debug installed, plus Thor Bookloader 0.1.0
+- The Thor currently has main's Thor Reader 0.3.0 release installed, plus Thor Bookloader 0.1.0
   debug. Bookloader's "Import to Thor Reader" only works with the branch build of Thor Reader.
 
 ### Done in v0.3 (main)
@@ -1486,23 +1486,35 @@ Changes:
   Settings (both stay in the reader menu: theme swatches by the bookmark, header under More);
   the unused `PageThemeRow` was removed. Checked on the Thor.
 
-### Built, not yet fully tested on the Thor (test list before releasing 0.3)
-Checked on the Thor already: popup on the last list row and last grid cover (scroll, pinned
-Remove, removal), Inspect tap to read from the grid, Hinge frozen frames in Modes 1 / 2, grid
-view layout. Still to test, on a CHARGED Thor (the earlier runs were at 1 % battery, so
-smoothness was never judged):
-1. Page turns: curl from buttons (Bottom / Top corner), the sheet crossing the hinge in Modes
-   1 / 2, comic page backs (Night dimmed), swipe follow / spring back, Flip / Slide / Fade,
-   right-to-left manga.
-2. Open / close: Hinge and Classic at Fast / Normal / Slow, Modes 1-4, right-to-left books,
-   skipping (tap / A / B), smooth with no stops.
-3. Step 24: theme colour (presets + any hue), Settings order, Animations section, reader menu
-   (modes row, More), Inspect (spin, inertia, pinch, idle spin, back cover, thickness, bottom
-   panel, ↺, Y, B, tap-to-read from the popup as well as the grid).
-4. Grid view: d-pad inside the pill, grids inside Author / Series / Genre / Type groups,
-   Completed, search results, a bigger library scrolling, the long-press popup with X.
-5. Low battery (below 15 %): fades instead of curls and hinge.
-
+### Pre-release test run (2026-11-25, Thor at 66-67 %, debug build, logs + gfxinfo)
+Passed (turn timings are the app's own log; open / close by `dumpsys gfxinfo` framestats):
+1. Page turns: Mode 2 Flip / Curl / Slide / Fade all p95 16.8-16.9 ms after setup (pages on the
+   right screens: top = right page); right-to-left manga in Mode 1 (R1 = next, swap ON); a
+   finger curl from the bottom screen sweeps across the hinge onto the top screen, the comic
+   page's back is the dimmed Night sheet, letting go where it started cancels; Modes 3 / 4 curl
+   p95 16.9 ms. The first turn after opening a book spends 33-83 ms building its textures
+   (counted as setup, by design).
+2. Open / close: Hinge and Classic at Fast / Normal / Slow in Mode 2, Modes 3 and 4 (Mode 4:
+   the top screen stays free; Back on the bottom screen closes into the grid on top; launching
+   the app returns to the open book), skipping: tap / A during an open jump to the cover hold
+   (by design), B / tap during a close finish it (12-15 frames instead of 49).
+   FIXED here: the first frames of an open / close come 30-70 ms late (the reader / library
+   being built) and the animation clock ran on through them, so the motion jumped ~4 frames at
+   the start. `ThorApp` now moves the start time over a late first frame (gap > 25 ms in the
+   first 6 frames): Hinge Normal draws 79 frames for 1.3 s, Classic 49 for 0.8 s.
+3. Inspect: spin, Y and ↺ reset (both logged), back cover (seen in the promo recording), tap to
+   read from the long-press popup (Inspect book -> tap the 3D book -> opens, 79 frames) as well
+   as from the grid. Not testable by adb: pinch zoom (two fingers) - check by hand.
+4. Grid: Series / Author / Type groups, Completed, search, d-pad along the pill (☰ -> +) and
+   down into the grid, the long-press popup (Inspect, Opens in 1-4, Edit info, Refresh, Remove).
+   FIXED here: inside a Series group a series was still one stacked tile ("Blue Period · 2", to
+   tap again); now its books show one by one there (`stackSeries` off in Series groups).
+   Not testable here: a bigger library scrolling (6 books on the Thor).
+5. Low battery (simulated 10 %, discharging): open / close a 16-frame fade, turns Fade; normal
+   again on reset. (`dumpsys battery unplug` alone still reports "charging": also set status 3.)
+Observation (by design, unchanged): Night inverts reflowable text only; PDFs and comics keep
+their own page colours (Harry Potter PDF shows white pages in Night).
+Test hygiene: Mode 4 sends Back / B to the focused (top) display - target `input -d 4`.
 ### Next
 1. Run the test list above; fix what it finds.
 2. Release 0.3.0: final signed ThorReader-0.3.0.apk, tag 0.3.0 (only when asked), publish.

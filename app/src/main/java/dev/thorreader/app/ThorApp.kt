@@ -547,9 +547,18 @@ class ThorApp : Application() {
             var frames = 0
             val freeze = debugProp("debug.thorreader.bookfreeze")?.toFloatOrNull()?.takeIf { it in 0.01f..0.99f }
             var frozeOnce = false
+            var last = -1L
             while (true) {
                 val now = androidx.compose.runtime.withFrameNanos { it }
                 if (start < 0) start = now
+                // The first frames can come late (the reader / library being built: 30-70 ms
+                // gaps measured on the Thor). Don't let the clock run on through them: the motion
+                // carries on from where it was instead of jumping ahead.
+                if (last >= 0 && frames < 6) {
+                    val gap = now - last
+                    if (gap > STALL_NS) start += gap - FRAME_NS
+                }
+                last = now
                 var t = ((now - start) / 1_000_000f / dur).coerceIn(0f, 1f)
                 if (bookAnimSkip) {
                     bookAnimSkip = false
@@ -572,6 +581,7 @@ class ThorApp : Application() {
                         val resumed = androidx.compose.runtime.withFrameNanos { it }
                         Log.d(TAG, "Book open held on the cover ${(resumed - waitStart) / 1_000_000} ms for the first pages")
                         start = resumed - (holdAt * dur * 1_000_000).toLong()
+                        last = resumed
                         continue
                     }
                 }
@@ -581,7 +591,8 @@ class ThorApp : Application() {
                     bookAnimT.floatValue = freeze
                     while (!bookAnimSkip) delay(100)
                     bookAnimSkip = false
-                    start = androidx.compose.runtime.withFrameNanos { it } - (freeze * dur * 1_000_000).toLong()
+                    last = androidx.compose.runtime.withFrameNanos { it }
+                    start = last - (freeze * dur * 1_000_000).toLong()
                     continue
                 }
                 bookAnimT.floatValue = t
@@ -1313,6 +1324,10 @@ class ThorApp : Application() {
         /** The app is running (false in plain unit tests). */
         val ready: Boolean get() = ::instance.isInitialized
         private const val HANDOVER_GUARD_MS = 2000L
+
+        /** Book open / close: a gap this long between the first frames is a stall, not motion. */
+        private const val STALL_NS = 25_000_000L
+        private const val FRAME_NS = 16_666_667L
         private const val AUTO_OFF_DELAY_MS = 1200L
         private const val KEEP_ON_MS = 10 * 60_000L
 

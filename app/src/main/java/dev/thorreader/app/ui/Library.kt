@@ -250,7 +250,7 @@ fun LibraryScreen() {
                     Text(cat, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     Text("  ${inCat.size} ${if (inCat.size == 1) "book" else "books"}", color = SubtleText, fontSize = 13.sp)
                 }
-                BookList(inCat, app.tutorialShows(TutorialStep.OPEN_BOOK))
+                BookList(inCat, app.tutorialShows(TutorialStep.OPEN_BOOK), stackSeries = view != LibraryView.SERIES)
             }
             else -> CategoryList(
                 LibraryLogic.categories(matching, view, settings.groupAsc, hidden = settings.hiddenFor(view)),
@@ -296,17 +296,17 @@ private fun EmptyMessage(text: String) {
 }
 
 @Composable
-private fun BookList(books: List<Book>, showTutorial: Boolean) {
+private fun BookList(books: List<Book>, showTutorial: Boolean, stackSeries: Boolean = true) {
     Column(Modifier.fillMaxSize()) {
         if (showTutorial && books.isNotEmpty()) {
             TutorialBadge(TutorialStep.OPEN_BOOK, "Tap a book to start reading", ArrowDir.DOWN, Modifier.padding(start = 24.dp, bottom = 2.dp), arrowAlign = Alignment.Start)
         }
         // Grid view: covers only (tap = Inspect); list view: the rows. Same sorts and groups.
         if (ThorApp.instance.settings.libraryGrid) {
-            BookGrid(books, Modifier.weight(1f))
+            BookGrid(books, Modifier.weight(1f), stackSeries)
         } else {
             val state = androidx.compose.foundation.lazy.rememberLazyListState()
-            val items = remember(books) { MangaShelf.group(books) }
+            val items = remember(books, stackSeries) { if (stackSeries) MangaShelf.group(books) else books.map { MangaShelf.Item.One(it) } }
             ShowLandingBook(items) { i ->
                 val info = state.layoutInfo
                 val item = info.visibleItemsInfo.firstOrNull { it.index == i }
