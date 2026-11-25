@@ -61,11 +61,16 @@ class SourcesTest {
     }
 
     @Test
-    fun gutenbergBooksHaveAnOpenLibraryCoverFallback() {
+    fun gutenbergBooksFallBackToTheOfficialMirror() {
         val b = GutendexSource.parseSearch(
             """{"results":[{"id":84,"title":"Frankenstein; or, The modern Prometheus","authors":[{"name":"Shelley, Mary Wollstonecraft"}],"formats":{}}]}""",
         ).single()
-        assertEquals("openlibrary:Frankenstein|Shelley", b.altCoverUrl)
+        assertEquals("https://gutenberg.pglaf.org/cache/epub/84/pg84.cover.medium.jpg", b.altCoverUrl)
+        assertEquals(
+            listOf("https://gutenberg.pglaf.org/cache/epub/84/pg84-images-3.epub", "https://aleph.pglaf.org/cache/epub/84/pg84-images-3.epub"),
+            GutendexSource.mirrors("84", "EPUB"),
+        )
+        assertTrue(GutendexSource.mirrors("84", "PDF").isEmpty())
         assertEquals(b, CatalogItem.fromJson(b.toJson()))
     }
 }

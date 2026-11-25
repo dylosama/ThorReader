@@ -33,7 +33,7 @@ class MangaDexSource : SourceProvider {
         var total: Int
         do {
             val url = "$API/manga/${item.id}/feed?limit=500&offset=$offset&translatedLanguage%5B%5D=$LANG" +
-                "&order%5Bvolume%5D=asc&order%5Bchapter%5D=asc&includes%5B%5D=scanlation_group&includeExternalUrl=0" +
+                "&order%5Bvolume%5D=asc&order%5Bchapter%5D=asc&includes%5B%5D=scanlation_group&includeExternalUrl=0&includeUnavailable=0" +
                 RATINGS.joinToString("") { "&contentRating%5B%5D=$it" }
             val (page, t) = parseFeed(Http.text(url, accept = "application/json").first)
             entries += page
@@ -81,6 +81,16 @@ class MangaDexSource : SourceProvider {
         } finally {
             pageDir.deleteRecursively()
         }
+    }
+
+    /**
+     * One small request: how many English chapters can really be downloaded. Licensed series
+     * (Solo Leveling, Frieren, My Dress-Up Darling...) still appear in searches with 0.
+     */
+    override fun hasDownloads(item: CatalogItem): Boolean {
+        val url = "$API/manga/${item.id}/feed?limit=1&translatedLanguage%5B%5D=$LANG&includeExternalUrl=0&includeUnavailable=0" +
+            RATINGS.joinToString("") { "&contentRating%5B%5D=$it" }
+        return runCatching { JSONObject(Http.text(url, accept = "application/json").first).optInt("total", 1) > 0 }.getOrDefault(true)
     }
 
     /** A page, retried; falls back to the smaller "data-saver" copy if the full one keeps failing. */

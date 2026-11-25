@@ -166,6 +166,12 @@ interface SourceProvider {
      * file, named with the right extension. [progress] gets 0..1.
      */
     fun download(item: CatalogItem, entry: Entry, meta: BookMeta, dir: File, progress: (Float) -> Unit): File
+
+    /**
+     * Does [item] have anything to download? Checked in the background after a search, so titles
+     * with nothing (e.g. MangaDex series removed because they are licensed) can be hidden.
+     */
+    fun hasDownloads(item: CatalogItem): Boolean = true
 }
 
 // ---- small JSON helpers ----

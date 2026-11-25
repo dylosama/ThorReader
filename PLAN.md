@@ -1243,3 +1243,11 @@ Part B - new module :bookloader ("Thor Bookloader", dev.thorreader.bookloader, 0
   Queue | ♪ | ⚙ pill as planned. Tests 121 + 18.
 - Volumes first: a manga with volume numbers opens on the Volumes list (Chapters is the other
   chip). Series without volumes still show chapters.
+- Fixes after the next test: (1) many popular MangaDex series (Solo Leveling, My Dress-Up
+  Darling, Frieren, One-Punch Man, Slime...) have NO downloadable English chapters - licensed in
+  English, chapters taken down - but still appear in searches. After each search Bookloader now
+  checks every MangaDex result with one small request (English, not external, not unavailable)
+  and hides the empty ones with a note; their details explain it. (2) "HTTP 503" importing Pride
+  and Prejudice: gutenberg.org down for maintenance. EPUB downloads now fall back to Project
+  Gutenberg's official mirrors (gutenberg.pglaf.org, aleph.pglaf.org - checked, same files), and
+  covers come from the mirror instead of Open Library.

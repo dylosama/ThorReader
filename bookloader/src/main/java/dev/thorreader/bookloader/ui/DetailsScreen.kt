@@ -204,7 +204,13 @@ fun DetailsScreen(s: DetailsState) {
                 }
             }
             if (s.byVolume && d.volumes.isNotEmpty()) item { Message("Each volume is downloaded chapter by chapter and saved as one book.", House.Faint) }
-            if (list.isEmpty()) item { Message("Nothing downloadable here.") }
+            if (list.isEmpty()) item {
+                Message(
+                    if (s.item.sourceId == dev.thorreader.bookloader.source.MangaDexSource.ID) {
+                        "MangaDex has no English chapters to download for this series - usually because it is officially licensed in English, so its chapters were taken down."
+                    } else "Nothing downloadable here.",
+                )
+            }
             items(list, key = { it.id }) { e ->
                 val on = e.id in s.selected
                 Row(

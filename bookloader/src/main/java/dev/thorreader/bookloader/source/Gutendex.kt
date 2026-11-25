@@ -24,13 +24,33 @@ class GutendexSource : SourceProvider {
 
     override fun download(item: CatalogItem, entry: Entry, meta: BookMeta, dir: File, progress: (Float) -> Unit): File {
         val out = File(dir, safeName(meta.title ?: item.title) + "." + entry.format.lowercase())
-        Http.download(entry.url ?: error("No download link"), out, progress = progress)
-        return out
+        // gutenberg.org first, then Project Gutenberg's own mirrors (same files) if it is down.
+        val urls = listOfNotNull(entry.url) + mirrors(item.id, entry.format)
+        var last: Exception? = null
+        for (u in urls) {
+            try {
+                Http.download(u, out, progress = progress)
+                return out
+            } catch (e: java.io.IOException) {
+                last = e
+                // Only "the server is down / unreachable" moves on to a mirror; 404 etc. won't change.
+                if (e is HttpException && e.code < 500) throw e
+            }
+        }
+        throw last ?: java.io.IOException("No download link")
     }
 
     companion object {
         const val ID = "gutendex"
         const val BASE = "https://gutendex.com"
+
+        /** Project Gutenberg's official mirrors (gutenberg.org's own file layout). */
+        val MIRRORS = listOf("https://gutenberg.pglaf.org", "https://aleph.pglaf.org")
+
+        fun mirrors(id: String, format: String): List<String> = when (format) {
+            "EPUB" -> MIRRORS.map { "$it/cache/epub/$id/pg$id-images-3.epub" }
+            else -> emptyList()
+        }
 
         fun parseSearch(json: String): List<CatalogItem> = JSONObject(json).optJSONArray("results").objects().map { b ->
             val formats = b.optJSONObject("formats") ?: JSONObject()
@@ -41,9 +61,8 @@ class GutendexSource : SourceProvider {
                 // Gutenberg writes "Shelley, Mary Wollstonecraft": show it as "Mary Wollstonecraft Shelley".
                 authors = b.optJSONArray("authors").objects().map { flipName(it.optString("name")) }.filter { it.isNotBlank() },
                 coverUrl = formats.optStringOrNull("image/jpeg"),
-                // gutenberg.org is sometimes down: Open Library usually has the same book's cover.
-                altCoverUrl = "openlibrary:" + b.optString("title").substringBefore(";").substringBefore(":").trim() + "|" +
-                    (b.optJSONArray("authors").objects().firstOrNull()?.optString("name")?.substringBefore(",")?.trim() ?: ""),
+                // gutenberg.org is sometimes down: the same cover from its official mirror.
+                altCoverUrl = "${MIRRORS[0]}/cache/epub/${b.get("id")}/pg${b.get("id")}.cover.medium.jpg",
                 type = ContentType.BOOK,
                 summary = b.optJSONArray("summaries").strings().firstOrNull(),
                 extra = JSONObject()

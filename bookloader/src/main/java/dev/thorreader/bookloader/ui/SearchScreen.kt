@@ -70,6 +70,8 @@ class SearchState {
     var results by mutableStateOf<List<CatalogItem>>(emptyList())
     var loading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
+    /** Results hidden because they have nothing to download. */
+    var hidden by mutableStateOf(0)
     /** OPDS folders opened so far (title, url). */
     var folders by mutableStateOf<List<Pair<String, String>>>(emptyList())
     var loadedOnce = false
@@ -96,12 +98,23 @@ class SearchState {
         val q = query
         lastQuery = q.trim()
         results = emptyList() // no old results under "Loading…"
+        hidden = 0
         val t = type
         val folder = folders.lastOrNull()?.second
         job = scope.launch {
             try {
                 results = withContext(Dispatchers.IO) { src.search(q, t, folder) }
                 if (results.isEmpty()) error = if (q.isBlank()) "Nothing here." else "Nothing found for \"$q\" in ${src.name}."
+                // Hide titles with nothing to download (MangaDex: licensed series), checked one by one.
+                loading = false
+                for (item in results.toList()) {
+                    if (item.folderUrl != null) continue
+                    if (!withContext(Dispatchers.IO) { src.hasDownloads(item) }) {
+                        results = results - item
+                        hidden++
+                    }
+                }
+                if (results.isEmpty() && hidden > 0) error = "${src.name} has nothing to download for these titles."
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -185,6 +198,12 @@ fun SearchScreen(s: SearchState) {
         when {
             s.loading -> Message("Loading…")
             s.error != null -> Message(s.error!!, House.Warning)
+        }
+        if (s.hidden > 0) {
+            Message(
+                "Hidden ${s.hidden} series with no English chapters to download - usually because they are officially licensed in English (read those in the publisher's app).",
+                House.Faint,
+            )
         }
         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
             items(s.results, key = { it.sourceId + it.id }) { item ->
