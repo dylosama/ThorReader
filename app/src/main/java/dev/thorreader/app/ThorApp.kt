@@ -383,7 +383,7 @@ class ThorApp : Application() {
         val s = inspecting ?: return
         if (s.closing) return
         s.touched()
-        s.rot = dev.thorreader.app.engine.Rot.IDENTITY
+        // From where the front cover is right now (the book is not turned back first).
         val from = s.frontRect(screens.topW.toFloat(), screens.topH.toFloat())
         Log.i(TAG, "Read from Inspect: '${s.book.title}'")
         openBookAnimated(s.book.id, from) {
@@ -395,7 +395,16 @@ class ThorApp : Application() {
         }
     }
 
-    /** Buttons while inspecting: d-pad turns the book 15°, A = front view, B / Back = close. */
+    /** Back to the front view, the normal size (↺ on the bottom screen, the Y button). */
+    fun resetInspectView(reason: String) {
+        val s = inspecting ?: return
+        s.touched()
+        s.rot = dev.thorreader.app.engine.Rot.IDENTITY
+        s.zoom = 1f
+        Log.d(TAG, "Inspect view reset ($reason)")
+    }
+
+    /** Buttons while inspecting: d-pad turns the book 15°, A = Read, Y = front view, B / Back = close. */
     private fun handleInspectKey(s: dev.thorreader.app.ui.InspectState, e: KeyEvent): Boolean {
         if (e.action != KeyEvent.ACTION_DOWN) return true
         s.touched()
@@ -408,10 +417,8 @@ class ThorApp : Application() {
             KeyEvent.KEYCODE_DPAD_RIGHT -> turn(dev.thorreader.app.engine.V3(0f, 1f, 0f), -step)
             KeyEvent.KEYCODE_DPAD_UP -> turn(dev.thorreader.app.engine.V3(1f, 0f, 0f), -step)
             KeyEvent.KEYCODE_DPAD_DOWN -> turn(dev.thorreader.app.engine.V3(1f, 0f, 0f), step)
-            KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> {
-                s.rot = dev.thorreader.app.engine.Rot.IDENTITY
-                s.zoom = 1f
-            }
+            KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> readFromInspect()
+            KeyEvent.KEYCODE_BUTTON_Y -> resetInspectView("Y")
             KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> closeInspect("button B / Back")
             else -> return e.keyCode != KeyEvent.KEYCODE_VOLUME_UP && e.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN
         }

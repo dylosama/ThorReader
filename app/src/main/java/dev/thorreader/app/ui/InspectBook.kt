@@ -21,7 +21,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -291,7 +290,7 @@ private fun drawBook(c: android.graphics.Canvas, s: InspectState, t: InspectText
 /**
  * The Inspect screen on the top screen: the library hidden behind a warm studio backdrop, the 3D
  * book, and a round X where the gear is. One finger spins it (with inertia), two fingers zoom,
- * double-tap shows the front again. Idle spin after 3 s, at most 20 s.
+ * a quick tap on the book reads it. Idle spin after 3 s, at most 20 s.
  */
 @Composable
 fun InspectOverlay(s: InspectState) {
@@ -342,20 +341,16 @@ fun InspectOverlay(s: InspectState) {
             Modifier
                 .fillMaxSize()
                 .pointerInput(s) {
-                    detectTapGestures(onDoubleTap = {
-                        s.touched()
-                        s.rot = Rot.IDENTITY
-                        s.zoom = 1f
-                    }, onPress = { s.touched() })
-                }
-                .pointerInput(s) {
-                    // One finger: spin (trackball) with inertia; two fingers: zoom.
+                    // One finger: spin (trackball) with inertia; two fingers: zoom; a quick, still
+                    // tap on the book: read it (straight away - there is no double-tap to wait for).
                     val pxPerRad = 260.dp.toPx()
+                    val slop = viewConfiguration.touchSlop
                     awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
+                        val down = awaitFirstDown(requireUnconsumed = false)
                         s.touched()
                         val vt = VelocityTracker()
                         var multi = false
+                        var moved = 0f
                         while (true) {
                             val ev = awaitPointerEvent()
                             val pressed = ev.changes.filter { it.pressed }
@@ -367,12 +362,19 @@ fun InspectOverlay(s: InspectState) {
                                 val ch = pressed[0]
                                 val d = ch.positionChange()
                                 vt.addPosition(ch.uptimeMillis, ch.position)
-                                Book3D.dragRotation(d.x, d.y, pxPerRad)?.let { s.rot = s.rot.then(it).cleaned() }
+                                moved = max(moved, (ch.position - down.position).getDistance())
+                                // Within the tap slop the book doesn't turn yet (a tap stays a tap).
+                                if (moved > slop) Book3D.dragRotation(d.x, d.y, pxPerRad)?.let { s.rot = s.rot.then(it).cleaned() }
                             }
                             ev.changes.forEach { it.consume() }
                             s.touched()
                         }
                         if (multi) return@awaitEachGesture
+                        val heldMs = (currentEvent.changes.firstOrNull()?.uptimeMillis ?: down.uptimeMillis) - down.uptimeMillis
+                        if (InspectGestures.isTap(moved, heldMs, slop)) {
+                            if (s.bookRect(w, h).contains(down.position.x, down.position.y)) app.readFromInspect()
+                            return@awaitEachGesture
+                        }
                         // Coast: keep turning and slow down (stops when touched again).
                         val v = vt.calculateVelocity()
                         val touchedAt = s.lastTouch
@@ -454,13 +456,30 @@ fun InspectOverlay(s: InspectState) {
     }
 }
 
-/** Where the front cover is on screen right now (for "Read": the open animation starts there). */
-fun InspectState.frontRect(w: Float, h: Float): RectF {
+/**
+ * Where the front cover is on screen right now, as the book is turned (for "Read": the open
+ * animation starts exactly there).
+ */
+fun InspectState.frontRect(w: Float, h: Float): RectF = projectedRect(w, h, listOf(BookFace.FRONT))
+
+/** The whole book on screen right now (a tap inside it = Read). */
+fun InspectState.bookRect(w: Float, h: Float): RectF = projectedRect(w, h, BookFace.entries)
+
+private fun InspectState.projectedRect(w: Float, h: Float, faces: List<BookFace>): RectF {
     val target = h * 0.66f * zoom
     val cx = w / 2f
     val cy = h * 0.47f
-    val pts = model.corners(BookFace.FRONT).map { model.project(it, Rot.IDENTITY, target, cx, cy) }
+    val pts = faces.flatMap { model.corners(it) }.map { model.project(it, rot, target, cx, cy) }
     return RectF(pts.minOf { it.first }, pts.minOf { it.second }, pts.maxOf { it.first }, pts.maxOf { it.second })
+}
+
+/** Inspect's tap rule, kept apart so it can be tested. */
+object InspectGestures {
+    /** Longest press that still counts as a tap. */
+    const val TAP_MS = 300L
+
+    /** A tap = the finger moved less than [slop] px and lifted within [TAP_MS]; else a spin. */
+    fun isTap(movedPx: Float, heldMs: Long, slop: Float): Boolean = movedPx < slop && heldMs <= TAP_MS
 }
 
 /**
@@ -485,6 +504,19 @@ fun InspectInfo(s: InspectState) {
                 b.series?.let { sr ->
                     Text(sr + (b.seriesNumber?.let { " #" + dev.thorreader.app.importer.formatNumber(it) } ?: ""), color = Accent, fontSize = 14.sp)
                 }
+            }
+            // ↺: back to the front view (also the Y button).
+            Box(
+                Modifier
+                    .padding(end = 12.dp)
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF2E2E2E))
+                    .border(1.dp, HouseStyle.Hairline, CircleShape)
+                    .focusClick(CircleShape) { app.resetInspectView("↺") },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("↺", color = Color.White, fontSize = 22.sp)
             }
             // "Read": opens the book with the normal open animation, from the 3D book.
             Box(
@@ -514,6 +546,9 @@ fun InspectInfo(s: InspectState) {
         Box(Modifier.weight(1f).fillMaxSize().verticalScroll(rememberScrollState())) {
             Text(b.description ?: "No description.", color = Color(0xFFCCCCCC), fontSize = 15.sp, lineHeight = 22.sp)
         }
-        Text("Drag to spin · pinch to zoom · double-tap for the front · B or ✕ to close", color = Color(0xFF777777), fontSize = 12.sp)
+        Text(INSPECT_HINT, color = Color(0xFF777777), fontSize = 12.sp)
     }
 }
+
+/** The help line under Inspect's details (bottom screen). */
+const val INSPECT_HINT = "Tap the book to read · Drag to spin · Pinch to zoom · ↺ or Y resets · B or ✕ closes"

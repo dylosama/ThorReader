@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -512,11 +514,15 @@ private fun BookModeButton(book: Book) {
 /** Places the popup to the right of its button (to the left if there isn't room), kept on screen. */
 internal object BesideAnchor : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+        // Beside the button (right, else left); level with it, but shifted up as far as needed so
+        // the whole popup stays on screen (last row, last grid row), with a small margin.
         val gap = 12
+        val margin = 16
         var x = anchorBounds.right + gap
-        if (x + popupContentSize.width > windowSize.width) x = anchorBounds.left - gap - popupContentSize.width
-        val y = anchorBounds.top.coerceAtMost(windowSize.height - popupContentSize.height).coerceAtLeast(0)
-        return IntOffset(x.coerceAtLeast(0), y)
+        if (x + popupContentSize.width > windowSize.width - margin) x = anchorBounds.left - gap - popupContentSize.width
+        x = x.coerceIn(margin, (windowSize.width - margin - popupContentSize.width).coerceAtLeast(margin))
+        val y = anchorBounds.top.coerceAtMost(windowSize.height - margin - popupContentSize.height).coerceAtLeast(margin.coerceAtMost(windowSize.height - popupContentSize.height).coerceAtLeast(0))
+        return IntOffset(x, y)
     }
 }
 
@@ -525,13 +531,22 @@ internal fun BookPopup(book: Book, mode: ReadingMode, close: () -> Unit) {
     val app = ThorApp.instance
     var confirmRemove by remember { mutableStateOf(false) }
     val initialFocus = remember { FocusRequester() }
+    // Never taller than the screen: the items scroll, "Remove from library" stays pinned below.
+    val maxHeight = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp - 32).coerceAtLeast(160).dp
     Column(
         Modifier
             .width(250.dp)
+            .heightIn(max = maxHeight)
             .clip(HouseStyle.PanelShape)
-            .background(HouseStyle.PanelBackground)
+            // Almost opaque: over the grid's bright covers the items must stay readable.
+            .background(Color(0xF7141414))
             .border(1.dp, HouseStyle.Hairline, HouseStyle.PanelShape)
             .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+    // Scrolls by touch; with the d-pad the focused item is brought into view.
+    Column(
+        Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         PopupItem(onClick = {
@@ -553,12 +568,8 @@ internal fun BookPopup(book: Book, mode: ReadingMode, close: () -> Unit) {
                 PopupText("${m.number} · ${m.title}", color = if (m == mode) Accent else HouseStyle.TextColor)
             }
         }
-        PopupDivider()
-        PopupItem(onClick = { app.setReadingDirection(book, !book.rtl) }) {
-            PopupText("Manga (right-to-left)", Modifier.weight(1f))
-            HouseBadge(if (book.rtl) "On" else "Off", color = if (book.rtl) Accent else HouseStyle.Subtle)
-        }
-        if (book.series != null) PopupLabel("Applies to the whole series")
+        // (No manga / right-to-left toggle here: manga is detected automatically, and the reading
+        // direction is in the reader menu's More.)
         PopupDivider()
         PopupItem(onClick = {
             app.editInfoBook = book
@@ -581,6 +592,8 @@ internal fun BookPopup(book: Book, mode: ReadingMode, close: () -> Unit) {
                 Text("★", color = Gold, fontSize = HouseStyle.ItemTextSize)
             }
         }
+    }
+        // Pinned: always visible, whatever the scroll.
         PopupDivider()
         if (!confirmRemove) {
             PopupItem(onClick = { confirmRemove = true }) {

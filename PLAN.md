@@ -1089,3 +1089,24 @@ Built and checked once on the Thor, still needing a proper test pass (on a charg
 
 Left before 0.3 is finished: fix whatever the test pass finds, then build the final signed
 ThorReader-0.3.0.apk and publish (tag only when asked).
+
+### v0.3.0 fixes: Inspect tap to read; the book popup always fits (main)
+- Inspect: one tap ON the 3D book opens it at once (no double-tap wait), with the chosen open
+  animation starting from where the front cover is right now. A tap = moved less than the
+  touch slop and lifted within 300 ms; anything else is a spin as before. Double-tap reset is
+  gone: reset is a small round ↺ button next to Read on the bottom screen, and Y. Buttons:
+  A = Read, B = close, Y = reset, d-pad turns. Hint: "Tap the book to read · Drag to spin ·
+  Pinch to zoom · ↺ or Y resets · B or ✕ closes".
+- Book popup (row mode button and grid long-press): never taller than the screen (max height =
+  screen minus margins); its items scroll (touch and d-pad - the focused item is scrolled into
+  view); "Remove from library" (and its confirmation) is pinned below the scrolling part. The
+  "Manga (right-to-left)" toggle is gone from the popup (manga detection stays automatic, the
+  direction stays in the reader menu's More). Placement: beside the anchor, shifted up / kept
+  inside the screen with a margin, so the last row and the last grid row open fully on screen.
+- Checked on the Thor (main debug build): popup on the last list row opens left of the
+  button, shifted up, fully on screen; its middle scrolls ("Mark as completed" scrolled into
+  view) with "Remove from library" and its confirmation pinned; same on the last grid cover. A
+  throwaway test book was added, inspected (tap on the backdrop: nothing; drag: spin; one tap
+  on the book: "Read from Inspect" -> hinge open at once), closed and removed again; the
+  library order and list view were left as they were. The popup background was made almost
+  opaque (bright covers showed through behind the items in the grid).
