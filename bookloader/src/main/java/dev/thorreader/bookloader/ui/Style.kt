@@ -206,6 +206,33 @@ fun Field(
     bare: Boolean = false,
     autoFocus: Boolean = false,
 ) {
+    // On the Thor: Thor Reader's keyboard on the bottom screen (Android won't show its own there).
+    val twoScreens = remember { dev.thorreader.bookloader.BookloaderApp.instance.bottomDisplay() != null }
+    if (twoScreens) {
+        val kind = when {
+            password -> TypingSession.Kind.SECRET
+            keyboard == KeyboardType.Number || keyboard == KeyboardType.Decimal -> TypingSession.Kind.NUMBER
+            else -> TypingSession.Kind.TEXT
+        }
+        val editing = dev.thorreader.bookloader.BookloaderApp.instance.typing?.hint == placeholder
+        TypingField(
+            value, onValue,
+            modifier.then(
+                if (bare) Modifier.padding(vertical = 10.dp)
+                else Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(House.Chip)
+                    .border(1.dp, if (editing) House.Accent else House.Hairline, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+            ),
+            hint = placeholder,
+            kind = kind,
+            fontSize = 16,
+            onDone = onDone,
+            autoStart = autoFocus,
+        )
+        return
+    }
     var focused by remember { mutableStateOf(false) }
     val requester = remember { androidx.compose.ui.focus.FocusRequester() }
     if (autoFocus) androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { requester.requestFocus() } }

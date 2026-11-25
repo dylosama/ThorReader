@@ -19,6 +19,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.thorreader.bookloader.source.CatalogItem
@@ -102,10 +108,14 @@ class MainActivity : ComponentActivity(), Host {
             return
         }
         Jobs.cleanOrphans(this)
+        // The bottom-screen keyboard exists only while a field is being edited.
+        lifecycleScope.launch {
+            androidx.compose.runtime.snapshotFlow { BookloaderApp.instance.typing }.collect { t -> if (t != null) showKeyboard(t) else dismissKeyboard() }
+        }
         setContent {
             CompositionLocalProvider(LocalHost provides this) {
                 BackHandler(enabled = stack.size > 1) { back() }
-                Box(Modifier.fillMaxSize().background(dev.thorreader.bookloader.ui.House.Screen).padding(16.dp)) {
+                Box(Modifier.fillMaxSize().background(dev.thorreader.bookloader.ui.House.Screen).typingTapCatcher().padding(16.dp)) {
                     when (val s = stack.last()) {
                         Screen.Search -> SearchScreen(search)
                         is Screen.Details -> DetailsScreen(s.state)
@@ -125,6 +135,7 @@ class MainActivity : ComponentActivity(), Host {
 
     override fun onStop() {
         super.onStop()
+        BookloaderApp.instance.stopTyping("Bookloader left the screen")
         // Screen off and the Thor's lid closing both stop the activity with the screen not interactive.
         val interactive = (getSystemService(POWER_SERVICE) as android.os.PowerManager).isInteractive
         dev.thorreader.bookloader.music.Music.onBackground(
@@ -143,6 +154,8 @@ class MainActivity : ComponentActivity(), Host {
 
     /** The controller's B button = Back. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Typing: the d-pad, A, B, Start and a physical keyboard go to the bottom-screen keyboard.
+        if (BookloaderApp.instance.handleTypingKey(event)) return true
         if (event.keyCode == KeyEvent.KEYCODE_BUTTON_B) {
             if (event.action == KeyEvent.ACTION_UP) onBackPressedDispatcher.onBackPressed()
             return true
@@ -178,5 +191,38 @@ class MainActivity : ComponentActivity(), Host {
     override fun chooseThorFolder() {
         runCatching { thorFolder.launch(ThorImportClient.chooseFolderIntent()) }
             .onFailure { Log.w(TAG, "Couldn't open Thor Reader's folder picker: ${it.message}") }
+    }
+}
+
+private var keyboard: KeyboardPresentation? = null
+
+private fun MainActivity.showKeyboard(s: dev.thorreader.bookloader.ui.TypingSession) {
+    if (keyboard?.isShowing == true && keyboard?.session === s) return
+    dismissKeyboard()
+    val display = BookloaderApp.instance.bottomDisplay() ?: return
+    try {
+        keyboard = KeyboardPresentation(this, display, s).also { it.show() }
+    } catch (e: android.view.WindowManager.InvalidDisplayException) {
+        Log.e(TAG, "Could not show the keyboard on display ${display.displayId}", e)
+    }
+}
+
+private fun dismissKeyboard() {
+    keyboard?.let {
+        runCatching { it.dismiss() }
+        Log.i(TAG, "Bottom screen released (keyboard closed)")
+    }
+    keyboard = null
+}
+
+/** A tap anywhere outside the field being edited (and outside the keyboard) ends typing. */
+private fun Modifier.typingTapCatcher(): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        val app = BookloaderApp.instance
+        val t = app.typing ?: return@awaitEachGesture
+        t.touchedInside = false
+        awaitPointerEvent(PointerEventPass.Final)
+        if (app.typing === t && !t.touchedInside) app.stopTyping("tapped outside the field")
     }
 }

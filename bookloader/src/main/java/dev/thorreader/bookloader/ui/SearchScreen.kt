@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -60,6 +61,10 @@ import kotlinx.coroutines.withContext
 class SearchState {
     var query by mutableStateOf("")
     var searchOpen by mutableStateOf(false)
+    /** Start typing as soon as the search pill appears (only right after the search button). */
+    var autoType = false
+    /** The text of the last search that ran (typing ending without changes doesn't search again). */
+    var lastQuery = ""
     var type by mutableStateOf<ContentType?>(null)
     var sourceId by mutableStateOf<String?>(null)
     var results by mutableStateOf<List<CatalogItem>>(emptyList())
@@ -89,6 +94,8 @@ class SearchState {
         error = null
         loadedOnce = true
         val q = query
+        lastQuery = q.trim()
+        results = emptyList() // no old results under "Loading…"
         val t = type
         val folder = folders.lastOrNull()?.second
         job = scope.launch {
@@ -120,8 +127,20 @@ fun SearchScreen(s: SearchState) {
         s.run(scope)
     }
 
+    /** "All" in the search pill: back to the home state. */
+    fun home() {
+        app.stopTyping("All (home)")
+        s.searchOpen = false
+        s.autoType = false
+        s.query = ""
+        s.type = null
+        fresh()
+    }
+
     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-        // --- top bar: status · All | Books | Manga | Comics + search · Queue | + | gear ---
+        Logo()
+        Spacer(Modifier.height(6.dp))
+        // --- top bar: status · All | Books | Manga | Comics + search · Queue | ♪ | gear ---
         TopBar {
             AnimatedContent(
                 targetState = s.searchOpen,
@@ -133,17 +152,15 @@ fun SearchScreen(s: SearchState) {
                 label = "search",
             ) { open ->
                 if (open) {
-                    SearchBar(s, onSearch = { fresh() }, onClose = {
-                        s.searchOpen = false
-                        if (s.query.isNotEmpty()) {
-                            s.query = ""
-                            fresh()
-                        }
-                    })
+                    SearchPill(s, onSearch = {
+                        // Typing ended (Done, Enter, a tap outside...): search if the text changed.
+                        s.autoType = false
+                        if (s.query.trim() != s.lastQuery) fresh()
+                    }, onAll = { home() })
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         TypeSwitch(s.type) { s.type = it; fresh() }
-                        RoundIcon({ s.searchOpen = true }) { MagnifierIcon() }
+                        RoundIcon({ s.searchOpen = true; s.autoType = true }) { MagnifierIcon() }
                     }
                 }
             }
@@ -211,27 +228,70 @@ private fun TypeSwitch(current: ContentType?, onSelect: (ContentType?) -> Unit) 
     }
 }
 
-/** The search field the round search button opens into (Thor Reader's look). */
+/**
+ * Search mode: one pill (the type switch's look) - "All" on the left goes back home, the search
+ * text on the right (tap it to type again).
+ */
 @Composable
-private fun SearchBar(s: SearchState, onSearch: () -> Unit, onClose: () -> Unit) {
+private fun SearchPill(s: SearchState, onSearch: () -> Unit, onAll: () -> Unit) {
     Row(
-        Modifier.width(460.dp).clip(House.Pill).background(House.Chip).padding(start = 14.dp, end = 4.dp),
+        Modifier
+            .clip(House.Pill)
+            .background(Color(0xFF1E1E1E))
+            .border(1.dp, House.Hairline, House.Pill)
+            .padding(3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MagnifierIcon()
-        Spacer(Modifier.width(8.dp))
-        Field(
-            s.query, { s.query = it },
-            placeholder = "Search ${s.active()?.name ?: ""}: title or author",
-            modifier = Modifier.weight(1f),
-            imeAction = ImeAction.Search,
-            onDone = onSearch,
-            bare = true,
-            autoFocus = true,
-        )
         Text(
-            "✕", color = House.Subtle, fontSize = 14.sp,
-            modifier = Modifier.clip(House.Pill).thorClick(House.Pill, onClick = onClose).padding(horizontal = 10.dp, vertical = 6.dp),
+            "All",
+            color = Color.White,
+            fontSize = 15.sp,
+            modifier = Modifier
+                .clip(House.Pill)
+                .thorClick(House.Pill, onClick = onAll)
+                .padding(horizontal = 16.dp, vertical = 7.dp),
+        )
+        Row(
+            Modifier.width(420.dp).clip(House.Pill).background(House.Chip).padding(start = 12.dp, end = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            MagnifierIcon()
+            Spacer(Modifier.width(8.dp))
+            Field(
+                s.query, { s.query = it },
+                placeholder = "Search ${s.active()?.name ?: ""}: title or author",
+                modifier = Modifier.weight(1f),
+                imeAction = ImeAction.Search,
+                onDone = onSearch,
+                bare = true,
+                autoFocus = s.autoType,
+            )
+        }
+    }
+}
+
+/** "Thor Bookloader": the app's mark and wordmark, above the top bar on the home screen. */
+@Composable
+private fun Logo() {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)).background(Color(0xFF17181C)).border(1.dp, House.Hairline, RoundedCornerShape(9.dp))) {
+            androidx.compose.foundation.Image(
+                androidx.compose.ui.res.painterResource(dev.thorreader.bookloader.R.drawable.ic_launcher_foreground),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = 1.5f, scaleY = 1.5f),
+            )
+        }
+        Text(
+            androidx.compose.ui.text.buildAnnotatedString {
+                pushStyle(androidx.compose.ui.text.SpanStyle(color = Color.White, fontWeight = FontWeight.Bold))
+                append("Thor ")
+                pop()
+                pushStyle(androidx.compose.ui.text.SpanStyle(color = House.Accent, fontWeight = FontWeight.SemiBold))
+                append("Bookloader")
+                pop()
+            },
+            fontSize = 22.sp,
+            letterSpacing = 0.5.sp,
         )
     }
 }

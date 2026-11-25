@@ -1222,3 +1222,22 @@ Part B - new module :bookloader ("Thor Bookloader", dev.thorreader.bookloader, 0
   is refused by both the service and the folder activity ("requires
   dev.thorreader.permission.IMPORT"); ImportPermissionTest OK (3 tests, via am instrument; the
   test app was uninstalled afterwards). Tests: 121 (:app) + 18 (:bookloader, SourcesTest new).
+
+### Step 25e: Bookloader keyboard, logo, search pill, ♪ in the pill (bookloader branch)
+- Typing works like Thor Reader: tapping any text field opens Thor Reader's built-in keyboard on
+  the BOTTOM screen (a Presentation that exists only while typing: preview strip with the text
+  and caret, Paste, big keys, ⇧, ?123, ◀ ▶, Done); the top screen stays fully visible. D-pad
+  moves the key highlight, A types it, B = backspace (empty field: done), Start = Done, a
+  physical keyboard types directly; a tap outside the field ends typing. Devices without a
+  second screen keep the normal system keyboard.
+- Home screen: a "Thor Bookloader" logo (the app's mark + wordmark) above the top bar.
+- Search: once the search is open (typing or not) the centre is ONE pill - "All" on the left,
+  the search text on the right (tap it to type again). "All" goes back home: search closed,
+  text cleared, type = All, the Books / Manga / Comics switch back.
+- The pill is now Queue | ♪ | ⚙ - the music button takes the place of +; adding an OPDS feed
+  is in Settings (gear) as before. The separate round ♪ button is gone.
+- Status 2026-11-24, checked on the Thor: tapping search opened the keyboard on the bottom
+  screen (display 4) with the top screen untouched; "dune" typed on it appeared live in the
+  pill; Done closed it and released the bottom screen; the pill showed All | dune and the
+  search ran; All went back home (type switch back, text cleared). Logo and the
+  Queue | ♪ | ⚙ pill as planned. Tests 121 + 18.

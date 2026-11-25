@@ -37,6 +37,78 @@ class BookloaderApp : Application() {
         sfxOn = prefs.getBoolean("sfx_on", true)
     }
 
+    // ---- typing on the bottom screen (as in Thor Reader) ------------------------------------
+
+    /** The Thor's bottom screen (display 4), if this device has a second screen. */
+    fun bottomDisplay(): android.view.Display? {
+        val dm = getSystemService(android.hardware.display.DisplayManager::class.java)
+        return dm.getDisplay(4) ?: dm.displays.firstOrNull { it.displayId != android.view.Display.DEFAULT_DISPLAY }
+    }
+
+    /** The field being edited, or null. While set, the bottom screen shows the keyboard. */
+    var typing by mutableStateOf<dev.thorreader.bookloader.ui.TypingSession?>(null)
+        private set
+
+    fun startTyping(s: dev.thorreader.bookloader.ui.TypingSession) {
+        if (typing != null) stopTyping("another field")
+        typing = s
+        android.util.Log.i(TAG, "Typing started (\"${s.hint}\")")
+    }
+
+    fun stopTyping(reason: String) {
+        val s = typing ?: return
+        typing = null
+        android.util.Log.i(TAG, "Typing ended ($reason)")
+        s.onDone()
+    }
+
+    /** A light tick on key presses. */
+    fun tick() {
+        runCatching {
+            val v = getSystemService(android.os.VibratorManager::class.java)?.defaultVibrator ?: return
+            if (v.hasVibrator()) v.vibrate(android.os.VibrationEffect.createPredefined(android.os.VibrationEffect.EFFECT_TICK))
+        }
+    }
+
+    /**
+     * Keys while typing: d-pad moves the key highlight, A types it, B = backspace (empty field:
+     * done), Start = Done; a physical keyboard types directly. True = handled.
+     */
+    fun handleTypingKey(e: android.view.KeyEvent): Boolean {
+        val s = typing ?: return false
+        val code = e.keyCode
+        if (e.action != android.view.KeyEvent.ACTION_DOWN) {
+            return code in setOf(
+                android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN, android.view.KeyEvent.KEYCODE_DPAD_LEFT,
+                android.view.KeyEvent.KEYCODE_DPAD_RIGHT, android.view.KeyEvent.KEYCODE_BUTTON_A, android.view.KeyEvent.KEYCODE_BUTTON_B,
+                android.view.KeyEvent.KEYCODE_BUTTON_START, android.view.KeyEvent.KEYCODE_MENU, android.view.KeyEvent.KEYCODE_DPAD_CENTER,
+                android.view.KeyEvent.KEYCODE_DEL, android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_BACK,
+            ) || e.unicodeChar != 0
+        }
+        when (code) {
+            android.view.KeyEvent.KEYCODE_DPAD_UP -> s.moveHighlight(-1, 0)
+            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> s.moveHighlight(1, 0)
+            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> s.moveHighlight(0, -1)
+            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> s.moveHighlight(0, 1)
+            android.view.KeyEvent.KEYCODE_BUTTON_A, android.view.KeyEvent.KEYCODE_DPAD_CENTER -> {
+                val k = s.highlighted() ?: return true
+                tick()
+                if (!s.press(k)) stopTyping("Done (A)")
+            }
+            android.view.KeyEvent.KEYCODE_BUTTON_B -> if (s.text.isEmpty()) stopTyping("B on an empty field") else s.backspace()
+            android.view.KeyEvent.KEYCODE_BUTTON_START, android.view.KeyEvent.KEYCODE_MENU -> stopTyping("Start")
+            android.view.KeyEvent.KEYCODE_DEL -> s.backspace()
+            android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_NUMPAD_ENTER -> stopTyping("Enter")
+            android.view.KeyEvent.KEYCODE_ESCAPE, android.view.KeyEvent.KEYCODE_BACK -> stopTyping("Back")
+            else -> {
+                val ch = e.unicodeChar
+                if (ch == 0) return false
+                s.insert(String(Character.toChars(ch)))
+            }
+        }
+        return true
+    }
+
     /** Background music on (♪ button / Settings → Sound). Remembered. */
     var musicOn by mutableStateOf(true)
         private set
