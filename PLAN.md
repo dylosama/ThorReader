@@ -1067,3 +1067,25 @@ style next to the existing motion, now called Classic.)
   memory cache, only for covers on screen; nothing runs while idle. Tests: GridTest.
 - Checked on the Thor: list view with the pill (grid icon), grid view (7 columns, 5 covers, list
   icon in the pill), tapping a cover into Inspect (pill replaced by the X).
+
+## v0.3 PAUSED HERE (2026-11-24)
+Everything below is committed and pushed on main (last commit: "v0.3.0: library grid view and the
+top-right pill"). versionName 0.3.0, versionCode 4, not published, no 0.3.0 tag. The Thor was at
+1 % battery during the last tests, so nothing has been judged for smoothness yet.
+
+Built and checked once on the Thor, still needing a proper test pass (on a charged Thor):
+1. Curl tweaks (step 22): corner curl from buttons and taps (Bottom / Top corner), the sheet crossing
+   the hinge in Modes 1 / 2, comic page backs in the page's own paper colour (dimmed in Night).
+2. Open & close style Hinge / Classic: watch the recordings (Hinge Normal / Slow, Classic Normal,
+   Modes 1 and 2), check the motion feels continuous with no stops, RTL books, skip at any point,
+   Inspect -> Read, Modes 3 / 4 falling back to Classic, frame rates at full battery.
+3. Step 24: theme colour (presets and any hue), Settings order, Animations section, reader menu
+   declutter, Inspect book (3D spin, zoom, inertia, back cover, thickness, bottom-screen details).
+4. Grid view: not yet tried on the Thor - hold a cover / X for the popup, d-pad left/right inside
+   the pill, grids inside Author / Series / Genre / Type groups, Completed, search results, the
+   cover lifting out of the grid into Inspect (confirm in a recording), the grey cover seen for a
+   split second in Inspect of Blue Period Vol. 2 (should load), scrolling with a bigger library.
+   The Thor was left in grid view.
+
+Left before 0.3 is finished: fix whatever the test pass finds, then build the final signed
+ThorReader-0.3.0.apk and publish (tag only when asked).
