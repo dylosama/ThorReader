@@ -1052,3 +1052,18 @@ style next to the existing motion, now called Classic.)
   Hinge Normal / Slow and Classic Normal, open + close, Modes 1 and 2. Frame rates measured
   that evening are NOT representative: the Thor was at 1 % battery and throttling (even a page
   curl, 60 fps earlier the same day, showed p95 117 ms).
+
+### Library grid view and the top-right pill (still v0.3.0)
+- Top right: one pill (house style) with three buttons split by hairlines: view toggle | + | gear,
+  each 52 x 48 dp, theme-colour highlight while pressed, d-pad left/right moves inside it. The
+  toggle shows the view you'll switch TO (grid icon in list view, list icon in grid view). Inspect
+  covers it with its round X, as before. `LibraryPill` in LibraryGrid.kt.
+- Grid view (`BookGrid`, shared `FillGrid` in FillList.kt): covers only, own aspect ratio, 8 dp
+  rounded corners, soft shadow, placeholder cover when none; 7 columns on the top screen
+  (`gridColumns`, cells >= 104 dp, gaps = the list's 8 dp token); fills the height, lazy, smooth.
+  Tap / A = Inspect from that cover; hold ~0.5 s / X = the book's popup (same as the list's mode
+  button). Every sort, groups (names list, then a grid inside), Completed and search results.
+  Remembered (`library_grid`). Thumbnails decoded at cell size on a background thread, 16 MB
+  memory cache, only for covers on screen; nothing runs while idle. Tests: GridTest.
+- Checked on the Thor: list view with the pill (grid icon), grid view (7 columns, 5 covers, list
+  icon in the pill), tapping a cover into Inspect (pill replaced by the X).

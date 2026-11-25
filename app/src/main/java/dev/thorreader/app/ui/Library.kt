@@ -199,16 +199,15 @@ fun LibraryScreen() {
                     }
                 }
             }
-            Row(Modifier.align(Alignment.CenterEnd), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box {
-                    RoundIcon(onClick = { addOpen = true }) { Text("+", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Light) }
+            // One pill: view toggle | + | gear (Inspect covers it with its round X).
+            Box(Modifier.align(Alignment.CenterEnd)) {
+                LibraryPill(onAdd = { addOpen = true }) {
                     if (addOpen) {
                         Popup(popupPositionProvider = BelowEnd, onDismissRequest = { addOpen = false }, properties = PopupProperties(focusable = true)) {
                             AddPopup { addOpen = false }
                         }
                     }
                 }
-                RoundIcon(onClick = { app.settingsOpen = true }) { Text("⚙", color = Color.White, fontSize = 20.sp) }
             }
         }
         Spacer(Modifier.height(10.dp))
@@ -291,8 +290,13 @@ private fun BookList(books: List<Book>, showTutorial: Boolean) {
         if (showTutorial && books.isNotEmpty()) {
             TutorialBadge(TutorialStep.OPEN_BOOK, "Tap a book to start reading", ArrowDir.DOWN, Modifier.padding(start = 24.dp, bottom = 2.dp), arrowAlign = Alignment.Start)
         }
-        FillList(Modifier.weight(1f)) {
-            items(books, key = { it.id }) { BookRow(it) }
+        // Grid view: covers only (tap = Inspect); list view: the rows. Same sorts and groups.
+        if (ThorApp.instance.settings.libraryGrid) {
+            BookGrid(books, Modifier.weight(1f))
+        } else {
+            FillList(Modifier.weight(1f)) {
+                items(books, key = { it.id }) { BookRow(it) }
+            }
         }
     }
 }
@@ -506,7 +510,7 @@ private fun BookModeButton(book: Book) {
 }
 
 /** Places the popup to the right of its button (to the left if there isn't room), kept on screen. */
-private object BesideAnchor : PopupPositionProvider {
+internal object BesideAnchor : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
         val gap = 12
         var x = anchorBounds.right + gap
@@ -517,7 +521,7 @@ private object BesideAnchor : PopupPositionProvider {
 }
 
 @Composable
-private fun BookPopup(book: Book, mode: ReadingMode, close: () -> Unit) {
+internal fun BookPopup(book: Book, mode: ReadingMode, close: () -> Unit) {
     val app = ThorApp.instance
     var confirmRemove by remember { mutableStateOf(false) }
     val initialFocus = remember { FocusRequester() }
@@ -712,7 +716,7 @@ private fun RoundIcon(onClick: () -> Unit, content: @Composable () -> Unit) {
 
 /** A simple drawn magnifier (crisp at any size, matches the other white icons). */
 @Composable
-private fun MagnifierIcon() {
+internal fun MagnifierIcon() {
     Canvas(Modifier.size(20.dp)) {
         val r = size.minDimension * 0.32f
         val c = Offset(size.width * 0.42f, size.height * 0.42f)

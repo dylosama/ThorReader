@@ -381,6 +381,15 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putBoolean("turn_corner_bottom", bottom).apply()
     }
 
+    /** Library shows covers in a grid (true) or the list (false). Remembered. */
+    var libraryGrid by mutableStateOf(prefs.getBoolean("library_grid", false))
+        private set
+
+    fun updateLibraryGrid(grid: Boolean) {
+        libraryGrid = grid
+        prefs.edit().putBoolean("library_grid", grid).apply()
+    }
+
     // ---- theme colour (step 24) -----------------------------------------------------------
 
     /** The app's accent colour (ARGB). Read by `ui.Accent`. */

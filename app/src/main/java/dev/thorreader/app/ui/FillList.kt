@@ -39,3 +39,33 @@ fun FillList(
         content = content,
     )
 }
+
+/** Gap between library items (list rows and grid covers): the same spacing token. */
+val LibraryGap = 8.dp
+
+/**
+ * THE grid for library covers (grid view): fills the space it is given, scrolls smoothly, a
+ * little padding after the last row. Lazy: only the covers on screen are composed and decoded.
+ * [columns] comes from [gridColumns].
+ */
+@Composable
+fun FillGrid(
+    columns: Int,
+    modifier: Modifier = Modifier,
+    state: androidx.compose.foundation.lazy.grid.LazyGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState(),
+    content: androidx.compose.foundation.lazy.grid.LazyGridScope.() -> Unit,
+) {
+    androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+        columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(columns),
+        modifier = modifier.fillMaxSize(),
+        state = state,
+        contentPadding = PaddingValues(top = 4.dp, bottom = ListBottomPadding),
+        horizontalArrangement = Arrangement.spacedBy(LibraryGap),
+        verticalArrangement = Arrangement.spacedBy(LibraryGap),
+        content = content,
+    )
+}
+
+/** How many cover columns fit [widthDp]: covers at least [minCellDp] wide (about 7 on the Thor's top screen). */
+fun gridColumns(widthDp: Float, minCellDp: Float = 104f, gapDp: Float = LibraryGap.value): Int =
+    ((widthDp + gapDp) / (minCellDp + gapDp)).toInt().coerceIn(3, 10)
