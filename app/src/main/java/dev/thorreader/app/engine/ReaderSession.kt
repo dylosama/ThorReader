@@ -338,6 +338,9 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         swappedView = null // a new layout (e.g. another mode) shows pages in normal order
         pagination = p
         viewIndex = p.findView(anchor).coerceIn(0, p.views.size - 1)
+        shownIndex = viewIndex // a new layout replaces the pages anyway; no waiting
+        commitJob?.cancel()
+        turnWaiting = false
         prefetch()
     }
 
@@ -381,11 +384,78 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         prefetchJob?.cancel()
         prefetchJob = scope.launch {
             val p = pagination ?: return@launch
-            for (d in intArrayOf(0, 1, -1, 2, -2)) { // current ±2 views only
-                val v = p.views.getOrNull(viewIndex + d) ?: continue
-                v.units.forEachIndexed { i, u -> render(p, u, p.slotFor(v, i), 1f) }
+            // By VIEW, every page at its own slot size (the same mapping the screens use):
+            // current, NEXT, previous, then ±2. Bounded by the LRU cache (pages are screen-sized).
+            for (i in prefetchOrder(viewIndex, p.views.size)) {
+                for ((u, slot) in prefetchRequests(p, i)) render(p, u, slot, 1f)
             }
         }
+    }
+
+    // ---- atomic page turns ---------------------------------------------------------------
+    //
+    // [viewIndex] is where the reader IS (position, page numbers, menu). The screens draw
+    // [shownIndex]: it only moves to a new view once every page of that view is rendered, so
+    // both screens switch together and never show black while one page is still decoding.
+
+    /** The view the screens show. Follows [viewIndex] as soon as its pages are ready. */
+    var shownIndex by mutableIntStateOf(0)
+        private set
+
+    /** A turn has waited more than 300 ms for its pages: show a small "Loading…" badge. */
+    var turnWaiting by mutableStateOf(false)
+        private set
+
+    /** When the last turn started (uptime ms), for the per-screen commit log. */
+    var turnStartedAt = 0L
+        private set
+    private var commitJob: Job? = null
+
+    /** Both screens switch to view [i] (in the same frame: one state change). */
+    private fun show(i: Int) {
+        if (i != shownIndex) swappedView = null // a page turn ends a screen swap
+        shownIndex = i
+    }
+
+    /** Show view [viewIndex] on both screens as soon as all its pages are rendered. */
+    private fun commitWhenReady() {
+        val p = pagination ?: return
+        val target = viewIndex
+        val v = p.views.getOrNull(target) ?: return
+        commitJob?.cancel()
+        turnWaiting = false
+        val ready = v.units.withIndex().all { (i, u) -> u is BlankUnit || cached(p, u, p.slotFor(v, i), 1f) != null }
+        if (ready) {
+            show(target)
+            return
+        }
+        commitJob = scope.launch {
+            val badge = launch {
+                delay(TURN_BADGE_DELAY_MS)
+                turnWaiting = true
+            }
+            try {
+                // Both pages at once (they queue on the engine thread in this order).
+                v.units.withIndex().map { (i, u) -> async { render(p, u, p.slotFor(v, i), 1f) } }.forEach { it.await() }
+            } finally {
+                badge.cancel()
+                turnWaiting = false
+            }
+            if (viewIndex == target && pagination === p) show(target)
+        }
+    }
+
+    /** Were the new view's pages already rendered? A miss on a one-step turn is a bug. */
+    private fun logTurn(from: Int, to: Int, p: Pagination) {
+        val v = p.views.getOrNull(to) ?: return
+        val slots = v.units.mapIndexed { i, u ->
+            val hit = u is BlankUnit || cached(p, u, p.slotFor(v, i), 1f) != null
+            "slot$i ${if (hit) "hit" else "MISS"}"
+        }
+        val dir = if (to > from) "forward" else "back"
+        val line = "Turn $dir to view ${to + 1} (from ${from + 1}${if (book.rtl) ", right-to-left" else ""}): ${slots.joinToString(", ")}"
+        if (kotlin.math.abs(to - from) == 1 && slots.any { it.endsWith("MISS") }) Log.w(TAG, "$line (should have been pre-rendered)")
+        else Log.d(TAG, line)
     }
 
     // ---- navigation -----------------------------------------------------------------------
@@ -394,7 +464,10 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         val p = pagination ?: return
         val target = index.coerceIn(0, p.views.size - 1)
         if (target == viewIndex) return
+        logTurn(viewIndex, target, p)
         viewIndex = target
+        turnStartedAt = SystemClock.uptimeMillis()
+        commitWhenReady()
         dev.thorreader.app.Background.markBusy() // background work waits while pages are being turned
         prefetch()
         scheduleSave()
@@ -484,7 +557,11 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         scrubApplyJob = scope.launch {
             while (true) {
                 val t = scrubPos ?: break
-                if (t != viewIndex) viewIndex = t
+                if (t != viewIndex) {
+                    viewIndex = t
+                    turnStartedAt = SystemClock.uptimeMillis()
+                    commitWhenReady()
+                }
                 delay(100)
                 if (scrubPos == null || scrubPos == viewIndex) break
             }
@@ -503,12 +580,16 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         scrubScreen = null
         if (confirm) {
             viewIndex = target.coerceIn(0, (pagination?.views?.size ?: 1) - 1)
+            turnStartedAt = SystemClock.uptimeMillis()
+            commitWhenReady()
             if (origin != null && pagination?.findView(origin) != viewIndex) recordJump(origin)
             prefetch()
             scheduleSave()
             checkCompleted()
         } else if (origin != null) {
             pagination?.let { viewIndex = it.findView(origin).coerceIn(0, it.views.size - 1) }
+            turnStartedAt = SystemClock.uptimeMillis()
+            commitWhenReady()
             prefetch()
         }
     }
@@ -599,7 +680,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
     private var swappedView by mutableStateOf<Int?>(null)
 
     /** Are the two pages of the current view shown on each other's screens? */
-    fun isSwapped(mode: ReadingMode): Boolean = mode.isBook && !reflowable && swappedView == viewIndex
+    fun isSwapped(mode: ReadingMode): Boolean = mode.isBook && !reflowable && swappedView == shownIndex // the view on screen
 
     /** Short house-style message on the big screen ("Page 7 ⇄"); [seq] restarts its fade. */
     class SwapPill(val text: String, val seq: Int)
@@ -711,5 +792,8 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
 
         /** Rendered pages kept in memory: enough for the current view ±2 plus a zoom (~120 MB). */
         const val CACHE_KB = 120 * 1024
+
+        /** A turn whose pages aren't ready yet shows "Loading…" only after this long. */
+        const val TURN_BADGE_DELAY_MS = 300L
     }
 }

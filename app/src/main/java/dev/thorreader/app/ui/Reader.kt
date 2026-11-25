@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -77,6 +78,7 @@ import dev.thorreader.app.engine.Side
 import dev.thorreader.app.engine.SlotSize
 import dev.thorreader.app.engine.bookUnitIndexFor
 import dev.thorreader.app.engine.unitHolds
+import dev.thorreader.app.engine.screenPages
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -94,7 +96,9 @@ fun ReaderScreen(session: ReaderSession, screen: Screen, mode: ReadingMode) {
                 HouseProgressBadge(session.status ?: "Opening…")
             }
             else -> {
-                val index = session.viewIndex.coerceIn(0, p.views.size - 1)
+                // The view the screens show: it changes only once all its pages are rendered, so both
+                // screens switch together (see ReaderSession.shownIndex).
+                val index = session.shownIndex.coerceIn(0, p.views.size - 1)
                 val view = p.views[index]
                 val rtl = p.config.rtl
                 when {
@@ -125,10 +129,10 @@ fun ReaderScreen(session: ReaderSession, screen: Screen, mode: ReadingMode) {
                             },
                             label = "swap",
                         ) { (vi, sw) ->
-                            val v = p.views.getOrNull(vi) ?: view
-                            val unit = v.units.getOrElse(if (sw) 1 - idx else idx) { BlankUnit }
+                            // Same mapping as the pre-rendering (screenPages / prefetchRequests).
+                            val (unit, slot) = screenPages(p, vi, mode, screen, sw).firstOrNull() ?: (BlankUnit to p.slotFor(view, idx))
                             PageSlot(
-                                session, p, unit, p.slotFor(v, idx), screen, setOf(if (screenIsLeft) Side.LEFT else Side.RIGHT),
+                                session, p, unit, slot, screen, setOf(if (screenIsLeft) Side.LEFT else Side.RIGHT),
                                 Modifier.fillMaxSize(), onSwipeUp = swipeUp,
                             )
                         }
@@ -143,6 +147,18 @@ fun ReaderScreen(session: ReaderSession, screen: Screen, mode: ReadingMode) {
                         PageSlot(session, p, view.units[leftIdx], p.slotFor(view, leftIdx), screen, setOf(Side.LEFT), Modifier.weight(1f).fillMaxHeight())
                         PageSlot(session, p, view.units[1 - leftIdx], p.slotFor(view, 1 - leftIdx), screen, setOf(Side.RIGHT), Modifier.weight(1f).fillMaxHeight())
                     }
+                }
+                // Per-turn log: when this screen actually shows the new view.
+                LaunchedEffect(index) {
+                    val t = session.turnStartedAt
+                    if (t > 0) {
+                        withFrameNanos { }
+                        android.util.Log.d(dev.thorreader.app.TAG, "Screen ${screen.name} shows view ${index + 1}, ${android.os.SystemClock.uptimeMillis() - t} ms after the turn")
+                    }
+                }
+                // A turn still waiting for its pages after 300 ms: the old pages stay up, plus this.
+                if (session.turnWaiting) {
+                    HouseProgressBadge("Loading…", Modifier.align(Alignment.BottomCenter).padding(bottom = HouseStyle.EdgeGap))
                 }
                 // Small, non-blocking progress indicator (background layout etc.): tucked into the
                 // top-left corner margin of each page screen, right of a bookmark ribbon there.

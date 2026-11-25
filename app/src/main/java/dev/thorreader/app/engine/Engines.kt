@@ -330,6 +330,16 @@ class ImageArchiveEngine(
                 Bitmap.createBitmap(full, l, 0, (region.width() / sample).coerceAtMost(full.width - l), full.height)
             }
         } ?: return null
+        // inSampleSize only halves, so the picture can still be up to 2x the size it is shown
+        // at (a manga page ~12 MB instead of ~6). Scale it to exactly that size: the render
+        // cache then holds the current view ±2 easily, so turning never waits for a decode.
+        val tw = (rw * s).roundToInt().coerceAtLeast(1)
+        val th = (rh * s).roundToInt().coerceAtLeast(1)
+        if (bmp.width > tw * 1.05f && bmp.height > th * 1.05f) {
+            val scaled = Bitmap.createScaledBitmap(bmp, tw, th, true)
+            if (scaled !== bmp) bmp.recycle()
+            return Rendered(scaled, tall)
+        }
         return Rendered(bmp, tall)
     }
 

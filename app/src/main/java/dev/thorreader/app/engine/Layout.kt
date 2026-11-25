@@ -382,3 +382,39 @@ class ChapterViewCache {
         key = null
     }
 }
+
+// ---- what each screen shows, and what to pre-render ---------------------------------------
+
+/**
+ * Views to pre-render around [current], in this order: the current view, the NEXT view (in
+ * reading order - views are always stored in reading order, also for right-to-left books), the
+ * previous view, then two away. Only views that exist.
+ */
+fun prefetchOrder(current: Int, count: Int): List<Int> =
+    intArrayOf(0, 1, -1, 2, -2).map { current + it }.filter { it in 0 until count }
+
+/** Every page of view [i] at the exact size of the slot it is shown in (blank pages skipped). */
+fun prefetchRequests(p: Pagination, i: Int): List<Pair<PageUnit, SlotSize>> {
+    val v = p.views.getOrNull(i) ?: return emptyList()
+    return v.units.mapIndexedNotNull { k, u -> if (u is BlankUnit) null else u to p.slotFor(v, k) }
+}
+
+/**
+ * The page(s) [screen] shows of view [i], each with the slot size it is rendered at. The reader
+ * screens draw exactly this, and [prefetchRequests] covers it (when not [swapped]), so a normal
+ * turn never has to decode a page while the reader waits.
+ */
+fun screenPages(p: Pagination, i: Int, mode: ReadingMode, screen: Screen, swapped: Boolean = false): List<Pair<PageUnit, SlotSize>> {
+    val v = p.views.getOrNull(i) ?: return emptyList()
+    val rtl = p.config.rtl
+    return when {
+        mode.isBook -> {
+            val idx = bookUnitIndexFor(screen, mode, rtl)
+            listOf(v.units.getOrElse(if (swapped) 1 - idx else idx) { BlankUnit } to p.slotFor(v, idx))
+        }
+        // Modes 3 and 4 use one screen only.
+        (mode == ReadingMode.TOP) != (screen == Screen.TOP) -> emptyList()
+        v.wide || v.units.size == 1 -> listOf(v.units[0] to p.slotFor(v, 0))
+        else -> v.units.indices.map { k -> v.units[k] to p.slotFor(v, k) }
+    }
+}

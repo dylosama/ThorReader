@@ -711,3 +711,28 @@ Measured on the Thor (AYN Thor, Android 13), Dune (EPUB, Mode 1), before -> afte
 Idle CPU was already ~0 before; the fixes remove the cases that weren't idle (spinner badges,
 screen kept on forever, 120 Hz). Debug log lines added: "Badge: ...", "Built pages for
 chapters a..b in N ms", "Display N: asking for 60 Hz".
+
+### v0.2.1 hotfix (step 21): RTL manga, small screen blacks out on forward turns
+Hypothesis (checked on the Thor below): comic pages were decoded at up to 2x the screen size
+(inSampleSize only halves), ~12 MB per manga page, 2 per view; Step 20 cut the render cache to
+120 MB, so current ±2 views (~118 MB) no longer fit. The LRU evicts the oldest entries; prefetch
+renders each view's slot 0 before slot 1, and in RTL Mode 1 slot 0 is the BOTTOM screen, so the
+next view's bottom page was the one thrown out -> decoded on demand -> black meanwhile.
+Backward worked because the previous view was rendered more recently.
+Fix:
+- Comic/picture pages are scaled to exactly the size they are shown at (fit the slot), ~8 MB
+  max per page: ±2 views fit easily in the same 120 MB cache.
+- Prefetch by VIEW with the display's own slot mapping (`screenPages` used by the UI,
+  `prefetchRequests` / `prefetchOrder` by the prefetch, all in Layout.kt, tested in
+  PrefetchTest): current, next, previous, then ±2. Normal priority: it shares the one render
+  thread with the page being waited for; it stays bounded by the cache and the ±2 views.
+- A page turn also ends a screen swap (`show()`); the swap belongs to the view on screen.
+- NOT yet confirmed on the Thor: the device was disconnected while this was built. The
+  per-turn log lines above will show whether forward turns are cache hits.
+- Atomic turns: the screens draw `shownIndex`, not `viewIndex`. A turn commits (both screens
+  switch together) only when every page of the new view is rendered; until then the old pages
+  stay up, and a house "Loading…" badge appears only after 300 ms.
+- Per-turn log: "Turn forward to view N (from M): slot0 hit, slot1 MISS ..." (a miss on a
+  normal one-step turn is logged as a warning) and "Screen TOP/BOTTOM shows view N, X ms after
+  the turn".
+- versionName 0.2.1, versionCode 3.
