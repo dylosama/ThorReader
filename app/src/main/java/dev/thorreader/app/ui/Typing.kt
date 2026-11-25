@@ -353,7 +353,7 @@ private fun RowScope.KeyButton(k: Key, highlighted: Boolean, onPress: () -> Unit
     ) {
         Text(
             k.label,
-            color = if (k == Key.Done) Color.Black else Color.White,
+            color = if (k == Key.Done) OnAccent else Color.White,
             fontSize = if (k is Key.Char) 22.sp else 16.sp,
             fontWeight = if (k == Key.Done) FontWeight.Bold else FontWeight.Normal,
         )

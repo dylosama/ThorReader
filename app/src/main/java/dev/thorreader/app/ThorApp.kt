@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import dev.thorreader.app.engine.BookAnimMath
+import dev.thorreader.app.ui.frontRect
 import java.io.File
 
 const val TAG = "ThorReader"
@@ -57,6 +58,9 @@ class ThorApp : Application() {
         private set
 
     private var menuScreenState = mutableStateOf<Screen?>(null)
+
+    /** The reader menu's folded "More" section is open (kept while the app runs). */
+    var menuMoreOpen by mutableStateOf(false)
 
     /** Which screen the reader menu is open on (null = closed). */
     var menuScreen: Screen?
@@ -250,6 +254,8 @@ class ThorApp : Application() {
         val snapshots: Map<Screen, android.graphics.Bitmap>,
         /** Low battery / no snapshot: a quick fade instead of the cover. */
         val fade: Boolean,
+        /** Lifted out of a library row (leave its place empty); false = from the 3D book. */
+        val fromRow: Boolean = true,
     ) {
         /** Does this animation draw on [screen]? */
         fun uses(screen: Screen): Boolean = screen == Screen.TOP || mode.isBook || mode == ReadingMode.BOTTOM
@@ -301,7 +307,7 @@ class ThorApp : Application() {
     }
 
     /** The book's cover (decoded at a size good for full screen), or a generated one. */
-    private suspend fun loadCover(book: Book): android.graphics.Bitmap = withContext(Dispatchers.IO) {
+    suspend fun loadCover(book: Book): android.graphics.Bitmap = withContext(Dispatchers.IO) {
         book.coverPath?.let { path ->
             runCatching {
                 val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -314,20 +320,100 @@ class ThorApp : Application() {
     }
 
     /** Open [id] from the library with the cover animation (or instantly if it's off). */
-    fun openBookAnimated(id: Long) {
+    fun openBookAnimated(id: Long, fromRect: android.graphics.RectF? = null, onSnapshot: (() -> Unit)? = null) {
         if (bookAnim != null) return
-        if (!settings.bookAnim) return openBook(id)
+        if (!settings.bookAnim) {
+            onSnapshot?.invoke()
+            return openBook(id)
+        }
         scope.launch {
             val book = db.books().get(id) ?: return@launch
             val mode = book.readingMode ?: settings.lastBookMode
-            val from = coverBounds[id]?.let { android.graphics.RectF(it) }
+            val from = fromRect ?: coverBounds[id]?.let { android.graphics.RectF(it) }
             val cover = loadCover(book)
+            if (onSnapshot != null) {
+                // Let the screen show what the animation starts from (e.g. the 3D book's front).
+                withContext(androidx.compose.ui.platform.AndroidUiDispatcher.Main) {
+                    androidx.compose.runtime.withFrameNanos { }
+                    androidx.compose.runtime.withFrameNanos { }
+                }
+            }
             val shot = snapshot(Screen.TOP)
+            onSnapshot?.invoke()
             val fade = batteryLow() || shot == null
             if (fade) Log.i(TAG, "Book opens with a quick fade (${if (shot == null) "no snapshot" else "low battery"})")
-            startBookAnim(BookAnim(true, id, mode, book.rtl, cover, from, listOfNotNull(shot?.let { Screen.TOP to it }).toMap(), fade))
+            startBookAnim(BookAnim(true, id, mode, book.rtl, cover, from, listOfNotNull(shot?.let { Screen.TOP to it }).toMap(), fade, fromRow = fromRect == null))
             openBook(id)
         }
+    }
+
+    // ---- Inspect book (step 24) ----------------------------------------------------------------
+
+    /** The 3D book being inspected (top screen; the bottom screen shows its details), or null. */
+    var inspecting by mutableStateOf<dev.thorreader.app.ui.InspectState?>(null)
+        private set
+
+    fun startInspect(book: Book) {
+        if (inspecting != null || session != null || bookAnim != null) return
+        Log.i(TAG, "Inspect book '${book.title}'")
+        inspecting = dev.thorreader.app.ui.InspectState(book, coverBounds[book.id]?.let { android.graphics.RectF(it) })
+    }
+
+    /** X / B / Back: the book shrinks back into its row (then [endInspect]). */
+    fun closeInspect(reason: String) {
+        val s = inspecting ?: return
+        if (s.closing) return
+        Log.i(TAG, "Inspect closed ($reason)")
+        s.closing = true
+    }
+
+    fun endInspect(s: dev.thorreader.app.ui.InspectState) {
+        if (inspecting !== s) return
+        inspecting = null
+        scope.launch {
+            delay(300)
+            s.textures?.recycle()
+        }
+    }
+
+    /** "Read" on the bottom screen: open the book with the normal animation, from the 3D book's front. */
+    fun readFromInspect() {
+        val s = inspecting ?: return
+        if (s.closing) return
+        s.touched()
+        s.rot = dev.thorreader.app.engine.Rot.IDENTITY
+        val from = s.frontRect(screens.topW.toFloat(), screens.topH.toFloat())
+        Log.i(TAG, "Read from Inspect: '${s.book.title}'")
+        openBookAnimated(s.book.id, from) {
+            inspecting = null
+            scope.launch {
+                delay(1500)
+                s.textures?.recycle()
+            }
+        }
+    }
+
+    /** Buttons while inspecting: d-pad turns the book 15°, A = front view, B / Back = close. */
+    private fun handleInspectKey(s: dev.thorreader.app.ui.InspectState, e: KeyEvent): Boolean {
+        if (e.action != KeyEvent.ACTION_DOWN) return true
+        s.touched()
+        val step = Math.toRadians(15.0).toFloat()
+        fun turn(axis: dev.thorreader.app.engine.V3, a: Float) {
+            s.rot = s.rot.then(dev.thorreader.app.engine.Rot.axisAngle(axis, a)).cleaned()
+        }
+        when (e.keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> turn(dev.thorreader.app.engine.V3(0f, 1f, 0f), step)
+            KeyEvent.KEYCODE_DPAD_RIGHT -> turn(dev.thorreader.app.engine.V3(0f, 1f, 0f), -step)
+            KeyEvent.KEYCODE_DPAD_UP -> turn(dev.thorreader.app.engine.V3(1f, 0f, 0f), -step)
+            KeyEvent.KEYCODE_DPAD_DOWN -> turn(dev.thorreader.app.engine.V3(1f, 0f, 0f), step)
+            KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> {
+                s.rot = dev.thorreader.app.engine.Rot.IDENTITY
+                s.zoom = 1f
+            }
+            KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> closeInspect("button B / Back")
+            else -> return e.keyCode != KeyEvent.KEYCODE_VOLUME_UP && e.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN
+        }
+        return true
     }
 
     /** Close the book from the reader (menu button, Back) with the reverse animation. */
@@ -362,7 +448,7 @@ class ThorApp : Application() {
         bookAnim = a
         Log.i(TAG, "Book ${if (a.open) "open" else "close"} animation, mode ${a.mode.number}${if (a.rtl) ", right-to-left" else ""}${if (a.fade) ", fade" else ""}")
         bookAnimJob = scope.launch(androidx.compose.ui.platform.AndroidUiDispatcher.Main) {
-            val dur = debugBookMs()?.toFloat() ?: if (a.fade) BookAnimMath.FADE_MS.toFloat() else BookAnimMath.DURATION_MS.toFloat()
+            val dur = debugBookMs()?.toFloat() ?: if (a.fade) BookAnimMath.FADE_MS.toFloat() else settings.bookAnimSpeed.bookMs.toFloat()
             // Opening never reveals blank pages: wait for them at the hold point (fade: at the start).
             val holdAt = if (a.fade) 0f else BookAnimMath.HOLD
             var start = -1L
@@ -754,6 +840,10 @@ class ThorApp : Application() {
      */
     fun handleBack(source: String): Boolean {
         val sinceModeChange = SystemClock.uptimeMillis() - lastModeChangeAt
+        if (inspecting != null && session == null) {
+            closeInspect("Back ($source)")
+            return true
+        }
         if (bookAnim != null) {
             skipBookAnim()
             return true
@@ -852,6 +942,10 @@ class ThorApp : Application() {
         if (bookAnim != null) {
             if (e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0 && code in setOf(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_DPAD_CENTER)) skipBookAnim()
             return code != KeyEvent.KEYCODE_VOLUME_UP && code != KeyEvent.KEYCODE_VOLUME_DOWN
+        }
+        // Inspect book: the buttons turn the 3D book.
+        inspecting?.let { s ->
+            if (session == null && handleInspectKey(s, e)) return true
         }
         if (e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0) {
             Log.d(TAG, "Key down: ${KeyEvent.keyCodeToString(code)} ($code)")
@@ -994,6 +1088,9 @@ class ThorApp : Application() {
     companion object {
         lateinit var instance: ThorApp
             private set
+
+        /** The app is running (false in plain unit tests). */
+        val ready: Boolean get() = ::instance.isInitialized
         private const val HANDOVER_GUARD_MS = 2000L
         private const val AUTO_OFF_DELAY_MS = 1200L
         private const val KEEP_ON_MS = 10 * 60_000L

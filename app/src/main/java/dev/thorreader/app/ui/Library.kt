@@ -371,7 +371,7 @@ private fun ShelfSwitch(current: Shelf, libraryCount: Int, completedCount: Int, 
             val count = if (s == Shelf.LIBRARY) libraryCount else completedCount
             Text(
                 "${s.label}  $count",
-                color = if (selected) Color.Black else Color.White,
+                color = if (selected) OnAccent else Color.White,
                 fontSize = 15.sp,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                 modifier = Modifier
@@ -530,6 +530,11 @@ private fun BookPopup(book: Book, mode: ReadingMode, close: () -> Unit) {
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
+        PopupItem(onClick = {
+            close()
+            app.startInspect(book)
+        }) { PopupText("Inspect book") }
+        PopupDivider()
         PopupLabel("Opens in")
         ReadingMode.entries.forEach { m ->
             PopupItem(
@@ -687,7 +692,7 @@ private fun BigAddButton(label: String, onClick: () -> Unit) {
             .focusClick(RoundedCornerShape(14.dp), onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = OnAccent, fontSize = 20.sp, fontWeight = FontWeight.Bold)
     }
 }
 

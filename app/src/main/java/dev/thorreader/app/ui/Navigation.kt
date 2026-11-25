@@ -226,7 +226,7 @@ private fun PadKey(label: String, primary: Boolean, onClick: () -> Unit) {
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = if (primary) Color.Black else Color.White, fontSize = 17.sp, fontWeight = if (primary) FontWeight.Bold else FontWeight.Normal)
+        Text(label, color = if (primary) OnAccent else Color.White, fontSize = 17.sp, fontWeight = if (primary) FontWeight.Bold else FontWeight.Normal)
     }
 }
 

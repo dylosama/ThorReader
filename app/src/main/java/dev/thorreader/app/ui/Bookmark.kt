@@ -272,3 +272,64 @@ private fun HueSlider(hue: Float, onChange: (Float) -> Unit) {
         )
     }
 }
+
+/**
+ * "Theme colour" (Settings): the app's accent. Same minimal style as the bookmark colour:
+ * 8 presets + Custom (hue slider), and a live preview of a chip, a toggle and a button.
+ */
+@Composable
+fun ThemeColorPicker() {
+    val settings = ThorApp.instance.settings
+    val current = settings.accentColor
+    val presets = dev.thorreader.app.AccentMath.PRESETS
+    var custom by remember { mutableStateOf(current !in presets) }
+    var hue by remember {
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(current, hsv)
+        mutableFloatStateOf(hsv[0])
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            presets.forEach { c ->
+                ColorSwatch(Color(c), selected = !custom && c == current, size = 48) {
+                    custom = false
+                    settings.updateAccentColor(c)
+                }
+            }
+            Box(
+                Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .border(if (custom) 3.dp else 1.dp, if (custom) Color.White else HouseStyle.Hairline, CircleShape)
+                    .padding(if (custom) 5.dp else 3.dp)
+                    .clip(CircleShape)
+                    .background(Brush.sweepGradient(hueStops()))
+                    .focusClick(CircleShape) {
+                        custom = true
+                        settings.updateAccentColor(dev.thorreader.app.AccentMath.fromHue(hue))
+                    },
+            )
+        }
+        if (custom) {
+            Text("Custom colour", color = HouseStyle.Subtle, fontSize = HouseStyle.TextSize)
+            HueSlider(hue) {
+                hue = it
+                settings.updateAccentColor(dev.thorreader.app.AccentMath.fromHue(it))
+            }
+        }
+        // Live preview: an active chip, a toggle that's on, and a main button.
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Chip("Active chip", true) {}
+            Chip("On", true) {}
+            Chip("Off", false) {}
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Accent)
+                    .padding(horizontal = 22.dp, vertical = 12.dp),
+            ) {
+                Text("Button", color = OnAccent, fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            }
+        }
+    }
+}

@@ -76,7 +76,7 @@ abstract class HostActivity : ComponentActivity(), HostActions {
         })
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                snapshotFlow { listOf(app.settings.mode, app.bottomFallback, app.typing, app.bookAnim) }.collect { reconcile() }
+                snapshotFlow { listOf(app.settings.mode, app.bottomFallback, app.typing, app.bookAnim, app.inspecting) }.collect { reconcile() }
             }
         }
         lifecycleScope.launch {

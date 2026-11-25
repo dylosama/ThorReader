@@ -119,10 +119,10 @@ fun ReaderScreen(session: ReaderSession, screen: Screen, mode: ReadingMode) {
                         AnimatedContent(
                             targetState = index to swapped,
                             transitionSpec = {
-                                if (initialState.first == targetState.first && initialState.second != targetState.second) {
+                                if (ThorApp.instance.settings.swapAnim && initialState.first == targetState.first && initialState.second != targetState.second) {
                                     // The hinge is on the right of the left screen, on the left of the right one.
                                     val toHinge = if (screenIsLeft) 1 else -1
-                                    val spec = tween<IntOffset>(300, easing = FastOutSlowInEasing)
+                                    val spec = tween<IntOffset>(ThorApp.instance.settings.swapAnimSpeed.swapMs, easing = FastOutSlowInEasing)
                                     slideInHorizontally(spec) { it * toHinge } togetherWith slideOutHorizontally(spec) { it * toHinge }
                                 } else {
                                     EnterTransition.None togetherWith ExitTransition.None
@@ -531,6 +531,7 @@ private fun PageOverlays(session: ReaderSession, p: Pagination, unit: PageUnit, 
  */
 @Composable
 private fun EdgeShadow(session: ReaderSession, edges: Set<Side>) {
+    if (!ThorApp.instance.settings.edgeShadow) return // Settings: "Edge shadow at first/last page"
     val amount = remember { Animatable(0f) }
     var shownSide by remember { mutableStateOf(Side.RIGHT) }
     val maxPullPx = with(LocalDensity.current) { 160.dp.toPx() }

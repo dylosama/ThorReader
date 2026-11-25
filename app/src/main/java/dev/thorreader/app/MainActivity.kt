@@ -42,6 +42,30 @@ class MainActivity : HostActivity() {
         // Typing in the library (Mode 3): the keyboard takes over the bottom screen, only while typing.
         val t = app.typing
         if (t != null && mode == ReadingMode.TOP && app.session == null) showTyping(t) else dismissTyping()
+        // Inspect book: the book's details take over the bottom screen, only while inspecting.
+        val ins = app.inspecting
+        if (ins != null && mode == ReadingMode.TOP && app.session == null && t == null) showInspect(ins) else dismissInspect()
+    }
+
+    private var inspectPresentation: InspectPresentation? = null
+
+    private fun showInspect(s: dev.thorreader.app.ui.InspectState) {
+        if (inspectPresentation?.isShowing == true && inspectPresentation?.state === s) return
+        dismissInspect()
+        val display = app.bottomDisplay() ?: return
+        try {
+            inspectPresentation = InspectPresentation(this, display, s).also { it.show() }
+        } catch (e: WindowManager.InvalidDisplayException) {
+            Log.e(TAG, "Could not show the book details on display ${display.displayId}", e)
+        }
+    }
+
+    private fun dismissInspect() {
+        inspectPresentation?.let {
+            it.dismiss()
+            Log.i(TAG, "Bottom screen released (book details closed)")
+        }
+        inspectPresentation = null
     }
 
     private var typingPresentation: TypingPresentation? = null
@@ -96,6 +120,8 @@ class MainActivity : HostActivity() {
     override fun onStop() {
         dismissPresentation()
         app.stopTyping("app hidden")
+        app.inspecting?.let { app.endInspect(it) } // no frames while hidden: end at once
+        dismissInspect()
         dismissTyping()
         super.onStop()
     }

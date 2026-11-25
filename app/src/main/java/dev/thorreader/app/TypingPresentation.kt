@@ -61,3 +61,44 @@ class TypingPresentation(
         return super.dispatchKeyEvent(event)
     }
 }
+
+/**
+ * The bottom screen while a book is inspected (Mode 3 library): its details, description and
+ * "Read". Exists only while inspecting; dismissed afterwards so the bottom screen is free again.
+ */
+class InspectPresentation(
+    private val activity: HostActivity,
+    display: Display,
+    val state: dev.thorreader.app.ui.InspectState,
+) : Presentation(activity, display) {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val view = ComposeView(context).apply {
+            setViewTreeLifecycleOwner(activity)
+            setViewTreeSavedStateRegistryOwner(activity)
+            setViewTreeViewModelStoreOwner(activity)
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            setContent { dev.thorreader.app.ui.InspectInfo(state) }
+        }
+        setContentView(view)
+        window?.let { w ->
+            w.decorView.setViewTreeLifecycleOwner(activity)
+            w.decorView.setViewTreeSavedStateRegistryOwner(activity)
+            w.decorView.setViewTreeViewModelStoreOwner(activity)
+            w.setBackgroundDrawableResource(android.R.color.black)
+            w.prefer60Hz(display)
+            w.insetsController?.let {
+                it.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        }
+        Log.i(TAG, "Inspect: book details on the bottom screen (display ${display.displayId})")
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        ThorApp.instance.userActive()
+        if (ThorApp.instance.handleKey(event)) return true
+        return super.dispatchKeyEvent(event)
+    }
+}

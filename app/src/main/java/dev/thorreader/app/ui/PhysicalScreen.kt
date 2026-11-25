@@ -39,6 +39,9 @@ fun PhysicalScreen(screen: Screen) {
                 ScreenBody(screen, mode)
             }
         }
+        // Inspect book: the 3D book over the library (top screen).
+        val inspect = ThorApp.instance.inspecting
+        if (inspect != null && screen == Screen.TOP && ThorApp.instance.session == null) InspectOverlay(inspect)
         // Book open / close animation: over everything, in unrotated screen pixels (also on a
         // screen that is otherwise idle in the new mode, while the animation still needs it).
         BookAnimOverlay(screen)

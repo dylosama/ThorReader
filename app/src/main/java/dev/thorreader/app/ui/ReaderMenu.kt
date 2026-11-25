@@ -87,18 +87,15 @@ fun ReaderMenu(session: ReaderSession) {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                // --- Big actions first ---
+                // 1) Big actions.
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     BigButton("Return to reading", primary = true) { app.menuScreen = null }
                     BigButton("Close book", primary = false) { app.closeBookAnimated("Close book button") }
                 }
 
-                // --- Bookmark (one per book) + its colour ---
-                BookmarkControls(session)
-
-                // --- Book: cover, title, author, progress ---
+                // 2) The book: cover, title, author, progress; the time and battery.
                 Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    BookCover(book, Modifier.size(72.dp, 104.dp))
+                    BookCover(book, Modifier.size(64.dp, 92.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(book.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         val byline = listOfNotNull(
@@ -106,23 +103,11 @@ fun ReaderMenu(session: ReaderSession) {
                             book.series?.let { s -> s + (book.seriesNumber?.let { " #" + formatNumber(it) } ?: "") },
                         ).joinToString("  ·  ")
                         if (byline.isNotEmpty()) Text(byline, color = SubtleText, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        // Book details: genres and the description (tap to show all of it).
-                        dev.thorreader.app.metadata.Genres.split(book.genres).takeIf { it.isNotEmpty() }?.let {
-                            Text(it.joinToString(" · "), color = SubtleText, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        book.description?.let { d ->
-                            var full by remember(book.id) { mutableStateOf(false) }
-                            Text(
-                                d, color = Color(0xFFBBBBBB), fontSize = 12.sp, maxLines = if (full) Int.MAX_VALUE else 3,
-                                overflow = TextOverflow.Ellipsis, modifier = Modifier.focusClick { full = !full },
-                            )
-                        }
                         // Books: already the chosen chapter name; PDFs: raw outline titles.
                         p?.labelAt(session.viewIndex)?.let { if (session.reflowable) it else ChapterTitle.format(it) }?.let {
                             Text(it, color = Accent, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         val pct = (session.progress * 100).toInt()
-                        // Progress bar in the house colours.
                         Box(Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(50)).background(HouseStyle.Hairline)) {
                             Box(Modifier.fillMaxWidth(session.progress.coerceIn(0f, 1f)).height(3.dp).background(Accent))
                         }
@@ -134,44 +119,16 @@ fun ReaderMenu(session: ReaderSession) {
                     Clock()
                 }
 
-                // --- Navigation ---
-                if (p != null) {
-                    if (session.recentJump) {
-                        session.backPage?.let { page ->
-                            Chip("↩ Back to page $page") {
-                                session.jumpBack()
-                                app.menuScreen = null
-                            }
-                        }
-                    }
-                    ScrubTrack(session, Modifier.fillMaxWidth()) { session.endScrub(true) }
-                    val rtl = p.config.rtl
-                    // -10 -1 ... +1 +10, mirrored in right-to-left books (forward is to the left).
-                    val steps = if (rtl) listOf(10, 1, -1, -10) else listOf(-10, -1, 1, 10)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        steps.take(2).forEach { d -> Chip(if (d > 0) "+$d" else "$d") { session.jumpBy(d) } }
-                        Box(Modifier.weight(1f))
-                        steps.drop(2).forEach { d -> Chip(if (d > 0) "+$d" else "$d") { session.jumpBy(d) } }
-                    }
-                    var panel by remember { mutableStateOf(0) } // 0 none, 1 number pad, 2 chapters
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Chip("Go to page", panel == 1) { panel = if (panel == 1) 0 else 1 }
-                        Chip("Chapters", panel == 2) { panel = if (panel == 2) 0 else 2 }
-                    }
-                    when (panel) {
-                        1 -> NumberPad(session) { app.menuScreen = null }
-                        2 -> ChapterList(session) { app.menuScreen = null }
-                    }
-                }
+                // 3) Bookmark (one per book) + its colour.
+                BookmarkControls(session)
 
-                // --- Modes ---
-                Section("Reading mode")
+                // 4) The four modes on one row.
                 if (app.tutorialShows(TutorialStep.CHOOSE_MODE)) {
                     TutorialBadge(TutorialStep.CHOOSE_MODE, "Choose how you hold your Thor", ArrowDir.DOWN, arrowAlign = Alignment.Start)
                 }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ReadingMode.entries.forEach { m ->
-                        ModeButton(m, m == settings.mode) {
+                        ModeTile(m, m == settings.mode) {
                             app.tutorialDone(TutorialStep.CHOOSE_MODE)
                             app.setMode(m)
                         }
@@ -184,155 +141,86 @@ fun ReaderMenu(session: ReaderSession) {
                         Chip("Two pages", settings.bottomTwoPage) { settings.updateBottomTwoPage(true) }
                     }
                 }
-                // Off by default: the Select button only changes the mode when turned on here.
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Select button changes mode", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                    Chip("On", settings.selectCyclesMode) { settings.updateSelectCyclesMode(true) }
-                    Chip("Off", !settings.selectCyclesMode) { settings.updateSelectCyclesMode(false) }
-                }
 
-                // --- Direction ---
-                Section(if (book.series != null) "Reading direction (whole series)" else "Reading direction")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Chip("Left-to-right", !book.rtl) { app.setReadingDirection(book, false) }
-                    Chip("Right-to-left (manga)", book.rtl) { app.setReadingDirection(book, true) }
-                }
-                if (book.rtl) {
-                    // Right-to-left: let the easy-to-reach shoulder go forward (saved per series).
-                    val swap = settings.mangaShoulderSwap(book.id, book.series)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "Swap L1/R1 for manga" + if (book.series != null) " (whole series)" else "",
-                            color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f),
-                        )
-                        Chip("On", swap) { settings.updateMangaShoulderSwap(book.id, book.series, true) }
-                        Chip("Off", !swap) { settings.updateMangaShoulderSwap(book.id, book.series, false) }
-                    }
-                }
-
-                // --- Text settings (reflowable only) ---
-                if (session.reflowable) {
-                    Section("Text")
-                    val mode = settings.mode
-                    if (mode.isBook) {
-                        // Book modes: optionally a different size on each screen.
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Same text size on both screens", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                            Chip("On", settings.sameFont) { settings.updateSameFont(true) }
-                            Chip("Off", !settings.sameFont) { settings.updateSameFont(false) }
+                // 5) Page navigation.
+                if (p != null) {
+                    if (session.recentJump) {
+                        session.backPage?.let { page ->
+                            Chip("↩ Back to page $page") {
+                                session.jumpBack()
+                                app.menuScreen = null
+                            }
                         }
                     }
+                    ScrubTrack(session, Modifier.fillMaxWidth()) { session.endScrub(true) }
+                    // -10 -1 · Go to page · Chapters · +1 +10 (mirrored in right-to-left books).
+                    val steps = if (p.config.rtl) listOf(10, 1, -1, -10) else listOf(-10, -1, 1, 10)
+                    var panel by remember { mutableStateOf(0) } // 0 none, 1 number pad, 2 chapters
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        steps.take(2).forEach { d -> Chip(if (d > 0) "+$d" else "$d") { session.jumpBy(d) } }
+                        Box(Modifier.weight(1f))
+                        Chip("Go to page", panel == 1) { panel = if (panel == 1) 0 else 1 }
+                        Chip("Chapters", panel == 2) { panel = if (panel == 2) 0 else 2 }
+                        Box(Modifier.weight(1f))
+                        steps.drop(2).forEach { d -> Chip(if (d > 0) "+$d" else "$d") { session.jumpBy(d) } }
+                    }
+                    when (panel) {
+                        1 -> NumberPad(session) { app.menuScreen = null }
+                        2 -> ChapterList(session) { app.menuScreen = null }
+                    }
+                }
+
+                // 6) Reading.
+                if (session.reflowable) {
+                    Section("Reading")
+                    val mode = settings.mode
+                    if (mode.isBook) OnOffRow("Same text size on both screens", settings.sameFont) { settings.updateSameFont(it) }
                     if (mode.isBook && !settings.sameFont) {
                         FontRow("Top screen", Screen.TOP, labelWidth = 110)
                         FontRow("Bottom screen", Screen.BOTTOM, labelWidth = 110)
                     } else {
                         // One control: mode 4 changes the bottom screen's size, the others the top's.
-                        FontRow("Size", if (mode == ReadingMode.BOTTOM) Screen.BOTTOM else Screen.TOP, labelWidth = 64)
+                        FontRow("Text size", if (mode == ReadingMode.BOTTOM) Screen.BOTTOM else Screen.TOP, labelWidth = 110)
                     }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Margins", color = Color.White, fontSize = 14.sp, modifier = Modifier.width(64.dp).padding(top = 8.dp))
-                        Settings.MARGIN_LABELS.forEachIndexed { i, label ->
-                            Chip(label, settings.marginLevel == i) { settings.updateMargin(i) }
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Theme", color = Color.White, fontSize = 14.sp, modifier = Modifier.width(64.dp))
-                        PageTheme.entries.forEach { t -> Chip(t.label, settings.theme == t) { settings.updateTheme(t) } }
-                    }
-                } else {
-                    Text(
-                        "Double-tap a page to zoom, pinch to zoom and move. Double-tap again to reset.",
-                        color = SubtleText,
-                        fontSize = 13.sp,
-                    )
-                    // Book modes: show the small screen's page on the big screen (and back).
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // The label names the button for the current mode.
-                        val swapLabel = when (settings.mode) {
-                            ReadingMode.BOOK -> "Swap screens: swipe up or d-pad right"
-                            ReadingMode.BOOK_REVERSED -> "Swap screens: swipe up or Y"
-                            else -> "Swap screens (book modes): swipe up"
-                        }
-                        Text(swapLabel, color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                        Chip("On", settings.swipeSwap) { settings.updateSwipeSwap(true) }
-                        Chip("Off", !settings.swipeSwap) { settings.updateSwipeSwap(false) }
-                    }
-                    Text(
-                        "In book modes: swipe up on the small screen's page to see it on the big screen; swipe up " +
-                            "on the big screen to swap back. On a double-page spread, swapping shows the whole spread " +
-                            "on the big screen (zoom works); swipe up again to split it. Buttons: d-pad right or Y in " +
-                            "Mode 1, Y in Mode 2. On/Off turns the swipe on or off; the buttons always work.",
-                        color = SubtleText,
-                        fontSize = 13.sp,
-                    )
-                    // Which wide pages count as double-page spreads (split across the two screens).
-                    val split = settings.splitWideFor(book.id)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Split wide pages", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                        dev.thorreader.app.engine.SplitWide.entries.forEach { m ->
-                            Chip(m.label, split == m) { settings.updateSplitWide(book.id, m) }
-                        }
-                    }
-                    Text(
-                        "Auto splits only clear double pages (much wider than this book's other pages). Always " +
-                            "splits every page wider than tall; Never shows every page whole. This book only.",
-                        color = SubtleText,
-                        fontSize = 13.sp,
-                    )
+                    ChoiceRow("Margins", Settings.MARGIN_LABELS.indices.toList(), settings.marginLevel, { Settings.MARGIN_LABELS[it] }) { settings.updateMargin(it) }
+                    PageThemeRow()
                 }
 
-                // --- Page-turn animation ---
-                Section("Page turn")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    dev.thorreader.app.engine.TurnStyle.entries.forEach { s ->
-                        Chip(s.label, settings.turnStyle == s) { settings.updateTurnStyle(s) }
+                // 7) More (folded).
+                FoldHeader("More", app.menuMoreOpen) { app.menuMoreOpen = !app.menuMoreOpen }
+                if (app.menuMoreOpen) {
+                    OnOffRow(
+                        if (book.series != null) "Right-to-left (manga), whole series" else "Right-to-left (manga)",
+                        book.rtl,
+                    ) { app.setReadingDirection(book, it) }
+                    if (book.rtl) {
+                        // Right-to-left: let the easy-to-reach shoulder go forward (saved per series).
+                        OnOffRow(
+                            "Swap L1/R1 for manga" + if (book.series != null) " (whole series)" else "",
+                            settings.mangaShoulderSwap(book.id, book.series),
+                        ) { settings.updateMangaShoulderSwap(book.id, book.series, it) }
                     }
-                }
-                val override = settings.turnStyleOverride(book.id)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("This book", color = Color.White, fontSize = 14.sp)
-                    FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Chip("Same as all", override == null) { settings.updateTurnStyleOverride(book.id, null) }
-                        dev.thorreader.app.engine.TurnStyle.entries.forEach { s ->
-                            Chip(s.label, override == s) { settings.updateTurnStyleOverride(book.id, s) }
+                    if (!session.reflowable) {
+                        // Which wide pages count as double-page spreads (split across the two screens).
+                        ChoiceRow("Split wide pages (this book)", dev.thorreader.app.engine.SplitWide.entries, settings.splitWideFor(book.id), { it.label }) {
+                            settings.updateSplitWide(book.id, it)
                         }
+                        SwipeSwapRow()
+                        Text(
+                            "Swap screens: d-pad right or Y in Mode 1, Y in Mode 2 (always on). Double-tap or pinch to zoom.",
+                            color = SubtleText, fontSize = 12.sp,
+                        )
                     }
+                    HeaderRow()
+                    PageTurnStyleRow()
+                    ChoiceRow(
+                        "Page turn (this book)", listOf<dev.thorreader.app.engine.TurnStyle?>(null) + dev.thorreader.app.engine.TurnStyle.entries,
+                        settings.turnStyleOverride(book.id), { it?.label ?: "Same as all" },
+                    ) { settings.updateTurnStyleOverride(book.id, it) }
+                    HoldToMenuRow()
+                    SelectButtonRow()
+                    Chip("Show tutorial again") { app.restartTutorial() }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Speed", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                    dev.thorreader.app.engine.TurnSpeed.entries.forEach { s ->
-                        Chip(s.label, settings.turnSpeed == s) { settings.updateTurnSpeed(s) }
-                    }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Button turn corner", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                    Chip("Bottom", settings.buttonTurnCornerBottom) { settings.updateButtonTurnCornerBottom(true) }
-                    Chip("Top", !settings.buttonTurnCornerBottom) { settings.updateButtonTurnCornerBottom(false) }
-                }
-                dev.thorreader.app.engine.TurnSupport.curlDisabledReason?.let {
-                    Text("Curl isn't available on this device right now, so Slide is used.", color = SubtleText, fontSize = 13.sp)
-                }
-
-                // --- Page furniture ---
-                Section("Header & page number")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Chip("On", settings.showHeader) { settings.updateShowHeader(true) }
-                    Chip("Off", !settings.showHeader) { settings.updateShowHeader(false) }
-                }
-
-                // --- Controls ---
-                Section("Hold to open this menu")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Settings.HOLD_CHOICES_MS.forEach { ms ->
-                        Chip(if (ms % 1000 == 0) "${ms / 1000} s" else "${ms / 1000.0} s", settings.menuHoldMs == ms) {
-                            settings.updateMenuHold(ms)
-                        }
-                    }
-                }
-
-                // --- Help ---
-                Section("Help")
-                Chip("Show tutorial again") { app.restartTutorial() }
             }
         }
     }
@@ -349,7 +237,7 @@ private fun RowScope.BigButton(label: String, primary: Boolean, onClick: () -> U
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, color = if (primary) Color.Black else Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = if (primary) OnAccent else Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
     }
 }
 

@@ -25,6 +25,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.Layout
@@ -45,7 +46,20 @@ interface HostActions {
 
 val LocalHost = compositionLocalOf<HostActions?> { null }
 
-val Accent = Color(0xFFE0A050)
+/**
+ * The app's accent ("Theme colour" in Settings): highlights, active chips, toggles, rings,
+ * progress, selection and buttons. One token, read from the setting, so a change applies
+ * everywhere at once. Text drawn on it uses [OnAccent].
+ */
+val Accent: Color get() = Color(accentArgb())
+
+/** Black or white, whichever reads better on [Accent]. */
+val OnAccent: Color get() = onColorFor(accentArgb())
+
+private fun accentArgb(): Int = if (ThorApp.ready) ThorApp.instance.settings.accentColor else dev.thorreader.app.AccentMath.DEFAULT
+
+/** Black or white text for a background colour (the one with the higher WCAG contrast). */
+fun onColorFor(argb: Int): Color = if (dev.thorreader.app.AccentMath.prefersDarkText(argb)) Color.Black else Color.White
 val PanelColor = Color(0xF0181818)
 val SubtleText = Color(0xFFAAAAAA)
 
@@ -122,7 +136,7 @@ fun ModeButton(mode: ReadingMode, selected: Boolean, width: Dp = 104.dp, onClick
         Modifier
             .width(width)
             .clip(RoundedCornerShape(10.dp))
-            .background(if (selected) Color(0xFF3A2C18) else Color(0xFF262626))
+            .background(if (selected) Accent.copy(alpha = 0.18f).compositeOver(Color(0xFF262626)) else Color(0xFF262626))
             .border(2.dp, if (selected) Accent else Color(0xFF3A3A3A), RoundedCornerShape(10.dp))
             .focusClick(RoundedCornerShape(10.dp), onClick)
             .padding(vertical = 8.dp, horizontal = 4.dp),
@@ -160,7 +174,7 @@ fun ModeToastOverlay(modifier: Modifier = Modifier) {
 fun Chip(label: String, selected: Boolean = false, onClick: () -> Unit) {
     Text(
         label,
-        color = if (selected) Color.Black else Color.White,
+        color = if (selected) OnAccent else Color.White,
         fontSize = 14.sp,
         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
         modifier = Modifier
@@ -169,4 +183,32 @@ fun Chip(label: String, selected: Boolean = false, onClick: () -> Unit) {
             .focusClick(RoundedCornerShape(50), onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
     )
+}
+
+/** Short names for the compact mode row in the reader menu. */
+val ReadingMode.shortLabel: String
+    get() = when (this) {
+        ReadingMode.BOOK -> "Book"
+        ReadingMode.BOOK_REVERSED -> "Reversed"
+        ReadingMode.TOP -> "Top"
+        ReadingMode.BOTTOM -> "Bottom"
+    }
+
+/** One of four equal compact mode buttons (icon + short label), current one in the theme colour. */
+@Composable
+fun androidx.compose.foundation.layout.RowScope.ModeTile(mode: ReadingMode, selected: Boolean, onClick: () -> Unit) {
+    Column(
+        Modifier
+            .weight(1f)
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) Accent.copy(alpha = 0.18f).compositeOver(Color(0xFF262626)) else Color(0xFF262626))
+            .border(2.dp, if (selected) Accent else Color(0xFF3A3A3A), RoundedCornerShape(10.dp))
+            .focusClick(RoundedCornerShape(10.dp), onClick)
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        ModeIcon(mode, selected, Modifier.size(40.dp, 32.dp))
+        Text(mode.shortLabel, color = if (selected) Accent else Color.White, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
+    }
 }

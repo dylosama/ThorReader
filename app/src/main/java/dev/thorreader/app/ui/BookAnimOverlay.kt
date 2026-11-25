@@ -105,7 +105,7 @@ private class BookAnimPainter(val a: ThorApp.BookAnim) {
             if (screen == Screen.TOP && shot != null) {
                 drawBitmapAlpha(c, shot, w, h, 1f - reveal)
                 // The cover has been lifted out of its row.
-                a.from?.let { r ->
+                if (a.fromRow) a.from?.let { r ->
                     fill.color = rowColor
                     fill.alpha = ((1f - reveal) * 255).toInt()
                     c.drawRect(r, fill)
@@ -116,7 +116,7 @@ private class BookAnimPainter(val a: ThorApp.BookAnim) {
             dark(c, w, h, dim * (1f - reveal))
         } else {
             // Closing: the live library is underneath; the pages (snapshot) fade into it.
-            if (screen == Screen.TOP && s > 0.001f) a.from?.let { r ->
+            if (screen == Screen.TOP && s > 0.001f && a.fromRow) a.from?.let { r ->
                 // Its row stays empty until the cover lands back in it.
                 fill.color = rowColor
                 fill.alpha = 255

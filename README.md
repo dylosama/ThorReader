@@ -40,6 +40,9 @@ Each book remembers its own mode. Switch from the reader menu.
   follow your finger. Held buttons and jumps use a quick slide; below 15 % battery pages fade.
 - Opening a book lifts its cover out of the library and swings it open across the screens (and
   closes it back into its row); Settings: "Open & close animation".
+- Inspect a book (popup on its mode button): a 3D book with the real cover, a spine, the back
+  cover and its thickness; spin it, zoom, and read its details on the bottom screen.
+- Theme colour: pick the app's accent colour in Settings (8 colours or any hue).
 - Reading position, mode and text settings are remembered per book.
 - Book modes can use a different text size on each screen ("Same text size on both screens" off
   in the reader menu); the text still flows from one screen to the next without losing a line.

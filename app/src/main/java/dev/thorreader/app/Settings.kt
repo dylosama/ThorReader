@@ -381,6 +381,67 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putBoolean("turn_corner_bottom", bottom).apply()
     }
 
+    // ---- theme colour (step 24) -----------------------------------------------------------
+
+    /** The app's accent colour (ARGB). Read by `ui.Accent`. */
+    var accentColor by mutableStateOf(prefs.getInt("accent_color", AccentMath.DEFAULT))
+        private set
+
+    fun updateAccentColor(argb: Int) {
+        accentColor = argb or (0xFF shl 24)
+        prefs.edit().putInt("accent_color", accentColor).apply()
+    }
+
+    // ---- animations (step 24) ----------------------------------------------------------------
+
+    /** Open & close book speed. */
+    var bookAnimSpeed by mutableStateOf(
+        runCatching { AnimSpeed.valueOf(prefs.getString("book_anim_speed", "NORMAL")!!) }.getOrDefault(AnimSpeed.NORMAL),
+    )
+        private set
+
+    fun updateBookAnimSpeed(s: AnimSpeed) {
+        bookAnimSpeed = s
+        prefs.edit().putString("book_anim_speed", s.name).apply()
+    }
+
+    /** Screen swap (comics): animated (on) or instant. */
+    var swapAnim by mutableStateOf(prefs.getBoolean("swap_anim", true))
+        private set
+
+    fun updateSwapAnim(on: Boolean) {
+        swapAnim = on
+        prefs.edit().putBoolean("swap_anim", on).apply()
+    }
+
+    var swapAnimSpeed by mutableStateOf(
+        runCatching { AnimSpeed.valueOf(prefs.getString("swap_anim_speed", "NORMAL")!!) }.getOrDefault(AnimSpeed.NORMAL),
+    )
+        private set
+
+    fun updateSwapAnimSpeed(s: AnimSpeed) {
+        swapAnimSpeed = s
+        prefs.edit().putString("swap_anim_speed", s.name).apply()
+    }
+
+    /** The soft curved shadow at the first / last page. */
+    var edgeShadow by mutableStateOf(prefs.getBoolean("edge_shadow", true))
+        private set
+
+    fun updateEdgeShadow(on: Boolean) {
+        edgeShadow = on
+        prefs.edit().putBoolean("edge_shadow", on).apply()
+    }
+
+    /** The ComicVine key was saved and tested OK (Settings shows Book info collapsed). */
+    var comicVineKeyOk by mutableStateOf(prefs.getBoolean("comicvine_key_ok", false))
+        private set
+
+    fun updateComicVineKeyOk(ok: Boolean) {
+        comicVineKeyOk = ok
+        prefs.edit().putBoolean("comicvine_key_ok", ok).apply()
+    }
+
     /** "Open & close animation" for books (default on; off = instant). */
     var bookAnim by mutableStateOf(prefs.getBoolean("book_anim", true))
         private set
@@ -497,4 +558,11 @@ class Settings(private val prefs: SharedPreferences) {
         fun customBookmarkColor(hue: Float): Int =
             android.graphics.Color.HSVToColor(floatArrayOf(hue.coerceIn(0f, 359.9f), 0.72f, 0.85f))
     }
+}
+
+/** Fast / Normal / Slow for the book open & close animation and the screen swap. */
+enum class AnimSpeed(val label: String, val bookMs: Int, val swapMs: Int) {
+    FAST("Fast", 500, 180),
+    NORMAL("Normal", 800, 300),
+    SLOW("Slow", 1200, 500),
 }

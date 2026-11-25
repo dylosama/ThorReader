@@ -969,3 +969,65 @@ Design (`engine/BookAnim.kt` = pure geometry/timing, tested; `ui/BookAnimOverlay
 - Not checked on the device: the low-battery fade (charging) and the "Opening…" hold with a
   slow first page (layouts were cached). Known: the library row's page/progress line updates
   as soon as the library reappears (under the dimmed backdrop), not strictly after landing.
+
+### Step 24: refinements (still v0.3.0, not published yet; a bookshelf tab is postponed to v0.4)
+1. Theme colour: one accent token. `Accent` becomes a getter reading `Settings.accentColor`
+   (pref `accent_color`, default orange 0xFFE0A050), so every use follows the setting at once;
+   `OnAccent` = black or white text, whichever contrasts more with the accent (WCAG luminance).
+   Picker like the bookmark one: 8 presets (orange, red, gold, green, teal, blue, purple, pink)
+   + Custom hue slider + live preview (chip, toggle, button). Bookmark colour, the green
+   "completed" count, the gold star and the warning colour stay fixed.
+2. Settings order: Theme colour, Reading, Controls, Animations, Bookmark, Library, Hidden items,
+   Book info, About. Book info is collapsed to "Book info · key saved ✓" when a ComicVine key is
+   saved and tested OK (pref `comicvine_key_ok`), expanded otherwise.
+3. Animations (Settings): Page turn (style + speed + button turn corner), Open & close book
+   (on/off + speed 500/800/1200 ms), Screen swap (comics) (on/off + speed 180/300/500 ms; off =
+   instant), Edge shadow at first/last page (on/off), Simpler animation on low battery. Speed
+   = a segmented "Fast · Normal · Slow" row with the ms under the selected one.
+4. Reader menu, in this order: Return / Close; cover, title, author, progress, time + battery;
+   bookmark + colour; the four modes as one row of equal compact icon buttons (Book / Reversed /
+   Top / Bottom); navigation (slider; −10 −1 Go to page, Chapters +1 +10); Reading (text size,
+   same-size and per-screen sizes in book modes, margins, page theme); collapsible "More"
+   (reading direction + Swap L1/R1 for RTL books, split wide pages, swap screens, header & page
+   number, page turn style, hold-to-menu time, Select button changes mode, show tutorial again).
+   Settings shared with Settings use the same composables (`ui/SettingRows.kt`): same names,
+   controls and relative order.
+5. Inspect book (library row's mode-button popup → "Inspect book"): the cover lifts out of its
+   row and becomes a 3D book on the top screen (library hidden; a round X where the gear is).
+   - Model: a box drawn with Android Canvas: each visible face is a texture mapped onto its
+     projected quad with Matrix.setPolyToPoly (exact perspective for a flat face); back faces
+     culled (a box is convex, so no sorting). Faces: front = cover; back = the file's own back
+     cover (EPUB manifest image whose id/href/properties say "back"; comics: ComicInfo page
+     Type="BackCover", or an image named like "back"), else generated (cover colours, title,
+     author, description); spine = generated (cover colours, title + author vertical); top /
+     bottom / fore-edge = paper tone with fine page lines. Warm studio light: per-face
+     brightness from a fixed warm key light + fill, a soft floor shadow, background a warm
+     radial gradient (darker in Night).
+   - Size: cover proportions from the cover image; thickness = (source page count × 0.1 mm +
+     1 mm covers) relative to an assumed height (180 mm books / manga, 260 mm comics), so a
+     22-page comic is thin and Dune thick. Source page count = `Book.pageCount` (comics: images,
+     PDF: pages, EPUB: MuPDF pages at the reference size), never the reader's layout count.
+   - Input: one-finger drag = trackball rotation with inertia; pinch = zoom; double-tap = front
+     view. D-pad rotates 15°, A = front view, B / X = close. Idle spin after 3 s, stops on touch
+     and after 20 s. Frames only while dragging, coasting, animating or idle-spinning.
+   - Bottom screen: taken over like the keyboard (Presentation, Mode 3) with title, author,
+     series + number, type, genres, year, pages, progress and the full description (scrolls),
+     plus "Read" (opens with the normal open animation, starting from the 3D book's front).
+   - Close: the book turns to the front and shrinks back into its row; bottom screen released.
+- Found on the Thor: EPUB page counts come from MuPDF's small reference page (196 × 227 pt),
+  so Dune's "1794 source pages" made a brick. Books now convert: printed pages = reference
+  pages / 3.4 (a paperback text block is ~3.4× the reference area) -> Dune ≈ 527 pages,
+  thickness 0.30 of its height; the details say "≈ 527 printed pages". Comics / PDFs unchanged.
+- Existing ComicVine keys (saved before step 24) are tested once, quietly, when Settings opens;
+  if OK, Book info folds to "Book info · key saved ✓".
+- Checked on the Thor: Settings in the new order (screenshots); blue theme colour applied at
+  once everywhere (library switch, chips, menu, Read button), black text chosen on blue, green
+  count / gold star unchanged; back to orange. Reader menu in Mode 1 fits without scrolling
+  (More folded); More uses the same rows as Settings. Inspect Dune: front view, spine with
+  title + author, generated back cover with the description and a barcode, page block with
+  lines, warm light and floor shadow, fling coasts, double-tap = front, idle spin, X shrinks it
+  back. Spider-Man: 22 pages = thin; its own back cover found (last page, same shape, edge
+  density 0.077 < 0.09: the 1976 back-cover ad); d-pad 12 × 15° = back view; Read opens it with
+  the open animation from the 3D book (held 400 ms on the cover while the CBR unpacked); B
+  closes. Bottom screen details + Read, released on close. Pinch zoom can't be simulated with
+  adb (single touch only) - not verified on the device.

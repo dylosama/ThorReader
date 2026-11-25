@@ -129,99 +129,163 @@ fun SettingsPanel() {
     val app = ThorApp.instance
     val settings = app.settings
     val scope = rememberCoroutineScope()
-    var key by remember { mutableStateOf(app.lookup.secrets.comicVineKey ?: "") }
-    var show by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf<String?>(null) }
-    var testing by remember { mutableStateOf(false) }
     OverlayPanel("Settings", onClose = { app.settingsOpen = false }) {
-        SectionLabel("Book info")
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Look up book info online", color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
-            Chip("On", settings.lookupOnline) {
-                settings.updateLookupOnline(true)
-                scope.launch(Dispatchers.IO) { app.lookup.enqueue(app.db.books().all().filter { it.lookupState == "off" }.map { it.id }, "turned on") }
-            }
-            Chip("Off", !settings.lookupOnline) { settings.updateLookupOnline(false) }
+        SectionLabel("Theme colour")
+        ThemeColorPicker()
+
+        SectionLabel("Reading")
+        PageThemeRow()
+        HeaderRow()
+
+        SectionLabel("Controls")
+        HoldToMenuRow()
+        SelectButtonRow()
+        SwipeSwapRow()
+
+        SectionLabel("Animations")
+        PageTurnStyleRow()
+        PageTurnSpeedRow()
+        ButtonTurnCornerRow()
+        dev.thorreader.app.engine.TurnSupport.curlDisabledReason?.let {
+            Text("Curl isn't available on this device right now, so Slide is used.", color = HouseStyle.Subtle, fontSize = 13.sp)
         }
+        BookAnimRows()
+        SwapAnimRows()
+        EdgeShadowRow()
+        LowBatteryRow()
         Text(
-            "Only book details (title, authors, series, genres, description, cover) are looked up: manga on AniList, " +
-                "books on Open Library, comics on ComicVine. Your books themselves never leave the device.",
+            "Below 15 % (not charging), pages fade and books open with a quick fade.",
             color = HouseStyle.Subtle, fontSize = 13.sp,
         )
 
-        SectionLabel("ComicVine key (for comic info)")
-        Field("API key", key, { key = it.trim(); message = null }, hidden = !show, hint = "Paste your ComicVine API key")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Chip(if (show) "Hide" else "Show") { show = !show }
-            Chip("Save key", true) {
-                app.lookup.secrets.comicVineKey = key
-                message = if (key.isEmpty()) "Key removed." else "Key saved. Comics without info will be looked up."
-                if (key.isNotEmpty()) scope.launch(Dispatchers.IO) {
-                    val ids = app.db.books().all().filter { it.lookupState in setOf("nokey", "badkey", "review", "nomatch", "done (ComicInfo / file name)") && runCatching { BookFormat.valueOf(it.format).comic }.getOrDefault(false) }.map { it.id }
-                    app.lookup.enqueue(ids, "ComicVine key saved")
-                }
-            }
-            Chip(if (testing) "Testing…" else "Test key") {
-                if (testing || key.isEmpty()) {
-                    if (key.isEmpty()) message = "Paste a key first."
-                    return@Chip
-                }
-                testing = true
-                scope.launch {
-                    val err = app.lookup.testKey(key)
-                    message = err ?: "Key works"
-                    testing = false
-                }
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Chip("Get a free key") { app.openWebPage(COMICVINE_KEY_URL) }
-            Text("Free account, then copy the key from that page.", color = HouseStyle.Subtle, fontSize = 13.sp)
-        }
-        message?.let { HouseBadge(it, color = if (it == "Key works" || it.startsWith("Key saved") || it == "Key removed.") Color.White else HouseStyle.Warning) }
-        Text(
-            "Each person needs their own key: ComicVine limits how often one key may be used. " +
-                "The key is stored encrypted on this device only.",
-            color = HouseStyle.Subtle, fontSize = 13.sp,
-        )
+        SectionLabel("Bookmark")
+        BookmarkColorPicker()
 
-        SectionLabel("Opening books")
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Open & close animation", color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
-            Chip("On", settings.bookAnim) { settings.updateBookAnim(true) }
-            Chip("Off", !settings.bookAnim) { settings.updateBookAnim(false) }
-        }
-
-        SectionLabel("Page turn")
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Simpler animation on low battery", color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
-            Chip("On", settings.simplerTurnOnLowBattery) { settings.updateSimplerTurnOnLowBattery(true) }
-            Chip("Off", !settings.simplerTurnOnLowBattery) { settings.updateSimplerTurnOnLowBattery(false) }
-        }
-        Text(
-            "Below 15 % (not charging), pages fade instead of curling. The style and speed are in the reader menu.",
-            color = HouseStyle.Subtle, fontSize = 13.sp,
-        )
-
-        SectionLabel("Storage")
+        SectionLabel("Library")
         StorageSection()
 
-        SectionLabel("Library lists")
+        SectionLabel("Hidden items")
         HiddenItemsSection()
 
-        SectionLabel("Help")
+        BookInfoSection()
+
+        SectionLabel("About")
+        val version = remember {
+            runCatching { app.packageManager.getPackageInfo(app.packageName, 0).versionName }.getOrNull() ?: "?"
+        }
+        Text("Thor Reader $version", color = Color.White, fontSize = 15.sp)
+        Text(
+            "Made for the AYN Thor. Uses MuPDF (AGPL), junrar, Apache Commons Compress, XZ for Java and commonmark.",
+            color = HouseStyle.Subtle, fontSize = 13.sp,
+        )
         Chip("Show tutorial again") {
             app.restartTutorial()
             app.settingsOpen = false
         }
+    }
 
-        SectionLabel("All books")
-        Chip("Look up all books again") {
-            scope.launch(Dispatchers.IO) {
-                val all = app.db.books().all()
-                all.forEach { app.db.books().setLookupState(it.id, "pending", it.needsReview, it.lookupAt) }
-                app.lookup.enqueue(all.map { it.id }, "look up all again")
+}
+
+/**
+ * Book info: online lookup and the ComicVine key. Collapsed to one line ("Book info · key saved
+ * ✓") once a key is saved and has tested OK; tap to expand. Expanded when there is no key.
+ */
+@Composable
+private fun BookInfoSection() {
+    val app = ThorApp.instance
+    val settings = app.settings
+    val scope = rememberCoroutineScope()
+    val saved = app.lookup.secrets.comicVineKey
+    var key by remember { mutableStateOf(saved ?: "") }
+    var show by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var testing by remember { mutableStateOf(false) }
+    val collapsible = !saved.isNullOrEmpty() && settings.comicVineKeyOk
+    var open by remember { mutableStateOf(!collapsible) }
+    // A key saved before this setting existed: test it once, quietly; if it works, fold the section.
+    androidx.compose.runtime.LaunchedEffect(saved) {
+        if (!saved.isNullOrEmpty() && !settings.comicVineKeyOk && settings.lookupOnline) {
+            if (app.lookup.testKey(saved) == null) {
+                settings.updateComicVineKeyOk(true)
+                open = false
             }
+        }
+    }
+    if (collapsible && !open) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF1E1E1E))
+                .focusClick(RoundedCornerShape(10.dp)) { open = true }
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Text("▸  BOOK INFO  ·  key saved ✓", color = Color(0xFF999999), fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        }
+        return
+    }
+    if (collapsible) FoldHeader("Book info", true) { open = false } else SectionLabel("Book info")
+    OnOffRow("Look up book info online", settings.lookupOnline) { on ->
+        settings.updateLookupOnline(on)
+        if (on) scope.launch(Dispatchers.IO) { app.lookup.enqueue(app.db.books().all().filter { it.lookupState == "off" }.map { it.id }, "turned on") }
+    }
+    Text(
+        "Only book details (title, authors, series, genres, description, cover) are looked up: manga on AniList, " +
+            "books on Open Library, comics on ComicVine. Your books themselves never leave the device.",
+        color = HouseStyle.Subtle, fontSize = 13.sp,
+    )
+    Text("ComicVine key (for comic info)", color = Color.White, fontSize = 14.sp)
+    Field("API key", key, { key = it.trim(); message = null }, hidden = !show, hint = "Paste your ComicVine API key")
+    fun test(k: String, then: (Boolean) -> Unit) {
+        testing = true
+        scope.launch {
+            val err = app.lookup.testKey(k)
+            message = err ?: "Key works"
+            testing = false
+            then(err == null)
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Chip(if (show) "Hide" else "Show") { show = !show }
+        Chip("Save key", true) {
+            app.lookup.secrets.comicVineKey = key
+            settings.updateComicVineKeyOk(false)
+            message = if (key.isEmpty()) "Key removed." else "Key saved. Comics without info will be looked up."
+            if (key.isNotEmpty()) {
+                scope.launch(Dispatchers.IO) {
+                    val ids = app.db.books().all().filter {
+                        it.lookupState in setOf("nokey", "badkey", "review", "nomatch", "done (ComicInfo / file name)") &&
+                            runCatching { BookFormat.valueOf(it.format).comic }.getOrDefault(false)
+                    }.map { it.id }
+                    app.lookup.enqueue(ids, "ComicVine key saved")
+                }
+                // A saved key that tests OK lets this section fold away next time.
+                test(key) { ok -> if (ok) settings.updateComicVineKeyOk(true) }
+            }
+        }
+        Chip(if (testing) "Testing…" else "Test key") {
+            if (testing || key.isEmpty()) {
+                if (key.isEmpty()) message = "Paste a key first."
+                return@Chip
+            }
+            test(key) { ok -> if (ok && key == app.lookup.secrets.comicVineKey) settings.updateComicVineKeyOk(true) }
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Chip("Get a free key") { app.openWebPage(COMICVINE_KEY_URL) }
+        Text("Free account, then copy the key from that page.", color = HouseStyle.Subtle, fontSize = 13.sp)
+    }
+    message?.let { HouseBadge(it, color = if (it == "Key works" || it.startsWith("Key saved") || it == "Key removed.") Color.White else HouseStyle.Warning) }
+    Text(
+        "Each person needs their own key: ComicVine limits how often one key may be used. " +
+            "The key is stored encrypted on this device only.",
+        color = HouseStyle.Subtle, fontSize = 13.sp,
+    )
+    Chip("Look up all books again") {
+        scope.launch(Dispatchers.IO) {
+            val all = app.db.books().all()
+            all.forEach { app.db.books().setLookupState(it.id, "pending", it.needsReview, it.lookupAt) }
+            app.lookup.enqueue(all.map { it.id }, "look up all again")
         }
     }
 }
