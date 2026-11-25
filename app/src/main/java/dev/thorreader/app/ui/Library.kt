@@ -296,10 +296,33 @@ private fun BookList(books: List<Book>, showTutorial: Boolean) {
         if (ThorApp.instance.settings.libraryGrid) {
             BookGrid(books, Modifier.weight(1f))
         } else {
-            FillList(Modifier.weight(1f)) {
+            val state = androidx.compose.foundation.lazy.rememberLazyListState()
+            ShowLandingBook(books) { i ->
+                val info = state.layoutInfo
+                val item = info.visibleItemsInfo.firstOrNull { it.index == i }
+                val shown = item != null && item.offset >= info.viewportStartOffset && item.offset + item.size <= info.viewportEndOffset
+                if (!shown) state.scrollToItem((i - 1).coerceAtLeast(0))
+            }
+            FillList(Modifier.weight(1f), state = state) {
                 items(books, key = { it.id }) { BookRow(it) }
             }
         }
+    }
+}
+
+/**
+ * A closing book is landing back in the library: once the (re-sorted) list is laid out, make
+ * sure its place is on screen ([reveal] gets its index), so the cover has somewhere to land -
+ * whatever the sort (Recently read puts it first; Title, Progress... wherever it falls).
+ */
+@Composable
+fun ShowLandingBook(books: List<Book>, reveal: suspend (Int) -> Unit) {
+    val id = ThorApp.instance.landingBookId ?: return
+    LaunchedEffect(id, books) {
+        val i = books.indexOfFirst { it.id == id }
+        if (i < 0) return@LaunchedEffect // not in this list (another shelf / filter): fallback place
+        androidx.compose.runtime.withFrameNanos { } // laid out first
+        reveal(i)
     }
 }
 

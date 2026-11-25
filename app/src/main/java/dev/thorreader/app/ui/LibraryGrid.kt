@@ -93,7 +93,14 @@ fun BookGrid(books: List<Book>, modifier: Modifier = Modifier) {
     BoxWithConstraints(modifier.fillMaxSize()) {
         val cols = gridColumns(maxWidth.value)
         val cellPx = with(LocalDensity.current) { ((maxWidth - LibraryGap * (cols - 1)) / cols).roundToPx() }
-        FillGrid(cols) {
+        val state = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+        ShowLandingBook(books) { i ->
+            val info = state.layoutInfo
+            val item = info.visibleItemsInfo.firstOrNull { it.index == i }
+            val shown = item != null && item.offset.y >= info.viewportStartOffset && item.offset.y + item.size.height <= info.viewportEndOffset
+            if (!shown) state.scrollToItem(i)
+        }
+        FillGrid(cols, state = state) {
             items(books, key = { it.id }) { GridCover(it, cellPx) }
         }
     }

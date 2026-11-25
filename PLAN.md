@@ -1157,6 +1157,18 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   after a fresh start - every turn a curl, setup 20-100 ms, p95 after setup 16.8-16.9 ms, curl
   never switched off.
 
+### v0.3.0: closing a book lands its cover in its new library place (main)
+- Before: the close animation flew the cover back to where it was when the book was opened, but
+  the library re-sorts (Recently read puts the book first), so it landed on another book's spot.
+- Now: closing drops the book's old `coverBounds` entry and sets `ThorApp.landingBookId`; the
+  close painter reads `coverBounds` live every frame (and draws the empty slot there), so the
+  cover lands where the re-sorted library lays it out. The list / grid (`ShowLandingBook`)
+  scrolls that place into view if needed, for any sort (Title, Progress, groups...). The old
+  place is only a fallback (the book isn't in the list shown, e.g. another shelf).
+- Checked on the Thor (debug, close slowed to 3 s, grid, Recently read): Chainsaw Man (2nd)
+  closed into the first slot - the slot is empty at the start of the close, the cover lands
+  in it. Not checked: a library long enough to scroll (only 6 books on the Thor).
+
 ### v0.3.0: Night keeps the front cover's colours; Inspect spine / back in the cover's colour (main)
 - Night: a book's very first page (start of its first section), when it is a picture rather
   than text, is drawn as is - just the picture, its white margins left as the black Night page -
@@ -1201,7 +1213,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: Night keeps the cover's colours; Inspect spine and back in the cover's colour".
+  "v0.3.0: closing a book lands its cover in its new library place".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1223,6 +1235,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 - Fix: Flip (and Slide / Fade) swipes from near a corner respond like from the middle.
 - Night keeps a book's front cover in its own colours; Inspect spine / back in the cover's
   dominant colour.
+- Closing a book lands its cover in its new library place (re-sorted, scrolled into view).
 
 ### Built, not yet fully tested on the Thor (test list before releasing 0.3)
 Checked on the Thor already: popup on the last list row and last grid cover (scroll, pinned

@@ -276,6 +276,13 @@ class ThorApp : Application() {
     /** Each library row's cover position (top screen px), recorded as the rows are laid out. */
     val coverBounds = HashMap<Long, android.graphics.RectF>()
 
+    /**
+     * The book a close animation is putting back in the library. The library scrolls its new
+     * place (after re-sorting: Recently read puts it first) into view, and the cover lands there.
+     */
+    var landingBookId by mutableStateOf<Long?>(null)
+        private set
+
     /** The window on each screen (for snapshots). */
     val windows = HashMap<Screen, android.view.Window>()
 
@@ -445,7 +452,11 @@ class ThorApp : Application() {
             if (mode.isBook || mode == ReadingMode.BOTTOM) snapshot(Screen.BOTTOM)?.let { shots[Screen.BOTTOM] = it }
             val cover = loadCover(book)
             val fade = batteryLow() || shots.isEmpty()
-            startBookAnim(BookAnim(false, book.id, mode, book.rtl, cover, coverBounds[book.id]?.let { android.graphics.RectF(it) }, shots, fade, hinge = useHinge(mode, fade)))
+            // Where it was when opened: only a fallback. The cover lands where the re-sorted
+            // library lays it out now (the painter reads coverBounds live), so drop the old place.
+            val wasAt = coverBounds.remove(book.id)
+            landingBookId = book.id
+            startBookAnim(BookAnim(false, book.id, mode, book.rtl, cover, wasAt, shots, fade, hinge = useHinge(mode, fade)))
             closeBook(reason)
         }
     }
@@ -547,6 +558,7 @@ class ThorApp : Application() {
     private fun endBookAnim(a: BookAnim) {
         if (bookAnim !== a) return
         bookAnim = null
+        if (!a.open && landingBookId == a.bookId) landingBookId = null
         bookAnimWaiting = false
         bookAnimT.floatValue = 0f
         bookAnimJob = null

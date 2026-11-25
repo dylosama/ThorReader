@@ -76,9 +76,18 @@ private class BookAnimPainter(val a: ThorApp.BookAnim) {
     private val place = BookAnimMath.place(a.mode, a.rtl, wt, ht, wb, hb, aspect)
     private val night = app.settings.theme == PageTheme.NIGHT
 
-    /** The cover's row in the library; if unknown, it rises from the middle of the top screen. */
-    private val from: CoverBox = a.from?.let { CoverBox(it.centerX(), it.centerY(), it.width(), it.height(), 0f) }
-        ?: CoverBox(wt / 2f, ht / 2f, ht * 0.25f * aspect, ht * 0.25f, 0f)
+    /**
+     * The cover's place in the library. Opening: where it was lifted from. Closing: where the
+     * library (re-sorted, scrolled to show it) lays it out now, read every frame, so the cover
+     * lands in its new place (Recently read: first) - the place it had when opened is only a
+     * fallback. Unknown: the middle of the top screen.
+     */
+    private val slot: android.graphics.RectF?
+        get() = if (a.open) a.from else app.coverBounds[a.bookId] ?: a.from
+
+    private val from: CoverBox
+        get() = slot?.let { CoverBox(it.centerX(), it.centerY(), it.width(), it.height(), 0f) }
+            ?: CoverBox(wt / 2f, ht / 2f, ht * 0.25f * aspect, ht * 0.25f, 0f)
 
     private val bitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -116,7 +125,7 @@ private class BookAnimPainter(val a: ThorApp.BookAnim) {
             dark(c, w, h, dim * (1f - reveal))
         } else {
             // Closing: the live library is underneath; the pages (snapshot) fade into it.
-            if (screen == Screen.TOP && s > 0.001f && a.fromRow) a.from?.let { r ->
+            if (screen == Screen.TOP && s > 0.001f && a.fromRow) slot?.let { r ->
                 // Its row stays empty until the cover lands back in it.
                 fill.color = rowColor
                 fill.alpha = 255
