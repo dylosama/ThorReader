@@ -12,6 +12,17 @@ free for something else.
 manga, a 3D Inspect view, page-turn and open/close animations, reading progress sync with
 CrossPoint / KOReader, OPDS catalogs and burn-in protection - see [CHANGELOG.md](CHANGELOG.md).
 
+## Screenshots
+
+Recorded on an AYN Thor (shown in a drawn device frame).
+
+| | |
+|---|---|
+| ![Cover flow: books turned to show spine and cover](docs/screenshots/1-cover-flow.jpg) **Cover flow** - the library as books standing turned, spine and cover | ![Grid view](docs/screenshots/2-grid.jpg) **Grid** - covers with a tab for the mode each book opens in |
+| ![List view](docs/screenshots/3-list.jpg) **List** - title, author, series, pages and format | ![Inspect with the series list](docs/screenshots/4-inspect-series.jpg) **Inspect** - a 3D book on the bottom screen, its series (with the books you're missing) on top |
+| ![Manga collection](docs/screenshots/5-manga-collection.jpg) **Manga collections** - volumes, chapters, gaps and "Completed" / "Ongoing" | ![Book mode across both screens](docs/screenshots/6-book-mode.jpg) **Book mode** - hold the Thor sideways: two screens, two pages |
+| ![Page curl](docs/screenshots/7-page-curl.jpg) **Page curl** - the sheet turns across the hinge (or flip, slide, fade) | ![Settings, Online tab](docs/screenshots/8-sync-opds.jpg) **Online** - reading progress sync with CrossPoint / KOReader, and OPDS catalogs |
+
 ## Reading modes
 
 Each book remembers its own mode. Switch from the reader menu.
