@@ -38,6 +38,8 @@ Each book remembers its own mode. Switch from the reader menu.
   taps curl the page from its bottom (or top) outer corner. In the book
   modes one sheet turns across the hinge from one screen to the other; swipes make the page
   follow your finger. Held buttons and jumps use a quick slide; below 15 % battery pages fade.
+- Opening a book lifts its cover out of the library and swings it open across the screens (and
+  closes it back into its row); Settings: "Open & close animation".
 - Reading position, mode and text settings are remembered per book.
 - Book modes can use a different text size on each screen ("Same text size on both screens" off
   in the reader menu); the text still flows from one screen to the next without losing a line.

@@ -24,6 +24,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
+import dev.thorreader.app.engine.BookAnimMath
 import java.io.File
 
 const val TAG = "ThorReader"
@@ -227,6 +230,230 @@ class ThorApp : Application() {
     }
 
     // ---- books ----------------------------------------------------------------------------
+
+    // ---- book open / close animation ---------------------------------------------------------
+    //
+    // One clock (bookAnimT) for both windows, like the page turn. What a screen showed before
+    // the switch is kept as a PixelCopy snapshot, so the switch happens at once (the book loads
+    // in parallel) and nothing pops. See PLAN.md "Book open / close animation".
+
+    class BookAnim(
+        val open: Boolean,
+        val bookId: Long,
+        /** The book's reading mode (the mode it opens in / is closed from). */
+        val mode: ReadingMode,
+        val rtl: Boolean,
+        val cover: android.graphics.Bitmap,
+        /** The cover's place in its library row (top screen px), if known. */
+        val from: android.graphics.RectF?,
+        /** What each screen showed before the switch (library on open, pages on close). */
+        val snapshots: Map<Screen, android.graphics.Bitmap>,
+        /** Low battery / no snapshot: a quick fade instead of the cover. */
+        val fade: Boolean,
+    ) {
+        /** Does this animation draw on [screen]? */
+        fun uses(screen: Screen): Boolean = screen == Screen.TOP || mode.isBook || mode == ReadingMode.BOTTOM
+    }
+
+    var bookAnim by mutableStateOf<BookAnim?>(null)
+        private set
+    val bookAnimT = androidx.compose.runtime.mutableFloatStateOf(0f)
+
+    /** Opening is held on the closed cover, waiting for the first pages (> 300 ms): show progress. */
+    var bookAnimWaiting by mutableStateOf(false)
+        private set
+    private var bookAnimJob: Job? = null
+    private var bookAnimSkip = false
+
+    /** Each library row's cover position (top screen px), recorded as the rows are laid out. */
+    val coverBounds = HashMap<Long, android.graphics.RectF>()
+
+    /** The window on each screen (for snapshots). */
+    val windows = HashMap<Screen, android.view.Window>()
+
+    /** Low battery (same rule as page turns): below 15 % and not charging. */
+    private fun batteryLow(): Boolean {
+        if (!settings.simplerTurnOnLowBattery) return false
+        val i = registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED)) ?: return false
+        val b = dev.thorreader.app.ui.BatteryState.from(i) ?: return false
+        return b.percent < dev.thorreader.app.engine.PageTurnMath.LOW_BATTERY && !b.charging
+    }
+
+    /** What [screen] shows right now, as a bitmap (null if it can't be copied). */
+    private suspend fun snapshot(screen: Screen): android.graphics.Bitmap? {
+        val w = windows[screen] ?: return null
+        val v = w.decorView
+        if (v.width <= 0 || v.height <= 0) return null
+        val bmp = android.graphics.Bitmap.createBitmap(v.width, v.height, android.graphics.Bitmap.Config.ARGB_8888)
+        return kotlinx.coroutines.suspendCancellableCoroutine { c ->
+            runCatching {
+                android.view.PixelCopy.request(w, bmp, { r ->
+                    if (r == android.view.PixelCopy.SUCCESS) c.resume(bmp) {} else {
+                        bmp.recycle()
+                        c.resume(null) {}
+                    }
+                }, android.os.Handler(android.os.Looper.getMainLooper()))
+            }.onFailure {
+                Log.w(TAG, "Snapshot of the ${screen.name.lowercase()} screen failed", it)
+                c.resume(null) {}
+            }
+        }
+    }
+
+    /** The book's cover (decoded at a size good for full screen), or a generated one. */
+    private suspend fun loadCover(book: Book): android.graphics.Bitmap = withContext(Dispatchers.IO) {
+        book.coverPath?.let { path ->
+            runCatching {
+                val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeFile(path, o)
+                var sample = 1
+                while (maxOf(o.outWidth, o.outHeight) / (sample * 2) >= 1400) sample *= 2
+                android.graphics.BitmapFactory.decodeFile(path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
+            }.getOrNull()
+        } ?: dev.thorreader.app.ui.placeholderCoverBitmap(book.title, book.author)
+    }
+
+    /** Open [id] from the library with the cover animation (or instantly if it's off). */
+    fun openBookAnimated(id: Long) {
+        if (bookAnim != null) return
+        if (!settings.bookAnim) return openBook(id)
+        scope.launch {
+            val book = db.books().get(id) ?: return@launch
+            val mode = book.readingMode ?: settings.lastBookMode
+            val from = coverBounds[id]?.let { android.graphics.RectF(it) }
+            val cover = loadCover(book)
+            val shot = snapshot(Screen.TOP)
+            val fade = batteryLow() || shot == null
+            if (fade) Log.i(TAG, "Book opens with a quick fade (${if (shot == null) "no snapshot" else "low battery"})")
+            startBookAnim(BookAnim(true, id, mode, book.rtl, cover, from, listOfNotNull(shot?.let { Screen.TOP to it }).toMap(), fade))
+            openBook(id)
+        }
+    }
+
+    /** Close the book from the reader (menu button, Back) with the reverse animation. */
+    fun closeBookAnimated(reason: String) {
+        val s = session ?: return
+        if (bookAnim != null) return
+        if (!settings.bookAnim) return closeBook(reason)
+        scope.launch {
+            val book = s.book
+            val mode = settings.mode
+            menuScreen = null
+            s.finishTurnNow("closing the book")
+            // Let the menu disappear before the pages are copied.
+            withContext(androidx.compose.ui.platform.AndroidUiDispatcher.Main) {
+                androidx.compose.runtime.withFrameNanos { }
+                androidx.compose.runtime.withFrameNanos { }
+            }
+            val shots = HashMap<Screen, android.graphics.Bitmap>()
+            if (mode != ReadingMode.BOTTOM) snapshot(Screen.TOP)?.let { shots[Screen.TOP] = it }
+            if (mode.isBook || mode == ReadingMode.BOTTOM) snapshot(Screen.BOTTOM)?.let { shots[Screen.BOTTOM] = it }
+            val cover = loadCover(book)
+            val fade = batteryLow() || shots.isEmpty()
+            startBookAnim(BookAnim(false, book.id, mode, book.rtl, cover, coverBounds[book.id]?.let { android.graphics.RectF(it) }, shots, fade))
+            closeBook(reason)
+        }
+    }
+
+    private fun startBookAnim(a: BookAnim) {
+        bookAnimJob?.cancel()
+        bookAnimSkip = false
+        bookAnimT.floatValue = 0f
+        bookAnim = a
+        Log.i(TAG, "Book ${if (a.open) "open" else "close"} animation, mode ${a.mode.number}${if (a.rtl) ", right-to-left" else ""}${if (a.fade) ", fade" else ""}")
+        bookAnimJob = scope.launch(androidx.compose.ui.platform.AndroidUiDispatcher.Main) {
+            val dur = debugBookMs()?.toFloat() ?: if (a.fade) BookAnimMath.FADE_MS.toFloat() else BookAnimMath.DURATION_MS.toFloat()
+            // Opening never reveals blank pages: wait for them at the hold point (fade: at the start).
+            val holdAt = if (a.fade) 0f else BookAnimMath.HOLD
+            var start = -1L
+            var held = !a.open
+            var frames = 0
+            val freeze = debugProp("debug.thorreader.bookfreeze")?.toFloatOrNull()?.takeIf { it in 0.01f..0.99f }
+            var frozeOnce = false
+            while (true) {
+                val now = androidx.compose.runtime.withFrameNanos { it }
+                if (start < 0) start = now
+                var t = ((now - start) / 1_000_000f / dur).coerceIn(0f, 1f)
+                if (bookAnimSkip) {
+                    bookAnimSkip = false
+                    t = if (!held) maxOf(t, holdAt) else 1f
+                    start = now - (t * dur * 1_000_000).toLong()
+                }
+                if (!held && t >= holdAt) {
+                    held = true
+                    if (!pagesReadyForReveal()) {
+                        bookAnimT.floatValue = holdAt
+                        val waitStart = now
+                        val badge = launch {
+                            delay(300)
+                            bookAnimWaiting = true
+                        }
+                        // No frames while waiting: just suspend until the pages exist.
+                        androidx.compose.runtime.snapshotFlow { pagesReadyForReveal() }.first { it }
+                        badge.cancel()
+                        bookAnimWaiting = false
+                        val resumed = androidx.compose.runtime.withFrameNanos { it }
+                        Log.d(TAG, "Book open held on the cover ${(resumed - waitStart) / 1_000_000} ms for the first pages")
+                        start = resumed - (holdAt * dur * 1_000_000).toLong()
+                        continue
+                    }
+                }
+                // Debug builds: `setprop debug.thorreader.bookfreeze 0.8` stops at that point (for screenshots) until a tap.
+                if (freeze != null && t >= freeze && !frozeOnce) {
+                    frozeOnce = true
+                    bookAnimT.floatValue = freeze
+                    while (!bookAnimSkip) delay(100)
+                    bookAnimSkip = false
+                    start = androidx.compose.runtime.withFrameNanos { it } - (freeze * dur * 1_000_000).toLong()
+                    continue
+                }
+                bookAnimT.floatValue = t
+                frames++
+                if (t >= 1f) break
+            }
+            Log.d(TAG, "Book ${if (a.open) "open" else "close"} animation done: $frames frames")
+            endBookAnim(a)
+        }
+    }
+
+    /** Debug builds only: `adb shell setprop debug.thorreader.bookms 6000` slows the animation for screen recordings. */
+    private fun debugProp(name: String): String? {
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) return null
+        return runCatching { Runtime.getRuntime().exec(arrayOf("getprop", name)).inputStream.bufferedReader().readText().trim() }.getOrNull()?.ifEmpty { null }
+    }
+
+    private fun debugBookMs(): Int? {
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) return null
+        return runCatching {
+            Runtime.getRuntime().exec(arrayOf("getprop", "debug.thorreader.bookms")).inputStream.bufferedReader().readText().trim().toIntOrNull()
+        }.getOrNull()?.takeIf { it in 100..30_000 }
+    }
+
+    /** The first pages are rendered (or the book failed / was closed): the cover may open. */
+    private fun pagesReadyForReveal(): Boolean {
+        val s = session ?: return true
+        return s.firstViewShown || s.error != null
+    }
+
+    /** Tap / A / B / Back during the animation: jump to the end (an opening waits for its pages). */
+    fun skipBookAnim() {
+        if (bookAnim == null) return
+        bookAnimSkip = true
+    }
+
+    private fun endBookAnim(a: BookAnim) {
+        if (bookAnim !== a) return
+        bookAnim = null
+        bookAnimWaiting = false
+        bookAnimT.floatValue = 0f
+        bookAnimJob = null
+        // Free the bitmaps once the last frame that used them is gone.
+        scope.launch {
+            delay(200)
+            a.snapshots.values.forEach { it.recycle() }
+            a.cover.recycle()
+        }
+    }
 
     /** Open a book in its own saved mode (or the last mode used, if it has none yet). */
     fun openBook(id: Long) {
@@ -527,6 +754,10 @@ class ThorApp : Application() {
      */
     fun handleBack(source: String): Boolean {
         val sinceModeChange = SystemClock.uptimeMillis() - lastModeChangeAt
+        if (bookAnim != null) {
+            skipBookAnim()
+            return true
+        }
         if (typing != null) {
             stopTyping("Back ($source)")
             return true
@@ -546,7 +777,7 @@ class ThorApp : Application() {
                 true
             }
             session != null -> {
-                closeBook("Back pressed ($source)")
+                closeBookAnimated("Back pressed ($source)")
                 true
             }
             else -> false
@@ -617,6 +848,11 @@ class ThorApp : Application() {
     /** Hardware buttons from either screen. Returns true if consumed. */
     fun handleKey(e: KeyEvent): Boolean {
         val code = e.keyCode
+        // Book opening / closing: A, B or Back skip to the end; nothing else happens meanwhile.
+        if (bookAnim != null) {
+            if (e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0 && code in setOf(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_DPAD_CENTER)) skipBookAnim()
+            return code != KeyEvent.KEYCODE_VOLUME_UP && code != KeyEvent.KEYCODE_VOLUME_DOWN
+        }
         if (e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0) {
             Log.d(TAG, "Key down: ${KeyEvent.keyCodeToString(code)} ($code)")
         }

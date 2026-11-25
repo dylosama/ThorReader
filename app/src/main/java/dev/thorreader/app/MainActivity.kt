@@ -14,21 +14,30 @@ class MainActivity : HostActivity() {
 
     override val screen = Screen.TOP
     private var presentation: BottomScreenPresentation? = null
+    private var bottomLaunched = false
 
     override fun reconcile() {
         val mode = app.settings.mode
         if (mode == ReadingMode.BOTTOM && !app.bottomFallback) {
+            if (bottomLaunched) {
+                // The book opening into Mode 4 still slides off this screen: finish once it's done.
+                if (app.bookAnim == null) finish()
+                return
+            }
             val bottom = app.bottomDisplay()
             if (bottom != null && launchOnDisplay(BottomActivity::class.java, bottom.displayId)) {
                 dismissPresentation()
-                finish()
+                bottomLaunched = true
+                if (app.bookAnim == null) finish()
                 return
             }
             Log.w(TAG, "Could not move the reader to the bottom display; using fallback (black top screen + Presentation)")
             app.bottomFallback = true // triggers reconcile() again
             return
         }
-        val needBottom = mode.isBook || mode == ReadingMode.BOTTOM // BOTTOM here = fallback
+        bottomLaunched = false
+        // BOTTOM here = fallback. A book closing from Modes 1/2 keeps the bottom screen until done.
+        val needBottom = mode.isBook || mode == ReadingMode.BOTTOM || app.bookAnim?.let { it.mode.isBook && !it.open } == true
         if (needBottom) showPresentation() else dismissPresentation()
         // Typing in the library (Mode 3): the keyboard takes over the bottom screen, only while typing.
         val t = app.typing
@@ -100,11 +109,21 @@ class BottomActivity : HostActivity() {
 
     override val screen = Screen.BOTTOM
 
+    private var topLaunched = false
+
     override fun reconcile() {
-        if (app.settings.mode == ReadingMode.BOTTOM) return
-        if (!launchOnDisplay(MainActivity::class.java, android.view.Display.DEFAULT_DISPLAY)) {
-            startActivity(android.content.Intent(this, MainActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+        if (app.settings.mode == ReadingMode.BOTTOM) {
+            topLaunched = false
+            return
         }
+        if (!topLaunched) {
+            if (!launchOnDisplay(MainActivity::class.java, android.view.Display.DEFAULT_DISPLAY)) {
+                startActivity(android.content.Intent(this, MainActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            topLaunched = true
+        }
+        // A book closing from Mode 4 still slides up off this screen: finish once it's done.
+        if (app.bookAnim?.uses(Screen.BOTTOM) == true) return
         finish()
     }
 }

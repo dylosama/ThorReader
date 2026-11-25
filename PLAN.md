@@ -917,3 +917,55 @@ Checked on the Thor (debug build, Mode 1):
   diagonally showing the next page, back in the comic's cream paper tone; top screen: the new
   page lands corner-first diagonally next to the hinge. Dune: same corner lift; the flap shows
   faint dark mirrored text, no bright flash. All turns frame interval p50 16.7 / p95 16.8 ms.
+
+### Book open / close animation (still v0.3.0, not published yet)
+Setting "Open & close animation" (Settings, default On; pref `book_anim`). Off = instant (as
+before). Low battery (same rule as page turns) or a failure = a quick 250 ms fade.
+
+Design (`engine/BookAnim.kt` = pure geometry/timing, tested; `ui/BookAnimOverlay.kt` = drawing):
+- ONE virtual space for both screens: the top screen at (0,0)-(Wt,Ht), the bottom screen right
+  under it, centred: (ox, Ht)-(ox+Wb, Ht+Hb), ox = (Wt-Wb)/2. The cover is positioned in that
+  space; each screen draws it shifted by its own offset and clipped to itself, so a cover that
+  moves (or swings) across the hinge is one continuous motion. One clock (`ThorApp.bookAnimT`,
+  main-thread frame clock), read in the draw phase of both windows.
+- The switch happens at t = 0 (the book starts opening / closing in parallel). What the screens
+  showed before is kept as a PixelCopy snapshot of each window (library on open; the pages on
+  close), so nothing pops. Snapshots and the cover bitmap are recycled when the animation ends.
+- Timeline in "open state" s (open: s = t; close: s = 1 - t), 800 ms:
+  0-0.15 lift (scale 1.08, soft shadow) while the library dims (to 85 % over 0-0.3); 0.15-0.5 the
+  cover moves to its place (and turns ±90° in Modes 1/2 to match the sideways book); 0.5-1 the
+  cover swings open around its spine (Camera 3D rotation, perspective, darker toward 90°; past
+  90° the inside of the cover, fading out) while the backdrop fades to reveal the live pages
+  (s 0.55-0.85).
+- Where the cover goes: Mode 3: the right half of the top screen, spine on the centre line
+  (RTL: left half), rotateY. Mode 4: the same on the bottom screen - the cover slides down off
+  the top screen and in from the bottom screen's top edge. Modes 1/2: the top screen's page area,
+  rotated like the content (+90 / -90), spine on the hinge (top screen's bottom edge); it swings
+  around the hinge (rotateX) and crosses onto the bottom screen. RTL in Modes 1/2: the cover
+  first moves to the bottom screen and swings up onto the top one.
+- Never reveal blank pages: the open holds at s = 0.5 (cover closed in place, a static soft
+  shadow, NO frames) until the first view is rendered (`ReaderSession.firstViewShown`, set by
+  the prefetch when the current view's pages are all rendered, or an error); "Opening…" house
+  badge after 300 ms.
+- Windows stay alive while the animation needs them: Mode 4 open keeps MainActivity (top) until
+  done, then finishes it as before; closing from Mode 4 keeps BottomActivity until done;
+  closing from Modes 1/2 keeps the bottom Presentation until done. Then released as now.
+- Tap anywhere or A / B / Back: skip to the end (open: to the hold point if pages aren't ready).
+- Close: user closes only (menu "Close book", Back); the menu is closed first, then snapshots.
+  The cover lands back on its row (row bounds recorded by the library; fallback: shrink/fade).
+- Checked on the Thor (debug build, Night theme; debug-only props `debug.thorreader.bookms`
+  = duration and `debug.thorreader.bookfreeze` = stop at a point until a tap, for screenshots):
+  Mode 1 (Dune): library dims, the cover lifts out of its row (row left empty), grows and turns
+  90°, swings around the hinge with its free edge toward the reader; at 80 % the inside of the
+  cover lies on the bottom screen over the right page while the left page is revealed.
+  Mode 2: same, turned the other way. Mode 3: cover on the right half swings around the centre
+  line, revealing the spread. Mode 4: the cover leaves the top screen's bottom edge and enters
+  the bottom screen's top edge in the same frame (MainActivity kept until done, then the top
+  screen released as before). Blue Period (RTL, Mode 1): the cover goes to the bottom screen and
+  swings up. Close in all modes: pages give way to the cover, it turns back and lands in its
+  row (Mode 4: MainActivity relaunched within ~30 ms, BottomActivity kept until done).
+  Real speed: every open / close 0.81 s, 46-49 frames (~58 fps), no hold needed (layouts
+  cached); idle afterwards 0 frames and 0 CPU in 10 s. Recordings of all four modes made.
+- Not checked on the device: the low-battery fade (charging) and the "Opening…" hold with a
+  slow first page (layouts were cached). Known: the library row's page/progress line updates
+  as soon as the library reappears (under the dimmed backdrop), not strictly after landing.

@@ -90,7 +90,7 @@ fun ReaderMenu(session: ReaderSession) {
                 // --- Big actions first ---
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     BigButton("Return to reading", primary = true) { app.menuScreen = null }
-                    BigButton("Close book", primary = false) { app.closeBook("Close book button") }
+                    BigButton("Close book", primary = false) { app.closeBookAnimated("Close book button") }
                 }
 
                 // --- Bookmark (one per book) + its colour ---

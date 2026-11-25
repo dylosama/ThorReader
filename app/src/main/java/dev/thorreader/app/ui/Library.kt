@@ -33,6 +33,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -420,11 +422,18 @@ private fun BookRow(book: Book) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .background(Color(0xFF1A1A1A))
-            .focusClick { app.openBook(book.id) }
+            .focusClick { app.openBookAnimated(book.id) }
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BookCover(book, Modifier.size(56.dp, 80.dp))
+        BookCover(
+            book,
+            Modifier.size(56.dp, 80.dp).onGloballyPositioned { c ->
+                // Where the open / close animation lifts the cover from and lands it.
+                val r = c.boundsInWindow()
+                app.coverBounds[book.id] = android.graphics.RectF(r.left, r.top, r.right, r.bottom)
+            },
+        )
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(

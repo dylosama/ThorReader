@@ -381,6 +381,15 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putBoolean("turn_corner_bottom", bottom).apply()
     }
 
+    /** "Open & close animation" for books (default on; off = instant). */
+    var bookAnim by mutableStateOf(prefs.getBoolean("book_anim", true))
+        private set
+
+    fun updateBookAnim(on: Boolean) {
+        bookAnim = on
+        prefs.edit().putBoolean("book_anim", on).apply()
+    }
+
     /** Below 15 % battery (not charging): use the simpler Fade. Default on. */
     var simplerTurnOnLowBattery by mutableStateOf(prefs.getBoolean("turn_low_battery", true))
         private set

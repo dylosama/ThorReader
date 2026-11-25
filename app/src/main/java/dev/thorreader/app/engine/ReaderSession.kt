@@ -384,6 +384,10 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         return r
     }
 
+    /** The first view's pages are rendered (the open animation may reveal them). */
+    var firstViewShown by mutableStateOf(false)
+        private set
+
     /** Render the current view first, then neighbours, so turning pages is instant. */
     private fun prefetch() {
         prefetchJob?.cancel()
@@ -393,6 +397,8 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
             // current, NEXT, previous, then ±2. Bounded by the LRU cache (pages are screen-sized).
             for (i in prefetchOrder(viewIndex, p.views.size)) {
                 for ((u, slot) in prefetchRequests(p, i)) render(p, u, slot, 1f)
+                // The book-open animation reveals the pages only once these exist.
+                if (!firstViewShown && i == viewIndex && viewReady(p, i)) firstViewShown = true
             }
         }
     }

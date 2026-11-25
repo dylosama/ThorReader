@@ -56,6 +56,7 @@ abstract class HostActivity : ComponentActivity(), HostActions {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.prefer60Hz(display)
+        app.windows[screen] = window // for the book open / close snapshots
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             CompositionLocalProvider(LocalHost provides this) { PhysicalScreen(screen) }
@@ -75,7 +76,7 @@ abstract class HostActivity : ComponentActivity(), HostActions {
         })
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                snapshotFlow { Triple(app.settings.mode, app.bottomFallback, app.typing) }.collect { reconcile() }
+                snapshotFlow { listOf(app.settings.mode, app.bottomFallback, app.typing, app.bookAnim) }.collect { reconcile() }
             }
         }
         lifecycleScope.launch {
@@ -90,6 +91,11 @@ abstract class HostActivity : ComponentActivity(), HostActions {
         super.onStart()
         app.refreshScreens()
         app.onHostStart(javaClass.simpleName)
+    }
+
+    override fun onDestroy() {
+        if (app.windows[screen] === window) app.windows.remove(screen)
+        super.onDestroy()
     }
 
     override fun onStop() {

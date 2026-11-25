@@ -32,12 +32,16 @@ fun PhysicalScreen(screen: Screen) {
         Screen.BOTTOM -> mode != ReadingMode.TOP
     }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        if (!active) return@Box
-        if (mode.isBook) {
-            RotatedBox(mode.contentRotation) { ScreenBody(screen, mode) }
-        } else {
-            ScreenBody(screen, mode)
+        if (active) {
+            if (mode.isBook) {
+                RotatedBox(mode.contentRotation) { ScreenBody(screen, mode) }
+            } else {
+                ScreenBody(screen, mode)
+            }
         }
+        // Book open / close animation: over everything, in unrotated screen pixels (also on a
+        // screen that is otherwise idle in the new mode, while the animation still needs it).
+        BookAnimOverlay(screen)
     }
 }
 

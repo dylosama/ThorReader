@@ -185,6 +185,13 @@ fun SettingsPanel() {
             color = HouseStyle.Subtle, fontSize = 13.sp,
         )
 
+        SectionLabel("Opening books")
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Open & close animation", color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+            Chip("On", settings.bookAnim) { settings.updateBookAnim(true) }
+            Chip("Off", !settings.bookAnim) { settings.updateBookAnim(false) }
+        }
+
         SectionLabel("Page turn")
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Simpler animation on low battery", color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))

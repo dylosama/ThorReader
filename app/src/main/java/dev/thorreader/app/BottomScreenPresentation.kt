@@ -46,6 +46,7 @@ class BottomScreenPresentation(
             w.decorView.setViewTreeViewModelStoreOwner(activity)
             w.keepScreenOn(ThorApp.instance.keepScreenOn)
             w.prefer60Hz(display)
+            ThorApp.instance.windows[Screen.BOTTOM] = w // for the book open / close snapshots
             w.setBackgroundDrawableResource(android.R.color.black)
             w.insetsController?.let {
                 it.hide(WindowInsets.Type.systemBars())
@@ -63,6 +64,7 @@ class BottomScreenPresentation(
     override fun onStop() {
         keepOnJob?.cancel() // nothing of this window outlives it
         keepOnJob = null
+        window?.let { w -> if (ThorApp.instance.windows[Screen.BOTTOM] === w) ThorApp.instance.windows.remove(Screen.BOTTOM) }
         super.onStop()
     }
 
