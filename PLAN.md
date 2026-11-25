@@ -1492,7 +1492,11 @@ Changes:
 ## Where we left off (2026-11-25)
 
 ### Branches
-- main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
+- main: Thor Reader v0.3.0 (versionCode 4), PUBLISHED 2026-11-25 as GitHub release 'Thor Reader 0.3'
+  (tag 0.3 on cdf04db, Pre-release like 0.1 / 0.2, asset ThorReader-0.3.0.apk, SHA-256
+  8548913448B9FCE9D36BF58B7E785B6D5CB55BCE553473B4020EC39547EFBDEC, notes = the 0.3 section of
+  CHANGELOG.md). Published with the GitHub CLI (installed with winget, signed in as dylosama:
+  "& 'C:\Program Files\GitHub CLI\gh.exe' release create <tag> <apk> --title ... --notes-file ..."). Last commit:
   "v0.3.0: release audit, mode badge setting, changelog".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
@@ -1570,7 +1574,10 @@ their own page colours (Harry Potter PDF shows white pages in Night).
 Test hygiene: Mode 4 sends Back / B to the focused (top) display - target `input -d 4`.
 ### Next
 1. Check pinch zoom in Inspect by hand (adb can't do two fingers).
-2. Release 0.3.0: final signed ThorReader-0.3.0.apk, tag 0.3.0 (only when asked), publish.
+2. Done: 0.3 released (see Branches above). Promo video promo\ThorReader-0.3.mp4 (git-ignored
+   locally: 28.6 s, 'Made with Claude' title, List / Grid / Cover flow, Inspect with the Dune
+   series, the open, flip + curl, sync / OPDS, GitHub link; Thor Bookloader song). README has 8
+   screenshots in docs/screenshots (taken from the same recordings, in the drawn device frame).
 3. v0.4: the Bookshelf (see "3. Bookshelf" in the plan at the top - a visual shelf with each
    book as a generated spine). NOTE: there is no step23.md in the folder; the bookshelf spec
    still has to be written (step23.md, or the next step file).
