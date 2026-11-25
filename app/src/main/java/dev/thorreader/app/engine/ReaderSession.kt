@@ -771,10 +771,12 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         if (tracksCorner && role != null) {
             val mirror = PageTurnMath.freeEdgeLeft(role, regionSide, rtl)
             val fx = if (mirror) wf - finger.x else finger.x
-            val cy = PageTurnMath.grabbedCornerY(start.y, h.toFloat())
-            val curl = PageTurnMath.curlFromDrag(wf, cy, fx, finger.y, radius, h.toFloat())
+            // Curl: the grabbed corner follows the finger. Other styles: a straight grab, so
+            // strokes near the top / bottom respond like ones in the middle.
+            val cornerCurl = t.style == TurnStyle.CURL
+            val curl = PageTurnMath.dragFold(cornerCurl, wf, h.toFloat(), start.y, fx, finger.y, radius)
             if (curl != null) {
-                dragCurl = DragCurl(screen, regionSide, curl)
+                dragCurl = if (cornerCurl) DragCurl(screen, regionSide, curl) else null
                 turnT.floatValue = PageTurnMath.progressForAxis(role, curl.a, wf, radius)
             } else {
                 dragCurl = null

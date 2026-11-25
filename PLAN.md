@@ -1157,6 +1157,18 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   after a fresh start - every turn a curl, setup 20-100 ms, p95 after setup 16.8-16.9 ms, curl
   never switched off.
 
+### v0.3.0 fix: Flip swipes from a corner start as readily as from the middle (main)
+- Bug: in Flip (book modes, big screen) a swipe starting near the top or bottom of the page's
+  outer edge needed a long stroke before the page moved; from the middle it was immediate.
+  Cause: every style used the curl's drag geometry - a touch in the top / bottom third grabs
+  that corner, the fold tilts, and the turn's progress is read where the fold crosses the
+  page's middle, which barely moves at first.
+- Now (`PageTurnMath.dragFold`): only the curl peels the grabbed corner. Flip / Slide / Fade
+  use a straight grab at the touch point, so every start along the edge responds like the
+  middle (finger drift sideways ignored). The curl is unchanged. Tests: DragStartTest (119).
+- Not checked by hand on the Thor: adb's simulated strokes are too slow (each step a separate
+  command), so the reader menu's press-and-hold fired instead. Try it by finger.
+
 ### v0.3.0: page theme back at the top of the reader menu (main)
 - Paper / Sepia / Night are three round swatches at the end of the bookmark row
   (`PageThemeSwatches` in ReaderMenu.kt), styled like the bookmark colour swatch: each shows its
@@ -1172,7 +1184,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: page theme swatches next to the bookmark in the reader menu".
+  "v0.3.0: Flip swipes from a corner start as readily as from the middle".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1191,6 +1203,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   hand-over, pixel-exact placement, per-turn landing log).
 - Fix: curl no longer switches itself off (texture setup frames not counted as slow).
 - Reader menu: Paper / Sepia / Night swatches next to the bookmark.
+- Fix: Flip (and Slide / Fade) swipes from near a corner respond like from the middle.
 
 ### Built, not yet fully tested on the Thor (test list before releasing 0.3)
 Checked on the Thor already: popup on the last list row and last grid cover (scroll, pinned
@@ -1225,7 +1238,7 @@ Thor Reader (main):
     adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-debug.apk
     adb shell am start -n dev.thorreader.app/.MainActivity
     .\gradlew assembleRelease      -> app\build\outputs\apk\release\ThorReader-0.3.0.apk
-    .\gradlew testDebugUnitTest    (117 tests)
+    .\gradlew testDebugUnitTest    (119 tests)
 Bookloader branch (both apps):
     git switch bookloader
     .\gradlew assembleDebug

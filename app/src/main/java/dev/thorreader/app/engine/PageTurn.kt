@@ -281,6 +281,17 @@ object PageTurnMath {
         else -> touchY
     }
 
+    /**
+     * The fold a drag makes on the turning page ([w] x [h], free edge at x = w; [fx] / [fy] the
+     * finger, mirrored so). Curl: the corner the touch grabbed ([grabbedCornerY]) follows the
+     * finger, tilting the fold. Flip / Slide / Fade have no corner to peel: the progress is that
+     * of a straight grab at the touch point, so a stroke starting near a corner turns the page as
+     * readily as one in the middle (a tilted corner fold barely moves at mid-height at first).
+     */
+    fun dragFold(cornerCurl: Boolean, w: Float, h: Float, touchY: Float, fx: Float, fy: Float, r: Float): Curl? =
+        if (cornerCurl) curlFromDrag(w, grabbedCornerY(touchY, h), fx, fy, r, h)
+        else curlFromDrag(w, touchY, fx, touchY, r, h)
+
     // ---- drags --------------------------------------------------------------------------------
 
     /** Complete a released drag? [fraction] = finger travel / page width; [velocity] toward the turn. */
