@@ -165,6 +165,7 @@ private class Pictures(val session: ReaderSession, val p: Pagination, val densit
     private val bitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG).apply {
         if (reflow) colorFilter = ColorMatrixColorFilter(theme.colorMatrix.values)
     }
+    private val coverPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
     private val background = if (reflow) theme.paper.toArgb() else android.graphics.Color.BLACK
 
     /**
@@ -230,7 +231,14 @@ private class Pictures(val session: ReaderSession, val p: Pagination, val densit
             }
             // Exactly where the page view at rest draws it (whole pixels, bilinear).
             val f = PageTurnMath.fitRect(r.bitmap.width.toFloat(), r.bitmap.height.toFloat(), w.toFloat(), h.toFloat(), r.overflow)
-            c.drawBitmap(r.bitmap, null, android.graphics.Rect(f.x, f.y, f.x + f.w, f.y + f.h), bitmapPaint)
+            val cover = if (reflow) NightCover.bounds(unit, r.bitmap, theme) else null
+            if (cover != null) {
+                // Night: the front cover in its own colours, as the page view draws it.
+                val part = dev.thorreader.app.engine.CoverColors.mapPart(f, r.bitmap.width, r.bitmap.height, cover.left, cover.top, cover.right, cover.bottom)
+                c.drawBitmap(r.bitmap, cover, android.graphics.Rect(part.x, part.y, part.x + part.w, part.y + part.h), coverPaint)
+            } else {
+                c.drawBitmap(r.bitmap, null, android.graphics.Rect(f.x, f.y, f.x + f.w, f.y + f.h), bitmapPaint)
+            }
             if (dim) c.drawColor(android.graphics.Color.argb(153, 0, 0, 0))
             // Comics / PDF: the page number pill (books have it printed in the page).
             if (!reflow && settings.showHeader) p.pageNumber(unit)?.let { drawNumberPill(c, it.toString(), w, h, p.config.rtl) }

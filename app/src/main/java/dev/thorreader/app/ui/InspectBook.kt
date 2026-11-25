@@ -122,19 +122,13 @@ class InspectState(val book: Book, val from: RectF?) {
 
 // ---- textures ------------------------------------------------------------------------------------
 
-private fun averageColor(b: Bitmap): Int {
-    val s = Bitmap.createScaledBitmap(b, 8, 8, true)
-    var r = 0
-    var g = 0
-    var bl = 0
-    for (y in 0 until 8) for (x in 0 until 8) {
-        val c = s.getPixel(x, y)
-        r += c shr 16 and 0xFF
-        g += c shr 8 and 0xFF
-        bl += c and 0xFF
-    }
+/** The front cover's dominant colour (see [dev.thorreader.app.engine.CoverColors.dominantColor]). */
+private fun dominantColor(b: Bitmap): Int {
+    val s = Bitmap.createScaledBitmap(b, 64, 64, true)
+    val px = IntArray(64 * 64)
+    s.getPixels(px, 0, 64, 0, 0, 64, 64)
     if (s != b) s.recycle()
-    return android.graphics.Color.rgb(r / 64, g / 64, bl / 64)
+    return dev.thorreader.app.engine.CoverColors.dominantColor(px)
 }
 
 private fun shade(c: Int, k: Float) = android.graphics.Color.rgb(
@@ -146,8 +140,9 @@ private fun shade(c: Int, k: Float) = android.graphics.Color.rgb(
 private fun textOn(c: Int) = if (dev.thorreader.app.AccentMath.prefersDarkText(c)) android.graphics.Color.rgb(20, 20, 20) else android.graphics.Color.WHITE
 
 private fun buildTextures(app: ThorApp, book: Book, front: Bitmap, model: Book3D): InspectTextures {
-    val base = averageColor(front)
-    val dark = shade(base, 0.55f)
+    // Spine and back in the front cover's dominant colour (only lightly shaded for depth).
+    val base = dominantColor(front)
+    val dark = shade(base, 0.8f)
     // Back cover: the book's own, else generated in the cover's colours.
     val own = BackCovers.find(app, book)?.let { bytes ->
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -167,8 +162,8 @@ private fun generatedBack(book: Book, w0: Int, h0: Int, base: Int, dark: Int): B
     val h = (800f * h0 / max(1, w0)).toInt().coerceIn(400, 1600)
     val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val c = android.graphics.Canvas(b)
-    c.drawPaint(Paint().apply { shader = LinearGradient(0f, 0f, 0f, h.toFloat(), shade(base, 0.8f), dark, Shader.TileMode.CLAMP) })
-    val ink = textOn(shade(base, 0.7f))
+    c.drawPaint(Paint().apply { shader = LinearGradient(0f, 0f, 0f, h.toFloat(), base, shade(base, 0.88f), Shader.TileMode.CLAMP) })
+    val ink = textOn(base)
     var y = 70f
     fun block(text: String, size: Float, bold: Boolean, alpha: Int, maxLines: Int): Float {
         val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -200,10 +195,10 @@ private fun generatedSpine(book: Book, w: Int, h: Int, base: Int, dark: Int): Bi
     val c = android.graphics.Canvas(b)
     // Rounded look: darker toward both edges.
     c.drawPaint(Paint().apply {
-        shader = LinearGradient(0f, 0f, w.toFloat(), 0f, intArrayOf(dark, shade(base, 0.95f), dark), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
+        shader = LinearGradient(0f, 0f, w.toFloat(), 0f, intArrayOf(dark, base, dark), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP)
     })
     if (w >= 28) {
-        val ink = textOn(shade(base, 0.8f))
+        val ink = textOn(base)
         val text = listOfNotNull(book.title, book.author).joinToString("   ·   ")
         val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = ink

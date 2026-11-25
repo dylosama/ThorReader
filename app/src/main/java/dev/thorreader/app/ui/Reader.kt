@@ -475,6 +475,8 @@ fun PageSlot(
             val sc = scroll.coerceIn(0f, maxScroll)
             val rect = dev.thorreader.app.engine.PageTurnMath.fitRect(bw, bh, boxW, boxH, r.overflow, sc)
             val filter = if (reflow) ColorFilter.colorMatrix(theme.colorMatrix) else null
+            // Night: the front cover keeps its own colours (just the picture, on the black page).
+            val cover = remember(r.bitmap, unit, theme) { if (reflow) NightCover.bounds(unit, r.bitmap, theme) else null }
             Canvas(
                 Modifier
                     .fillMaxSize()
@@ -485,15 +487,27 @@ fun PageSlot(
                         translationY = pan.y
                     },
             ) {
-                drawImage(
-                    image = image,
-                    srcOffset = IntOffset.Zero,
-                    srcSize = IntSize(image.width, image.height),
-                    dstOffset = IntOffset(rect.x, rect.y),
-                    dstSize = IntSize(rect.w, rect.h),
-                    colorFilter = filter,
-                    filterQuality = FilterQuality.Low, // bilinear, as in the turn pictures
-                )
+                if (cover != null) {
+                    val part = dev.thorreader.app.engine.CoverColors.mapPart(rect, image.width, image.height, cover.left, cover.top, cover.right, cover.bottom)
+                    drawImage(
+                        image = image,
+                        srcOffset = IntOffset(cover.left, cover.top),
+                        srcSize = IntSize(cover.width(), cover.height()),
+                        dstOffset = IntOffset(part.x, part.y),
+                        dstSize = IntSize(part.w, part.h),
+                        filterQuality = FilterQuality.Low,
+                    )
+                } else {
+                    drawImage(
+                        image = image,
+                        srcOffset = IntOffset.Zero,
+                        srcSize = IntSize(image.width, image.height),
+                        dstOffset = IntOffset(rect.x, rect.y),
+                        dstSize = IntSize(rect.w, rect.h),
+                        colorFilter = filter,
+                        filterQuality = FilterQuality.Low, // bilinear, as in the turn pictures
+                    )
+                }
             }
             if (maxScroll > 1f) OverflowHints(sc, maxScroll, background)
         }

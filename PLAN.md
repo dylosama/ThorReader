@@ -1157,6 +1157,22 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   after a fresh start - every turn a curl, setup 20-100 ms, p95 after setup 16.8-16.9 ms, curl
   never switched off.
 
+### v0.3.0: Night keeps the front cover's colours; Inspect spine / back in the cover's colour (main)
+- Night: a book's very first page (start of its first section), when it is a picture rather
+  than text, is drawn as is - just the picture, its white margins left as the black Night page -
+  instead of through the Night colour transform (`NightCover`, detection in
+  `CoverColors.pictureCells`: mostly non-white or clearly coloured, covering at least a fifth of
+  the page; text, title pages and small ornaments stay themed). Same drawing in the page view
+  and the turn pictures (`CoverColors.mapPart`), so turns hand over without a jump. Books only
+  (comics / PDF are never themed). Paper and Sepia unchanged.
+- Inspect: the spine and the generated back cover use the front cover's dominant colour
+  (`CoverColors.dominantColor`: colours grouped 8 levels per channel, the biggest group wins,
+  coloured groups favoured over greys) instead of a muddy average, shaded only lightly. A book's
+  own back cover (from the file) is still used as is.
+- Tests: CoverColorsTest (126 in total). Checked on the Thor: Dune's cover in Night in its own
+  colours on black; Inspect spine in the cover's dark brown, rgb(41, 23, 17), the colour of 37 %
+  of the cover (the old average was rgb(94, 55, 37)).
+
 ### v0.3.0 fix: Flip swipes from a corner start as readily as from the middle (main)
 - Bug: in Flip (book modes, big screen) a swipe starting near the top or bottom of the page's
   outer edge needed a long stroke before the page moved; from the middle it was immediate.
@@ -1185,7 +1201,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: Flip swipes from a corner start as readily as from the middle".
+  "v0.3.0: Night keeps the cover's colours; Inspect spine and back in the cover's colour".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1205,6 +1221,8 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 - Fix: curl no longer switches itself off (texture setup frames not counted as slow).
 - Reader menu: Paper / Sepia / Night swatches next to the bookmark.
 - Fix: Flip (and Slide / Fade) swipes from near a corner respond like from the middle.
+- Night keeps a book's front cover in its own colours; Inspect spine / back in the cover's
+  dominant colour.
 
 ### Built, not yet fully tested on the Thor (test list before releasing 0.3)
 Checked on the Thor already: popup on the last list row and last grid cover (scroll, pinned
@@ -1239,7 +1257,7 @@ Thor Reader (main):
     adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-debug.apk
     adb shell am start -n dev.thorreader.app/.MainActivity
     .\gradlew assembleRelease      -> app\build\outputs\apk\release\ThorReader-0.3.0.apk
-    .\gradlew testDebugUnitTest    (119 tests)
+    .\gradlew testDebugUnitTest    (126 tests)
 Bookloader branch (both apps):
     git switch bookloader
     .\gradlew assembleDebug
