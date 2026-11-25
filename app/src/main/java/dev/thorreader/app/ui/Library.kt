@@ -380,7 +380,6 @@ private fun ShelfSwitch(current: Shelf, libraryCount: Int, completedCount: Int, 
 /** The search field the round search button expands into (title, author, series; live). */
 @Composable
 private fun SearchField(query: String, onQuery: (String) -> Unit, onClose: () -> Unit, modifier: Modifier) {
-    val focus = remember { FocusRequester() }
     Row(
         modifier
             .widthIn(min = 180.dp, max = 360.dp)
@@ -391,25 +390,21 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClose: () ->
     ) {
         Text("🔍", fontSize = 14.sp)
         Spacer(Modifier.width(8.dp))
-        Box(Modifier.weight(1f).padding(vertical = 8.dp)) {
-            if (query.isEmpty()) Text("Title, author or series", color = Color(0xFF888888), fontSize = 14.sp)
-            BasicTextField(
-                value = query,
-                onValueChange = onQuery,
-                singleLine = true,
-                textStyle = TextStyle(color = Color.White, fontSize = 14.sp),
-                cursorBrush = SolidColor(Accent),
-                modifier = Modifier.fillMaxWidth().focusRequester(focus),
-            )
-        }
+        // Typing happens on the bottom screen; the list here filters live as you type.
+        TypingField(
+            query, onQuery, Modifier.weight(1f).padding(vertical = 8.dp),
+            hint = "Title, author or series", fontSize = 14, autoStart = true,
+        )
         Text(
             "✕",
             color = SubtleText,
             fontSize = 14.sp,
-            modifier = Modifier.clip(RoundedCornerShape(50)).focusClick(RoundedCornerShape(50)) { onClose() }.padding(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier.clip(RoundedCornerShape(50)).focusClick(RoundedCornerShape(50)) {
+                ThorApp.instance.stopTyping("search closed")
+                onClose()
+            }.padding(horizontal = 10.dp, vertical = 6.dp),
         )
     }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 }
 
 @Composable

@@ -773,3 +773,22 @@ Fix:
   -> `ThorReader-0.2.0.apk`, assembleDebug -> `ThorReader-0.2.0-debug.apk`. No copy step.
 - The GitHub release tag is `0.2` (remote tags: `0.1`, `0.2`); it is moved to the final commit
   (tag only).
+- Typing on the bottom screen. Every text field (library search, Edit info, Add author/series
+  name and number, Settings ComicVine key) is a `TypingField` (`ui/Typing.kt`): it never opens
+  the system keyboard on the top screen. Tapping it starts a `TypingSession` (`ThorApp.typing`);
+  the field shows the text live with a still caret, so the list filters as you type.
+  - Approach A (system keyboard on display 4) was tried first on the Thor and fails: Android
+    logs "Ignoring showSoftInput() as view=EditText ... is not served" for a window on the
+    bottom screen (the IME only serves the focused top-screen app). So approach B is used.
+  - Approach B: the built-in keyboard (`BottomKeyboard`), house style: preview strip with the
+    text, caret and a Paste button; QWERTY with shift, a numbers/symbols page, backspace (hold
+    to repeat), space, cursor ◀ ▶, Done; number pad for number fields; light haptic tick.
+    Mode 3: shown in `TypingPresentation` on the bottom screen, which exists only while typing
+    and is dismissed afterwards (bottom screen free again). Modes 1/2: shown on the bottom
+    screen's existing page instead of "Choose a book". Mode 4 (one screen): covers the lower
+    half of the library. Never while a book is open.
+  - Buttons: d-pad moves the key highlight, A types it, B = backspace (on an empty field: done),
+    Start = Done, Back = done. Physical/Bluetooth keyboards type straight in (Enter = done).
+  - Typing ends on Done/Start/Enter, B on an empty field, Back, a tap outside the field and the
+    keyboard (touch flag, `Modifier.typingArea()`; no coordinates, so it works rotated), closing
+    search, or the app going to the background. Tests: TypingTest.

@@ -463,25 +463,18 @@ fun AddGroupFlow(view: LibraryView, books: List<Book>, onDone: (String?) -> Unit
 }
 
 @Composable
-private fun InputField(value: String, onChange: (String) -> Unit, hint: String, autoFocus: Boolean = false) {
-    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
-    Box(
+private fun InputField(value: String, onChange: (String) -> Unit, hint: String, autoFocus: Boolean = false, number: Boolean = false) {
+    // Typing happens on the bottom screen (keyboard there); this shows the text live.
+    TypingField(
+        value, onChange,
         Modifier
             .fillMaxWidth()
             .heightIn(min = 44.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(Color(0xFF2A2A2A))
             .padding(horizontal = 12.dp, vertical = 10.dp),
-    ) {
-        if (value.isEmpty()) Text(hint, color = Color(0xFF777777), fontSize = 15.sp)
-        BasicTextField(
-            value = value,
-            onValueChange = onChange,
-            singleLine = true,
-            textStyle = TextStyle(color = Color.White, fontSize = 15.sp),
-            cursorBrush = SolidColor(Accent),
-            modifier = Modifier.fillMaxWidth().then(if (autoFocus) Modifier.focusRequester(focus) else Modifier),
-        )
-    }
-    if (autoFocus) LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+        hint = hint,
+        kind = if (number) TypingSession.Kind.NUMBER else TypingSession.Kind.TEXT,
+        autoStart = autoFocus,
+    )
 }

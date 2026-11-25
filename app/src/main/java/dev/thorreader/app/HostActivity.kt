@@ -75,7 +75,7 @@ abstract class HostActivity : ComponentActivity(), HostActions {
         })
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                snapshotFlow { app.settings.mode to app.bottomFallback }.collect { reconcile() }
+                snapshotFlow { Triple(app.settings.mode, app.bottomFallback, app.typing) }.collect { reconcile() }
             }
         }
         lifecycleScope.launch {

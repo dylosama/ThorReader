@@ -3,6 +3,8 @@ package dev.thorreader.app.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -46,8 +48,16 @@ private fun ScreenBody(screen: Screen, mode: ReadingMode) {
     Box(Modifier.fillMaxSize().tutorialTapCatcher()) {
         if (session == null) {
             val libraryHere = if (mode == ReadingMode.BOTTOM) screen == Screen.BOTTOM else screen == Screen.TOP
+            val typing = app.typing
             if (libraryHere) {
                 LibraryScreen()
+                // Mode 4 (one screen): the keyboard covers the lower part while typing.
+                if (typing != null && mode == ReadingMode.BOTTOM) {
+                    Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.5f)) { BottomKeyboard(typing) }
+                }
+            } else if (typing != null) {
+                // Modes 1 and 2: the bottom screen is the keyboard while typing in the library.
+                BottomKeyboard(typing)
             } else {
                 Text(
                     "Choose a book on the top screen",

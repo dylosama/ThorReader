@@ -242,6 +242,13 @@ private fun BadgeArrow(up: Boolean) {
 fun Modifier.tutorialTapCatcher(): Modifier = pointerInput(Unit) {
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-        ThorApp.instance.tutorialTapped()
+        val app = ThorApp.instance
+        app.tutorialTapped()
+        // Typing: a tap outside the field being edited (and outside the keyboard) ends typing.
+        // The field/keyboard see the same touch after us (Initial pass) and mark it as inside.
+        val t = app.typing ?: return@awaitEachGesture
+        t.touchedInside = false
+        awaitPointerEvent(PointerEventPass.Final)
+        if (app.typing === t && !t.touchedInside) app.stopTyping("tapped outside the field")
     }
 }

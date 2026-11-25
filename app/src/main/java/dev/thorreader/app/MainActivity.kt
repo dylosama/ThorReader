@@ -30,6 +30,33 @@ class MainActivity : HostActivity() {
         }
         val needBottom = mode.isBook || mode == ReadingMode.BOTTOM // BOTTOM here = fallback
         if (needBottom) showPresentation() else dismissPresentation()
+        // Typing in the library (Mode 3): the keyboard takes over the bottom screen, only while typing.
+        val t = app.typing
+        if (t != null && mode == ReadingMode.TOP && app.session == null) showTyping(t) else dismissTyping()
+    }
+
+    private var typingPresentation: TypingPresentation? = null
+    private var typingFor: dev.thorreader.app.ui.TypingSession? = null
+
+    private fun showTyping(s: dev.thorreader.app.ui.TypingSession) {
+        if (typingPresentation?.isShowing == true && typingFor === s) return
+        dismissTyping()
+        val display = app.bottomDisplay() ?: return
+        try {
+            typingPresentation = TypingPresentation(this, display, s).also { it.show() }
+            typingFor = s
+        } catch (e: WindowManager.InvalidDisplayException) {
+            Log.e(TAG, "Could not show the keyboard on display ${display.displayId}", e)
+        }
+    }
+
+    private fun dismissTyping() {
+        typingPresentation?.let {
+            it.dismiss()
+            Log.i(TAG, "Bottom screen released (keyboard closed)")
+        }
+        typingPresentation = null
+        typingFor = null
     }
 
     private fun showPresentation() {
@@ -59,6 +86,8 @@ class MainActivity : HostActivity() {
 
     override fun onStop() {
         dismissPresentation()
+        app.stopTyping("app hidden")
+        dismissTyping()
         super.onStop()
     }
 }

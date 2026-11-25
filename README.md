@@ -44,6 +44,9 @@ Each book remembers its own mode. Switch from the reader menu.
   count, the year first published and the format ("277 / 1794 Pages · Published: 1965 · EPUB");
   finished books get a gold star and are also listed under "Completed". Works with the d-pad
   and A/B as well as touch.
+- Typing (search, Edit info, Settings) happens on a built-in keyboard on the bottom screen, so
+  the list on the top screen stays visible and filters as you type. D-pad + A to type, B to
+  delete, Start for Done; a physical or Bluetooth keyboard also works.
 - A bookmark per book, shown as a ribbon on the page (choose its colour; swipe it up to remove).
   Closing the lid or leaving the app bookmarks your page automatically, and the ribbon slides
   away again when you come straight back.

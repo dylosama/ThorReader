@@ -278,6 +278,74 @@ class ThorApp : Application() {
     private var autoBookmarkBook: Long? = null
     private var returnJob: Job? = null
 
+    // ---- typing on the bottom screen ------------------------------------------------------
+
+    /**
+     * The text field being edited (library search, Edit info, Add author/series, Settings), or
+     * null. While set, the bottom screen shows the keyboard (TypingPresentation) so the top
+     * screen stays fully visible; cleared, the bottom screen is released again.
+     */
+    var typing by mutableStateOf<dev.thorreader.app.ui.TypingSession?>(null)
+        private set
+
+    fun startTyping(s: dev.thorreader.app.ui.TypingSession) {
+        if (session != null) return // reading: there are no text fields
+        if (typing != null) stopTyping("another field")
+        typing = s
+        Log.i(TAG, "Typing started (${s.kind.name.lowercase()} field \"${s.hint}\")")
+    }
+
+    fun stopTyping(reason: String) {
+        val s = typing ?: return
+        typing = null
+        Log.i(TAG, "Typing ended ($reason)")
+        s.onDone()
+    }
+
+    /**
+     * Keys while typing: d-pad moves the keyboard highlight, A types the highlighted key,
+     * B = backspace (on an empty field: done), Start = Done. A physical keyboard types directly.
+     */
+    fun handleTypingKey(e: KeyEvent): Boolean {
+        val s = typing ?: return false
+        val code = e.keyCode
+        if (e.action != KeyEvent.ACTION_DOWN) {
+            return code in setOf(
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+                KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_MENU,
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_ENTER,
+            ) || e.unicodeChar != 0
+        }
+        when (code) {
+            KeyEvent.KEYCODE_DPAD_UP -> s.moveHighlight(-1, 0)
+            KeyEvent.KEYCODE_DPAD_DOWN -> s.moveHighlight(1, 0)
+            KeyEvent.KEYCODE_DPAD_LEFT -> s.moveHighlight(0, -1)
+            KeyEvent.KEYCODE_DPAD_RIGHT -> s.moveHighlight(0, 1)
+            KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> {
+                val k = s.highlighted() ?: return true
+                tick()
+                if (!s.press(k)) stopTyping("Done (A)")
+            }
+            KeyEvent.KEYCODE_BUTTON_B -> {
+                Log.d(TAG, "Typing: B (code $code)")
+                if (s.text.isEmpty()) stopTyping("B on an empty field") else s.backspace()
+            }
+            KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_MENU -> stopTyping("Start")
+            KeyEvent.KEYCODE_DEL -> s.backspace()
+            KeyEvent.KEYCODE_FORWARD_DEL -> if (s.cursor < s.text.length) { s.moveCursor(1); s.backspace() }
+            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER ->
+                if (s.kind == dev.thorreader.app.ui.TypingSession.Kind.MULTILINE && !e.isShiftPressed) s.insert("\n") else stopTyping("Enter")
+            KeyEvent.KEYCODE_ESCAPE, KeyEvent.KEYCODE_BACK -> stopTyping("Back")
+            else -> {
+                // Physical / Bluetooth keyboard: type the character.
+                val ch = e.unicodeChar
+                if (ch == 0) return false
+                s.insert(String(Character.toChars(ch)))
+            }
+        }
+        return true
+    }
+
     /** Keep the re-creatable caches within the limit (background, low priority). */
     fun trimCaches() {
         scope.launch(Background.dispatcher) { runCatching { dev.thorreader.app.io.CacheBudget.trim(this@ThorApp, settings.cacheLimitMb) } }
@@ -455,6 +523,10 @@ class ThorApp : Application() {
      */
     fun handleBack(source: String): Boolean {
         val sinceModeChange = SystemClock.uptimeMillis() - lastModeChangeAt
+        if (typing != null) {
+            stopTyping("Back ($source)")
+            return true
+        }
         return when {
             sinceModeChange < HANDOVER_GUARD_MS -> {
                 Log.w(TAG, "Back from $source ignored: ${sinceModeChange} ms after a mode change (screen handover)")
@@ -540,6 +612,8 @@ class ThorApp : Application() {
         if (e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0) {
             Log.d(TAG, "Key down: ${KeyEvent.keyCodeToString(code)} ($code)")
         }
+        // Typing a text field (bottom-screen keyboard): the buttons and any keyboard type there.
+        if (typing != null && handleTypingKey(e)) return true
         val s = session
         if (s != null && s.scrubScreen != null) return handleScrubKey(s, e)
         // Reader menu open: the d-pad and A move through the menu instead of turning pages, and

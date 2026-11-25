@@ -98,28 +98,27 @@ private fun Field(
     singleLine: Boolean = true,
     hidden: Boolean = false,
     hint: String = "",
+    number: Boolean = false,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, color = HouseStyle.Subtle, fontSize = HouseStyle.TextSize)
-        Box(
+        // Typing happens on the bottom screen (keyboard there); this shows the text live.
+        TypingField(
+            value, onChange,
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 44.dp)
+                .heightIn(min = if (singleLine) 44.dp else 80.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(Color(0xFF2A2A2A))
                 .padding(horizontal = 12.dp, vertical = 10.dp),
-        ) {
-            if (value.isEmpty() && hint.isNotEmpty()) Text(hint, color = Color(0xFF777777), fontSize = 15.sp)
-            BasicTextField(
-                value = value,
-                onValueChange = onChange,
-                singleLine = singleLine,
-                visualTransformation = if (hidden) PasswordVisualTransformation() else VisualTransformation.None,
-                textStyle = TextStyle(color = Color.White, fontSize = 15.sp),
-                cursorBrush = SolidColor(Accent),
-                modifier = Modifier.fillMaxWidth().then(if (!singleLine) Modifier.heightIn(min = 80.dp) else Modifier),
-            )
-        }
+            hint = hint.ifEmpty { label },
+            kind = when {
+                number -> TypingSession.Kind.NUMBER
+                hidden -> TypingSession.Kind.SECRET
+                !singleLine -> TypingSession.Kind.MULTILINE
+                else -> TypingSession.Kind.TEXT
+            },
+        )
     }
 }
 
@@ -285,8 +284,8 @@ fun EditInfoPanel(book: Book) {
         Field("Authors (comma between names)", authors, { authors = it })
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.weight(3f)) { Field("Series", series, { series = it }) }
-            Box(Modifier.weight(1f)) { Field("Number", number, { number = it.filter { c -> c.isDigit() || c == '.' } }) }
-            Box(Modifier.weight(1f)) { Field("Published", published, { published = it.filter { c -> c.isDigit() }.take(4) }, hint = "Year") }
+            Box(Modifier.weight(1f)) { Field("Number", number, { number = it.filter { c -> c.isDigit() || c == '.' } }, number = true) }
+            Box(Modifier.weight(1f)) { Field("Published", published, { published = it.filter { c -> c.isDigit() }.take(4) }, hint = "Year", number = true) }
         }
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Type", color = HouseStyle.Subtle, fontSize = HouseStyle.TextSize)
