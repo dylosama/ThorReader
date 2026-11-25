@@ -159,6 +159,27 @@ class ThorApp : Application() {
     private var toastJob: Job? = null
     private val displayManager by lazy { getSystemService(DisplayManager::class.java) }
 
+    /**
+     * Android asks for memory back (a game on the other screen needs it, or the app is hidden):
+     * drop what can be rebuilt - neighbour pages, cover thumbnails, catalog covers - never what's
+     * on screen.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        @Suppress("DEPRECATION")
+        val severe = when (level) {
+            android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE -> false // getting tight
+            android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW,
+            android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL -> true // tight while we run
+            android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN -> false // nothing of ours on screen
+            else -> level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND
+        }
+        Log.i(TAG, "Android asks for memory (level $level)")
+        session?.trimMemory(severe)
+        dev.thorreader.app.ui.CoverThumbs.trim()
+        if (::catalogs.isInitialized) catalogs.trimThumbnails()
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -350,13 +371,7 @@ class ThorApp : Application() {
     suspend fun loadCover(book: Book): android.graphics.Bitmap = withContext(Dispatchers.IO) {
         // The user's own picture (Edit info) first, else the book's cover.
         dev.thorreader.app.io.CustomCovers.frontPath(book)?.let { path ->
-            runCatching {
-                val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                android.graphics.BitmapFactory.decodeFile(path, o)
-                var sample = 1
-                while (maxOf(o.outWidth, o.outHeight) / (sample * 2) >= 1400) sample *= 2
-                android.graphics.BitmapFactory.decodeFile(path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
-            }.getOrNull()
+            dev.thorreader.app.io.SafeImages.decodeFile(path, 1400) // size-checked
         } ?: dev.thorreader.app.ui.placeholderCoverBitmap(book.title, book.author)
     }
 

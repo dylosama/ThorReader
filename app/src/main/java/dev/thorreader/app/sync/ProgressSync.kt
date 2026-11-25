@@ -52,7 +52,15 @@ class ProgressSync(private val app: ThorApp) {
         private set
     var user by mutableStateOf(prefs.getString("user", null) ?: "")
         private set
-    private var key: String? = prefs.getString("key", null)
+    /** The sign-in key, kept encrypted (Android Keystore); an older plain copy is moved over once. */
+    private var key: String? = run {
+        val secrets = app.lookup.secrets
+        prefs.getString("key", null)?.let { plain ->
+            secrets.write(SECRET, plain)
+            prefs.edit().remove("key").apply()
+        }
+        secrets.read(SECRET)
+    }
     var signedIn by mutableStateOf(key != null && user.isNotEmpty())
         private set
 
@@ -113,7 +121,8 @@ class ProgressSync(private val app: ThorApp) {
             user = u
             key = k
             signedIn = true
-            prefs.edit().putString("user", u).putString("key", k).apply()
+            prefs.edit().putString("user", u).apply()
+            app.lookup.secrets.write(SECRET, k)
             if (!enabled) updateEnabled(true)
         }
         Log.i(TAG, "Progress sync: signed in${if (create) " (new account)" else ""}")
@@ -123,7 +132,7 @@ class ProgressSync(private val app: ThorApp) {
     fun logOut() {
         key = null
         signedIn = false
-        prefs.edit().remove("key").apply()
+        app.lookup.secrets.write(SECRET, null)
         status = null
         Log.i(TAG, "Progress sync: signed out")
     }
@@ -382,6 +391,9 @@ class ProgressSync(private val app: ThorApp) {
             "KOReader" to "https://sync.koreader.rocks",
         )
         const val DEVICE_NAME = "Thor Reader"
+
+        /** Name of the encrypted sync key in the secret store. */
+        private const val SECRET = "sync_key"
 
         /** A position read here is sent this long after the last page turn. */
         const val PUSH_AFTER_MS = 8_000L

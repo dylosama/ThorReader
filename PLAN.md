@@ -1157,6 +1157,40 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   after a fresh start - every turn a curl, setup 20-100 ms, p95 after setup 16.8-16.9 ms, curl
   never switched off.
 
+### v0.3.0: efficiency, gaming and security audit (main)
+Measured on the Thor (CPU time from /proc/<pid>/stat, frames from gfxinfo, game pacing from
+SurfaceFlinger present times of RetroArch's layer, GPU busy from kgsl):
+- At rest every screen costs nothing: library, reading, Inspect (after its 20 s idle spin, which
+  runs at 60 fps / ~9 % of one core and stops by itself), collection, Settings - 0 frames drawn,
+  0-0.07 % CPU. A page turn ≈ 0.12-0.17 s CPU in total (animation + rendering the next pages).
+- Gaming (RetroArch + mGBA, Golden Sun): Mode 3 (reading on top, game on the bottom) and Mode 4
+  (reading on the bottom, game on top). Thor Reader holds a window only on its own screen. The
+  game ran 58.1-58.2 fps with the same late-frame count (12 per ~1215 frames, a sampling
+  artifact) and p99 16.7 ms whether Thor Reader was stopped, idle, or turning pages (3-4 % CPU
+  while turning); GPU busy 1-8 %. No measurable effect in either mode.
+- Release build (R8, no debug logging, not debuggable) uses less memory: library 79 MB (debug
+  117), reading 195 MB (debug 243). The Thor now runs the release build.
+Changes:
+- Memory: `ThorApp.onTrimMemory` - when Android asks (a game needs memory, or we're hidden) the
+  page cache keeps only the most recent pages (on screen), cover thumbnails halve, catalog
+  covers go. Checked: page cache 93 → 18 MB, turns still 60 fps with full-quality landing.
+- Images from outside (`io/SafeImages`): sizes read first, absurd dimensions refused (image
+  bombs), decoded no bigger than needed - online lookup covers / thumbnails, catalog covers,
+  library thumbnails, the full cover, covers in book files at import; small library covers are
+  now decoded at ≤ 400 px instead of full size (lighter, faster).
+- OPDS: the DOCTYPE is stripped before parsing (Android's DOM parser may ignore the "no DTD"
+  flags): no entity-expansion bombs / external entities from a catalog.
+- The sync sign-in key is now stored encrypted (Android Keystore, like the ComicVine key and
+  catalog passwords); an older plain copy is moved over once.
+- Already in place (re-checked): only the launcher activity is exported (no intent data
+  handled); permissions INTERNET, network state, vibrate only; HTTPS only, system CAs; backups /
+  device transfer excluded; archive paths can't leave their folder (zip slip), read / unpack /
+  entry-count caps (zip bombs), DOCTYPEs stripped from book XML (XXE); no WebView / JavaScript;
+  the only web page opened is the fixed ComicVine key page; debug-only test hooks off in release.
+- Burn-in re-checked on the newest screens: the manga collection in Inspect (list on top, 3D
+  book below) dims then goes fully black on both screens (0 / 255).
+- Tests: NetworkInputHardeningTest (entity bomb / XXE stripped, image bombs refused) - 162 total.
+
 ### v0.3.0: manga series collections (main)
 - Volumes vs chapters (`engine/MangaUnits`, from the file name, computed when needed - no DB
   change, existing books covered): "v01", "Vol. 1", "Volume 3", "第3巻" → volume; "Ch. 1 Title",
@@ -1372,7 +1406,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: manga series collections".
+  "v0.3.0: efficiency, gaming and security audit".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1446,7 +1480,7 @@ Thor Reader (main):
     adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-debug.apk
     adb shell am start -n dev.thorreader.app/.MainActivity
     .\gradlew assembleRelease      -> app\build\outputs\apk\release\ThorReader-0.3.0.apk
-    .\gradlew testDebugUnitTest    (160 tests)
+    .\gradlew testDebugUnitTest    (162 tests)
 Bookloader branch (both apps):
     git switch bookloader
     .\gradlew assembleDebug

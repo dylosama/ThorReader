@@ -242,7 +242,29 @@ object Opds {
         runCatching { setFeature("http://xml.org/sax/features/external-general-entities", false) }
         runCatching { setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
         isExpandEntityReferences = false
-    }.newDocumentBuilder().parse(ByteArrayInputStream(xml))
+    }.newDocumentBuilder().parse(ByteArrayInputStream(stripDoctype(xml)))
+
+    /**
+     * The feed without its DOCTYPE (so without entity declarations): Android's DOM parser may
+     * ignore the "no DTD" flags above, and a hostile server could otherwise send an entity
+     * expansion bomb. Catalogs never need a DTD. (Same as SafeXml for book files.)
+     */
+    fun stripDoctype(bytes: ByteArray): ByteArray {
+        val s = String(bytes, Charsets.ISO_8859_1)
+        val start = s.indexOf("<!DOCTYPE", ignoreCase = true)
+        if (start < 0) return bytes
+        var i = start + 9
+        var depth = 0
+        while (i < s.length) {
+            when (s[i]) {
+                '[' -> depth++
+                ']' -> if (depth > 0) depth--
+                '>' -> if (depth == 0) break
+            }
+            i++
+        }
+        return (s.substring(0, start) + s.substring((i + 1).coerceAtMost(s.length))).toByteArray(Charsets.ISO_8859_1)
+    }
 
     private fun Node.localName(): String = (localName ?: nodeName).substringAfter(':')
 

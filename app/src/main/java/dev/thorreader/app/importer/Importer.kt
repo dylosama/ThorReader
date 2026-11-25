@@ -312,6 +312,8 @@ class Importer(private val context: Context, private val dao: BookDao, private v
         val src: Bitmap = m.coverBitmap ?: m.coverBytes?.let { bytes ->
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            // A book's cover picture is untrusted: absurd dimensions = no cover (not a crash).
+            if (dev.thorreader.app.io.SafeImages.sampleFor(bounds.outWidth, bounds.outHeight, 480) == null) return null
             var sample = 1
             while (bounds.outHeight / (sample * 2) >= 480) sample *= 2
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })

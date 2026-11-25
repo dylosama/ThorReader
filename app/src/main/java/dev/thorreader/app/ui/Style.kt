@@ -132,7 +132,8 @@ fun BookCover(book: Book, modifier: Modifier) {
     // The user's own picture (Edit info) if set, else the book's cover.
     val path = dev.thorreader.app.io.CustomCovers.frontPath(book)
     val image by produceState<ImageBitmap?>(null, path) {
-        value = path?.let { withContext(Dispatchers.IO) { BitmapFactory.decodeFile(it)?.asImageBitmap() } }
+        // Shown small (rows, Edit info): decoded small - lighter and faster, and size-checked.
+        value = path?.let { withContext(Dispatchers.IO) { dev.thorreader.app.io.SafeImages.decodeFile(it, 400)?.asImageBitmap() } }
     }
     Box(modifier.clip(RoundedCornerShape(4.dp))) {
         val img = image

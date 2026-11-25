@@ -86,6 +86,18 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         override fun sizeOf(key: String, value: Rendered) = value.bitmap.allocationByteCount / 1024
     }
     private val inflight = HashMap<String, Deferred<Rendered?>>()
+
+    /**
+     * Android is short of memory (e.g. a big game on the other screen): give back pre-rendered
+     * neighbour pages. The most recently used stay (the pages on screen), so nothing visible
+     * changes; neighbours are rendered again when turned to.
+     */
+    fun trimMemory(severe: Boolean) {
+        val before = cache.size()
+        cache.trimToSize(if (severe) cache.size() / 4 else cache.size() / 2)
+        Log.i(TAG, "Memory low${if (severe) " (severe)" else ""}: page cache ${before / 1024} → ${cache.size() / 1024} MB")
+    }
+
     private var prefetchJob: Job? = null
     private var saveJob: Job? = null
 

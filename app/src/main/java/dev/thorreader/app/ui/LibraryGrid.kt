@@ -76,10 +76,14 @@ object CoverThumbs {
 
     fun cached(path: String, widthPx: Int): Bitmap? = cache.get("$path@$widthPx")
 
+    /** Memory is short: keep only the most recently shown half. */
+    fun trim() = cache.trimToSize(cache.size() / 2)
+
     suspend fun load(path: String, widthPx: Int): Bitmap? = cached(path, widthPx) ?: withContext(Dispatchers.IO) {
         runCatching {
             val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(path, o)
+            if (dev.thorreader.app.io.SafeImages.sampleFor(o.outWidth, o.outHeight, widthPx) == null) return@runCatching null // broken / image bomb
             var sample = 1
             while (o.outWidth / (sample * 2) >= widthPx) sample *= 2
             BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })

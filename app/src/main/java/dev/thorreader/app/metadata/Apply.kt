@@ -100,24 +100,29 @@ class SecretStore(context: Context) {
     }
 
     var comicVineKey: String?
-        get() = runCatching {
-            val stored = prefs.getString("cv", null) ?: return null
-            val (iv, data) = stored.split(':').map { Base64.decode(it, Base64.NO_WRAP) }
-            val c = Cipher.getInstance("AES/GCM/NoPadding")
-            c.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
-            String(c.doFinal(data), Charsets.UTF_8)
-        }.getOrNull()
-        set(value) {
-            val v = value?.trim()
-            if (v.isNullOrEmpty()) {
-                prefs.edit().remove("cv").apply()
-                return
-            }
-            val c = Cipher.getInstance("AES/GCM/NoPadding")
-            c.init(Cipher.ENCRYPT_MODE, key())
-            val out = Base64.encodeToString(c.iv, Base64.NO_WRAP) + ":" + Base64.encodeToString(c.doFinal(v.toByteArray()), Base64.NO_WRAP)
-            prefs.edit().putString("cv", out).apply()
+        get() = read("cv")
+        set(value) = write("cv", value?.trim())
+
+    /** A secret stored under [name] (decrypted), or null. Also used for the sync sign-in key. */
+    fun read(name: String): String? = runCatching {
+        val stored = prefs.getString(name, null) ?: return null
+        val (iv, data) = stored.split(':').map { Base64.decode(it, Base64.NO_WRAP) }
+        val c = Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv))
+        String(c.doFinal(data), Charsets.UTF_8)
+    }.getOrNull()
+
+    /** Store [value] encrypted under [name] (null / empty removes it). */
+    fun write(name: String, value: String?) {
+        if (value.isNullOrEmpty()) {
+            prefs.edit().remove(name).apply()
+            return
         }
+        val c = Cipher.getInstance("AES/GCM/NoPadding")
+        c.init(Cipher.ENCRYPT_MODE, key())
+        val out = Base64.encodeToString(c.iv, Base64.NO_WRAP) + ":" + Base64.encodeToString(c.doFinal(value.toByteArray()), Base64.NO_WRAP)
+        prefs.edit().putString(name, out).apply()
+    }
 
     private companion object {
         const val ALIAS = "thor_reader_comicvine"

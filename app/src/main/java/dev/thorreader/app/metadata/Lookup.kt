@@ -267,7 +267,8 @@ class MetadataLookup(private val app: ThorApp) {
                 setRequestProperty("User-Agent", Http.USER_AGENT)
             }
             val bytes = try { conn.inputStream.use { dev.thorreader.app.io.Limits.readCapped(it, Http.MAX_IMAGE, "a cover") } } finally { conn.disconnect() }
-            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@runCatching null
+            // Size-checked (no image bombs), kept at a cover's useful size.
+            val bmp = dev.thorreader.app.io.SafeImages.decode(bytes, 1400) ?: return@runCatching null
             val dir = File(app.filesDir, "covers").apply { mkdirs() }
             val out = File(dir, UUID.randomUUID().toString() + ".jpg")
             out.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 85, it) }
@@ -283,7 +284,7 @@ class MetadataLookup(private val app: ThorApp) {
                 readTimeout = 15_000
                 setRequestProperty("User-Agent", Http.USER_AGENT)
             }
-            try { conn.inputStream.use { Limits.readCapped(it, Http.MAX_IMAGE, "a cover").let { b -> BitmapFactory.decodeByteArray(b, 0, b.size) } } } finally { conn.disconnect() }
+            try { conn.inputStream.use { Limits.readCapped(it, Http.MAX_IMAGE, "a cover").let { b -> dev.thorreader.app.io.SafeImages.decode(b, 200) } } } finally { conn.disconnect() }
         }.getOrNull()
     }
 

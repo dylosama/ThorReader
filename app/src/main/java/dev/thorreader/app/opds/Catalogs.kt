@@ -125,17 +125,17 @@ class Catalogs(private val app: ThorApp) {
         override fun sizeOf(key: String, value: Bitmap) = value.allocationByteCount / 1024
     }
 
+    /** Memory is short: drop the catalog covers (fetched again when shown). */
+    fun trimThumbnails() = thumbs.evictAll()
+
     /** A cover thumbnail (about [widthPx] wide), cached in memory; null if it can't be loaded. */
     suspend fun thumbnail(c: Catalog, url: String, widthPx: Int): Bitmap? {
         thumbs.get(url)?.let { return it }
         return withContext(Dispatchers.IO) {
             runCatching {
                 val (bytes, _) = get(c, url, MAX_THUMB, "image/*")
-                val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
-                var sample = 1
-                while (o.outWidth / (sample * 2) >= widthPx) sample *= 2
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+                // Size-checked (no image bombs from a catalog), decoded at the shown size.
+                dev.thorreader.app.io.SafeImages.decode(bytes, widthPx * 2)
             }.getOrNull()?.also { thumbs.put(url, it) }
         }
     }
