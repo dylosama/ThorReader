@@ -1110,3 +1110,74 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   on the book: "Read from Inspect" -> hinge open at once), closed and removed again; the
   library order and list view were left as they were. The popup background was made almost
   opaque (bright covers showed through behind the items in the grid).
+
+## Where we left off (2026-11-25)
+
+### Branches
+- main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
+  "v0.3.0: Inspect tap to read; book popup always fits the screen".
+- bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
+  (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
+  sections (25 to 25e).
+- The Thor currently has main's Thor Reader 0.3.0 debug installed, plus Thor Bookloader 0.1.0
+  debug. Bookloader's "Import to Thor Reader" only works with the branch build of Thor Reader.
+
+### Done in v0.3 (main)
+- Page-turn animations (curl, flip, slide, fade), corner curl from buttons, comic page backs.
+- Book open / close animation, styles Hinge (default) / Classic, speeds.
+- Theme colour, Settings reorganised, Animations section, reader menu declutter.
+- Inspect book (3D) - now with tap to read, ↺ / Y reset, A = Read.
+- Library grid view and the view | + | gear pill.
+- Book popup always fits the screen (scrolls, Remove pinned, no manga toggle).
+- Low-battery simple animations.
+
+### Built, not yet fully tested on the Thor (test list before releasing 0.3)
+Checked on the Thor already: popup on the last list row and last grid cover (scroll, pinned
+Remove, removal), Inspect tap to read from the grid, Hinge frozen frames in Modes 1 / 2, grid
+view layout. Still to test, on a CHARGED Thor (the earlier runs were at 1 % battery, so
+smoothness was never judged):
+1. Page turns: curl from buttons (Bottom / Top corner), the sheet crossing the hinge in Modes
+   1 / 2, comic page backs (Night dimmed), swipe follow / spring back, Flip / Slide / Fade,
+   right-to-left manga.
+2. Open / close: Hinge and Classic at Fast / Normal / Slow, Modes 1-4, right-to-left books,
+   skipping (tap / A / B), smooth with no stops.
+3. Step 24: theme colour (presets + any hue), Settings order, Animations section, reader menu
+   (modes row, More), Inspect (spin, inertia, pinch, idle spin, back cover, thickness, bottom
+   panel, ↺, Y, B, tap-to-read from the popup as well as the grid).
+4. Grid view: d-pad inside the pill, grids inside Author / Series / Genre / Type groups,
+   Completed, search results, a bigger library scrolling, the long-press popup with X.
+5. Low battery (below 15 %): fades instead of curls and hinge.
+
+### Next
+1. Run the test list above; fix what it finds.
+2. Release 0.3.0: final signed ThorReader-0.3.0.apk, tag 0.3.0 (only when asked), publish.
+3. v0.4: the Bookshelf (see "3. Bookshelf" in the plan at the top - a visual shelf with each
+   book as a generated spine). NOTE: there is no step23.md in the folder; the bookshelf spec
+   still has to be written (step23.md, or the next step file).
+4. Bookloader branch: keep testing (MangaDex volumes, Gutenberg mirrors, Pepper&Carrot, the
+   bottom-screen keyboard, music); decide later whether / how to merge it into main.
+
+### Exact commands (PowerShell, in C:\Users\Dylan\thor-reader)
+Thor Reader (main):
+    git switch main
+    .\gradlew assembleDebug
+    adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-debug.apk
+    adb shell am start -n dev.thorreader.app/.MainActivity
+    .\gradlew assembleRelease      -> app\build\outputs\apk\release\ThorReader-0.3.0.apk
+    .\gradlew testDebugUnitTest    (111 tests)
+Bookloader branch (both apps):
+    git switch bookloader
+    .\gradlew assembleDebug
+    adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-bookloader-debug.apk
+    adb install -r bookloader\build\outputs\apk\debug\ThorBookloader-0.1.0-debug.apk
+    adb shell am start -n dev.thorreader.bookloader/.MainActivity
+    (release: .\gradlew assembleRelease -> ThorReader-0.3.0-bookloader.apk and
+     bookloader\build\outputs\apk\release\ThorBookloader-0.1.0.apk; tests: 121 + 18)
+Install Thor Reader before Bookloader is no longer required (both declare the permission).
+Never use gradle connectedAndroidTest on the Thor: it uninstalls the app and the library.
+
+### Step files (instructions from the user; never committed)
+Done: step3 (empty file), step10, step11, step12, step13, step14, step16, step17, step18,
+step19, step20, step21 (all v0.1 / v0.2), step22 and step24 (v0.3, built; test list above).
+Step 25 (Thor Bookloader): built on the bookloader branch, partly tested on the Thor.
+Not in the folder: step1, 2, 4-9, 15 and 23 (the bookshelf spec still has to be written).
