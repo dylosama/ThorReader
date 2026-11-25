@@ -98,7 +98,7 @@ private class BookAnimPainter(val a: ThorApp.BookAnim) {
             if (shot != null) drawBitmapAlpha(c, shot, w, h, alpha) else dark(c, w, h, alpha)
             return
         }
-        val reveal = BookAnimMath.revealAt(s)
+        val reveal = BookAnimMath.revealFor(s, a.hinge)
         val dim = BookAnimMath.dimAt(s)
         if (a.open) {
             // Before: the library (top) or nothing of ours (bottom), dimming; it gives way to the pages.
@@ -145,8 +145,8 @@ private class BookAnimPainter(val a: ThorApp.BookAnim) {
     /** The cover in the virtual space of both screens, shifted to this screen. */
     private fun drawCover(c: android.graphics.Canvas, screen: Screen, s: Float) {
         if (a.cover.isRecycled) return
-        val box = BookAnimMath.boxAt(s, from, place.box)
-        val deg = BookAnimMath.swingDeg(s)
+        val box = if (a.hinge) BookAnimMath.hingeBoxAt(s, from, place.box, wt, ht) else BookAnimMath.boxAt(s, from, place.box)
+        val deg = BookAnimMath.swingDegFor(s, a.hinge)
         if (deg >= 179.5f) return
         c.save()
         if (screen == Screen.BOTTOM) c.translate(-offset.first, -offset.second)
@@ -160,8 +160,8 @@ private class BookAnimPainter(val a: ThorApp.BookAnim) {
             }
             camera.getMatrix(swing)
             camera.restore()
-            val px = if (place.axis == SwingAxis.VERTICAL) place.spine else box.cx
-            val py = if (place.axis == SwingAxis.HORIZONTAL) place.spine else box.cy
+            val px = if (place.axis == SwingAxis.VERTICAL) BookAnimMath.spineOf(box, place) else box.cx
+            val py = if (place.axis == SwingAxis.HORIZONTAL) BookAnimMath.spineOf(box, place) else box.cy
             swing.preTranslate(-px, -py)
             swing.postTranslate(px, py)
             c.concat(swing)
@@ -170,7 +170,7 @@ private class BookAnimPainter(val a: ThorApp.BookAnim) {
         val dst = RectF(box.left, box.top, box.right, box.bottom)
         val radius = 6f
         // Soft lifted shadow (while the cover is still mostly flat).
-        val sh = BookAnimMath.shadowAt(s)
+        val sh = BookAnimMath.shadowFor(s, a.hinge)
         if (sh > 0.01f && deg < 60f) {
             shadowPaint.color = android.graphics.Color.BLACK
             shadowPaint.setShadowLayer(28f * sh + 4f, 0f, 10f * sh, android.graphics.Color.argb((140 * sh).toInt(), 0, 0, 0))

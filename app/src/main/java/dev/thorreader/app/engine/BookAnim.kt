@@ -126,6 +126,70 @@ object BookAnimMath {
         else -> 1f - clamp01((s - HOLD) / 0.2f)
     }
 
+    // ---- Hinge style (book modes 1 and 2) -------------------------------------------------------
+    //
+    // glide to the top screen's centre (0 .. 22 %), turn sideways there (22 .. 44 %), travel down
+    // so the spine lands on the hinge (44 .. 78 %), and swing open starting 80 % into the travel
+    // (71.2 % .. 100 %), so travel and opening overlap as one motion.
+
+    const val H_GLIDE_END = 0.22f
+    const val H_ROTATE_END = 0.44f
+    const val H_TRAVEL_END = 0.78f
+    const val H_OPEN_START = H_ROTATE_END + 0.8f * (H_TRAVEL_END - H_ROTATE_END) // 0.712
+
+    /** At the centre the cover turns at this share of its final size, then grows as it travels. */
+    const val H_CENTRE_SCALE = 0.65f
+
+    /** Where an opening waits for its first pages (the cover closed, before it swings). */
+    fun holdPoint(hinge: Boolean): Float = if (hinge) H_OPEN_START else HOLD
+
+    /** The cover's box at open state [s] for the Hinge style. */
+    fun hingeBoxAt(s: Float, from: CoverBox, target: CoverBox, wt: Float, ht: Float): CoverBox {
+        // Upright at the centre of the top screen, as big as fits (not yet turned).
+        val uprightH = ht * 0.8f
+        val upright = CoverBox(wt / 2f, ht / 2f, uprightH * (from.w / from.h), uprightH, 0f)
+        // Turned at the centre, a little smaller than its final size.
+        val turned = CoverBox(wt / 2f, ht / 2f, target.w * H_CENTRE_SCALE, target.h * H_CENTRE_SCALE, target.rot)
+        fun mix(a: CoverBox, b: CoverBox, k: Float) = CoverBox(
+            a.cx + (b.cx - a.cx) * k, a.cy + (b.cy - a.cy) * k, a.w + (b.w - a.w) * k, a.h + (b.h - a.h) * k, a.rot + (b.rot - a.rot) * k,
+        )
+        return when {
+            s <= H_GLIDE_END -> mix(from, upright, ease(clamp01(s / H_GLIDE_END)))
+            s <= H_ROTATE_END -> mix(upright, turned, ease(clamp01((s - H_GLIDE_END) / (H_ROTATE_END - H_GLIDE_END))))
+            else -> mix(turned, target, ease(clamp01((s - H_ROTATE_END) / (H_TRAVEL_END - H_ROTATE_END))))
+        }
+    }
+
+    /** How far the cover has swung open (0..180°) for either style. */
+    fun swingDegFor(s: Float, hinge: Boolean): Float =
+        if (!hinge) swingDeg(s) else if (s <= H_OPEN_START) 0f else 180f * ease(clamp01((s - H_OPEN_START) / (1f - H_OPEN_START)))
+
+    /** How much of the pages shows, for either style. */
+    fun revealFor(s: Float, hinge: Boolean): Float {
+        if (!hinge) return revealAt(s)
+        val a = H_OPEN_START + 0.08f
+        val b = H_OPEN_START + 0.65f * (1f - H_OPEN_START)
+        return ease(clamp01((s - a) / (b - a)))
+    }
+
+    /** Lifted shadow, for either style. */
+    fun shadowFor(s: Float, hinge: Boolean): Float = when {
+        !hinge -> shadowAt(s)
+        s <= H_GLIDE_END * 0.5f -> ease(clamp01(s / (H_GLIDE_END * 0.5f)))
+        s <= H_OPEN_START -> 1f
+        else -> 1f - clamp01((s - H_OPEN_START) / 0.15f)
+    }
+
+    /**
+     * The line the cover swings around, from where the cover IS (in the Hinge style it is still
+     * travelling when it starts to open): its spine edge. At the end of the travel this is the hinge.
+     */
+    fun spineOf(box: CoverBox, place: CoverPlacement): Float = when (place.axis) {
+        // Turned ±90°: its width runs up and down.
+        SwingAxis.HORIZONTAL -> if (place.freeEdgeNegative) box.cy + box.w / 2f else box.cy - box.w / 2f
+        SwingAxis.VERTICAL -> if (place.freeEdgeNegative) box.right else box.left
+    }
+
     /** May the animation go past [HOLD] (opening): only when the first pages are rendered. */
     fun canPassHold(open: Boolean, pagesReady: Boolean): Boolean = !open || pagesReady
 }

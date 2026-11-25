@@ -1031,3 +1031,24 @@ Design (`engine/BookAnim.kt` = pure geometry/timing, tested; `ui/BookAnimOverlay
   the open animation from the 3D book (held 400 ms on the cover while the CBR unpacked); B
   closes. Bottom screen details + Read, released on close. Pinch zoom can't be simulated with
   adb (single touch only) - not verified on the device.
+
+### Open & close style: Hinge / Classic (still v0.3.0)
+(There was no earlier "slow choreographed open" in the code to replace; this adds Hinge as a new
+style next to the existing motion, now called Classic.)
+- Settings → Animations → Open & close book → Style: Hinge (default) / Classic; Fast / Normal /
+  Slow apply to both (Hinge 0.9 / 1.3 / 1.8 s, Classic 0.5 / 0.8 / 1.2 s). Settings only.
+- Hinge (Modes 1 and 2; Modes 3 / 4 always use Classic): glide upright to the top screen's
+  centre (0-22 %), turn sideways there for the mode (22-44 %, at 65 % of the final size), travel
+  down growing so the spine lands on the hinge (44-78 %), and swing open from 71.2 % (80 % into
+  the travel) to the end - the swing pivots on the cover's current spine edge, so travel and
+  opening overlap as one motion. Reveal 77-90 %. Opening waits for the first pages at 71.2 %
+  (cover closed). Closing is the exact reverse. RTL: the cover ends on the bottom screen with
+  its spine on the hinge and swings up (as in Classic). Inspect → Read uses the chosen style from
+  the 3D book. Skip (tap / A / B) at any point. `BookAnimMath.hingeBoxAt`, `swingDegFor`,
+  `revealFor`, `spineOf`; tests in BookAnimTest.
+- Checked on the Thor (frozen frames, Mode 1 and Mode 2): upright at the centre at 22 %, turned
+  and travelling with the spine toward the hinge at 60 %, swinging open on the hinge at 80 %;
+  Mode 2 turns the other way; closing at 30 % = cover shut, lifting off the hinge. Recordings:
+  Hinge Normal / Slow and Classic Normal, open + close, Modes 1 and 2. Frame rates measured
+  that evening are NOT representative: the Thor was at 1 % battery and throttling (even a page
+  curl, 60 fps earlier the same day, showed p95 117 ms).

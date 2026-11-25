@@ -256,6 +256,8 @@ class ThorApp : Application() {
         val fade: Boolean,
         /** Lifted out of a library row (leave its place empty); false = from the 3D book. */
         val fromRow: Boolean = true,
+        /** Hinge style (book modes 1 / 2, Settings → Open & close book → Style), else Classic. */
+        val hinge: Boolean = false,
     ) {
         /** Does this animation draw on [screen]? */
         fun uses(screen: Screen): Boolean = screen == Screen.TOP || mode.isBook || mode == ReadingMode.BOTTOM
@@ -342,7 +344,7 @@ class ThorApp : Application() {
             onSnapshot?.invoke()
             val fade = batteryLow() || shot == null
             if (fade) Log.i(TAG, "Book opens with a quick fade (${if (shot == null) "no snapshot" else "low battery"})")
-            startBookAnim(BookAnim(true, id, mode, book.rtl, cover, from, listOfNotNull(shot?.let { Screen.TOP to it }).toMap(), fade, fromRow = fromRect == null))
+            startBookAnim(BookAnim(true, id, mode, book.rtl, cover, from, listOfNotNull(shot?.let { Screen.TOP to it }).toMap(), fade, fromRow = fromRect == null, hinge = useHinge(mode, fade)))
             openBook(id)
         }
     }
@@ -436,21 +438,29 @@ class ThorApp : Application() {
             if (mode.isBook || mode == ReadingMode.BOTTOM) snapshot(Screen.BOTTOM)?.let { shots[Screen.BOTTOM] = it }
             val cover = loadCover(book)
             val fade = batteryLow() || shots.isEmpty()
-            startBookAnim(BookAnim(false, book.id, mode, book.rtl, cover, coverBounds[book.id]?.let { android.graphics.RectF(it) }, shots, fade))
+            startBookAnim(BookAnim(false, book.id, mode, book.rtl, cover, coverBounds[book.id]?.let { android.graphics.RectF(it) }, shots, fade, hinge = useHinge(mode, fade)))
             closeBook(reason)
         }
     }
+
+    /** Hinge only in the sideways book modes; Modes 3 and 4 always use the Classic motion. */
+    private fun useHinge(mode: ReadingMode, fade: Boolean): Boolean =
+        !fade && mode.isBook && settings.bookAnimStyle == BookAnimStyle.HINGE
 
     private fun startBookAnim(a: BookAnim) {
         bookAnimJob?.cancel()
         bookAnimSkip = false
         bookAnimT.floatValue = 0f
         bookAnim = a
-        Log.i(TAG, "Book ${if (a.open) "open" else "close"} animation, mode ${a.mode.number}${if (a.rtl) ", right-to-left" else ""}${if (a.fade) ", fade" else ""}")
+        Log.i(TAG, "Book ${if (a.open) "open" else "close"} animation (${if (a.hinge) "hinge" else "classic"}, ${settings.bookAnimSpeed.label.lowercase()}), mode ${a.mode.number}${if (a.rtl) ", right-to-left" else ""}${if (a.fade) ", fade" else ""}")
         bookAnimJob = scope.launch(androidx.compose.ui.platform.AndroidUiDispatcher.Main) {
-            val dur = debugBookMs()?.toFloat() ?: if (a.fade) BookAnimMath.FADE_MS.toFloat() else settings.bookAnimSpeed.bookMs.toFloat()
+            val dur = debugBookMs()?.toFloat() ?: when {
+                a.fade -> BookAnimMath.FADE_MS.toFloat()
+                a.hinge -> settings.bookAnimSpeed.hingeMs.toFloat()
+                else -> settings.bookAnimSpeed.bookMs.toFloat()
+            }
             // Opening never reveals blank pages: wait for them at the hold point (fade: at the start).
-            val holdAt = if (a.fade) 0f else BookAnimMath.HOLD
+            val holdAt = if (a.fade) 0f else BookAnimMath.holdPoint(a.hinge)
             var start = -1L
             var held = !a.open
             var frames = 0

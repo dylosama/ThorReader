@@ -88,4 +88,50 @@ class BookAnimTest {
         assertTrue(BookAnimMath.canPassHold(open = true, pagesReady = true))
         assertTrue(BookAnimMath.canPassHold(open = false, pagesReady = false))
     }
+
+    @Test
+    fun hingeStyleCentresTurnsTravelsToTheHingeAndOpensWhileArriving() {
+        for (mode in listOf(ReadingMode.BOOK, ReadingMode.BOOK_REVERSED)) {
+            val p = BookAnimMath.place(mode, false, wt, ht, wb, hb, aspect)
+            val from = CoverBox(120f, 360f, 130f, 184f, 0f)
+            fun box(s: Float) = BookAnimMath.hingeBoxAt(s, from, p.box, wt, ht)
+            // 1) at the centre of the top screen, upright;
+            val c = box(BookAnimMath.H_GLIDE_END)
+            assertEquals(wt / 2f, c.cx, 0.5f)
+            assertEquals(ht / 2f, c.cy, 0.5f)
+            assertEquals(0f, c.rot, 0.001f)
+            // 2) turned sideways for this mode, still at the centre;
+            val r = box(BookAnimMath.H_ROTATE_END)
+            assertEquals(p.box.rot, r.rot, 0.001f)
+            assertEquals(ht / 2f, r.cy, 0.5f)
+            // 3) then the spine lands on the hinge (the top screen's bottom edge).
+            val t = box(BookAnimMath.H_TRAVEL_END)
+            assertEquals(ht, BookAnimMath.spineOf(t, p), 0.5f)
+            // Travelling down, spine side leading: the spine moves toward the hinge all the way.
+            var last = BookAnimMath.spineOf(r, p)
+            for (i in 1..20) {
+                val sp = BookAnimMath.spineOf(box(BookAnimMath.H_ROTATE_END + i * (BookAnimMath.H_TRAVEL_END - BookAnimMath.H_ROTATE_END) / 20f), p)
+                assertTrue(sp >= last - 0.01f)
+                last = sp
+            }
+        }
+        // 4) opening starts 80 % into the travel (overlapping it), pages never before.
+        assertEquals(0.712f, BookAnimMath.H_OPEN_START, 0.001f)
+        assertEquals(0f, BookAnimMath.swingDegFor(BookAnimMath.H_OPEN_START, hinge = true), 0f)
+        assertTrue(BookAnimMath.swingDegFor(BookAnimMath.H_TRAVEL_END, hinge = true) > 0f)
+        assertEquals(180f, BookAnimMath.swingDegFor(1f, hinge = true), 0.01f)
+        assertEquals(0f, BookAnimMath.revealFor(BookAnimMath.H_OPEN_START, hinge = true), 0f)
+        assertEquals(BookAnimMath.H_OPEN_START, BookAnimMath.holdPoint(true), 0f)
+        assertEquals(BookAnimMath.HOLD, BookAnimMath.holdPoint(false), 0f)
+        // No visible stops: the box changes continuously across the phase boundaries.
+        val p = BookAnimMath.place(ReadingMode.BOOK, false, wt, ht, wb, hb, aspect)
+        val from = CoverBox(120f, 360f, 130f, 184f, 0f)
+        for (edge in listOf(BookAnimMath.H_GLIDE_END, BookAnimMath.H_ROTATE_END)) {
+            val a = BookAnimMath.hingeBoxAt(edge - 0.0005f, from, p.box, wt, ht)
+            val b = BookAnimMath.hingeBoxAt(edge + 0.0005f, from, p.box, wt, ht)
+            assertEquals(a.cx, b.cx, 1f)
+            assertEquals(a.cy, b.cy, 1f)
+            assertEquals(a.h, b.h, 1f)
+        }
+    }
 }

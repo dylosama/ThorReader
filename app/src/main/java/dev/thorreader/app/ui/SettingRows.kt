@@ -148,10 +148,23 @@ fun ButtonTurnCornerRow() {
 @Composable
 fun BookAnimRows() {
     OnOffRow("Open & close book", settings.bookAnim) { settings.updateBookAnim(it) }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Style", color = if (settings.bookAnim) SubtleText else Color(0xFF666666), fontSize = 13.sp, modifier = Modifier.weight(1f))
+        dev.thorreader.app.BookAnimStyle.entries.forEach { st ->
+            Chip(st.label, settings.bookAnimStyle == st) { if (settings.bookAnim) settings.updateBookAnimStyle(st) }
+        }
+    }
+    val hinge = settings.bookAnimStyle == dev.thorreader.app.BookAnimStyle.HINGE
     SpeedRow(
-        AnimSpeed.entries.map { it.label }, AnimSpeed.entries.map { it.bookMs }, AnimSpeed.entries.indexOf(settings.bookAnimSpeed),
+        AnimSpeed.entries.map { it.label }, AnimSpeed.entries.map { if (hinge) it.hingeMs else it.bookMs }, AnimSpeed.entries.indexOf(settings.bookAnimSpeed),
         enabled = settings.bookAnim,
     ) { settings.updateBookAnimSpeed(AnimSpeed.entries[it]) }
+    Text(
+        if (hinge) "Hinge (Modes 1 and 2): the cover turns sideways, moves to the hinge and opens across both screens. " +
+            "Modes 3 and 4 open as Classic (${settings.bookAnimSpeed.bookMs} ms)."
+        else "Classic: the cover lifts out and swings open in place.",
+        color = SubtleText, fontSize = 12.sp,
+    )
 }
 
 @Composable

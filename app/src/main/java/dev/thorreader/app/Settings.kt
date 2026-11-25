@@ -405,6 +405,17 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putString("book_anim_speed", s.name).apply()
     }
 
+    /** Open & close book style (default Hinge). */
+    var bookAnimStyle by mutableStateOf(
+        runCatching { BookAnimStyle.valueOf(prefs.getString("book_anim_style", "HINGE")!!) }.getOrDefault(BookAnimStyle.HINGE),
+    )
+        private set
+
+    fun updateBookAnimStyle(s: BookAnimStyle) {
+        bookAnimStyle = s
+        prefs.edit().putString("book_anim_style", s.name).apply()
+    }
+
     /** Screen swap (comics): animated (on) or instant. */
     var swapAnim by mutableStateOf(prefs.getBoolean("swap_anim", true))
         private set
@@ -561,8 +572,11 @@ class Settings(private val prefs: SharedPreferences) {
 }
 
 /** Fast / Normal / Slow for the book open & close animation and the screen swap. */
-enum class AnimSpeed(val label: String, val bookMs: Int, val swapMs: Int) {
-    FAST("Fast", 500, 180),
-    NORMAL("Normal", 800, 300),
-    SLOW("Slow", 1200, 500),
+enum class AnimSpeed(val label: String, val bookMs: Int, val swapMs: Int, val hingeMs: Int) {
+    FAST("Fast", 500, 180, 900),
+    NORMAL("Normal", 800, 300, 1300),
+    SLOW("Slow", 1200, 500, 1800),
 }
+
+/** Open & close book style: Hinge (book modes: centre, turn, travel to the hinge, open) or Classic. */
+enum class BookAnimStyle(val label: String) { HINGE("Hinge"), CLASSIC("Classic") }
