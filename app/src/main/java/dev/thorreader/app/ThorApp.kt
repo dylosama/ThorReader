@@ -46,6 +46,9 @@ class ThorApp : Application() {
         private set
     lateinit var importer: Importer
         private set
+
+    /** Files from other apps (sharing, Thor Bookloader). */
+    val incoming by lazy { dev.thorreader.app.importer.IncomingImporter(this, db.books()) }
     lateinit var lookup: dev.thorreader.app.metadata.MetadataLookup
         private set
     val scope = MainScope()

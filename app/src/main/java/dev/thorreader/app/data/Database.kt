@@ -104,6 +104,10 @@ interface BookDao {
     @Query("SELECT uri FROM books")
     suspend fun allUris(): List<String>
 
+    /** Books of exactly this size (duplicate check for files from other apps; no schema change). */
+    @Query("SELECT * FROM books WHERE sizeBytes = :size")
+    suspend fun ofSize(size: Long): List<Book>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(book: Book): Long
 

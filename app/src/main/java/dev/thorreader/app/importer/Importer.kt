@@ -187,6 +187,52 @@ class Importer(private val context: Context, private val dao: BookDao, private v
         )
     }
 
+    /**
+     * One file that another app handed us, already copied into the Imported books folder
+     * ([uri]), checked ([format] from its bytes) and hashed ([sha]). [incoming] metadata counts
+     * as hand edits. Not paused by [dev.thorreader.app.Background] (the user asked for it right
+     * now, and Thor Reader may be in the background). Returns the new book id, or -1.
+     * Throws [DrmProtectedException] for DRM-protected books.
+     */
+    suspend fun importIncoming(uri: Uri, name: String, size: Long, format: BookFormat, sha: String, incoming: IncomingMeta, from: String): Long =
+        mutex.withLock {
+            postStatus("Importing $name")
+            val meta = try {
+                extract(uri, name, size, format)
+            } catch (e: DrmProtectedException) {
+                finalStatus("'$name' is DRM-protected, so it can't be added")
+                throw e
+            } catch (t: Throwable) {
+                Log.w(TAG, "Metadata extraction failed for $name", t)
+                ExtractedMeta()
+            }
+            val base = withFileMeta(
+                Book(
+                    uri = uri.toString(),
+                    fileName = name,
+                    format = format.name,
+                    sizeBytes = size,
+                    title = name,
+                    pageCount = meta.pageCount,
+                    coverPath = saveCover(meta),
+                    mode = ThorApp.instance.settings.lastBookMode.name,
+                    lookupState = "pending",
+                ),
+                meta,
+            )
+            val seriesRtl = seriesKey(incoming.series ?: base.series)?.let { dao.seriesRtl(it) }
+            val book = incoming.applyTo(base.copy(rtlOverride = seriesRtl))
+            val id = dao.insert(book)
+            if (id > 0) ThorApp.instance.incoming.hashes.set(id, sha)
+            if (id > 0) {
+                Log.i(TAG, "Imported '${book.title}' from $from (${format.label}, ${book.pageCount} pages, given fields: ${book.editedFields ?: "none"})")
+                ThorApp.instance.lookup.enqueue(listOf(id), "shared import")
+                if (format.comic && !book.isManga && book.typeOverride != dev.thorreader.app.ui.LibraryLogic.MANGA) ThorApp.instance.lookup.comicsImported()
+                finalStatus("Added '${book.title}'")
+            }
+            id
+        }
+
     /** Re-read one book's metadata from its file with the current rules (one-time re-scan). */
     fun rescan(b: Book): Book? = runCatching {
         withFileMeta(b, extract(Uri.parse(b.uri), b.fileName, b.sizeBytes, BookFormat.valueOf(b.format)))

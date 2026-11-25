@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Thor Reader</string>
+    <string name="import_permission_description">Add books, comics and manga to the Thor Reader library.</string>
 </resources>

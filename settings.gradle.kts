@@ -20,3 +20,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "ThorReader"
 include(":app")
+include(":bookloader")

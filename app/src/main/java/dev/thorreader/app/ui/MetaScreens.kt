@@ -162,6 +162,7 @@ fun SettingsPanel() {
         BookmarkColorPicker()
 
         SectionLabel("Library")
+        ImportFolderRow()
         StorageSection()
 
         SectionLabel("Hidden items")
@@ -538,4 +539,24 @@ private fun StorageSection() {
             "when needed (the first page of a book may take a little longer once). Covers and your library stay.",
         color = HouseStyle.Subtle, fontSize = 13.sp,
     )
+}
+
+/** "Imported books folder": where files shared from other apps (and Thor Bookloader) are copied. */
+@Composable
+private fun ImportFolderRow() {
+    val app = ThorApp.instance
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { tree ->
+        if (tree != null) dev.thorreader.app.importer.keepImportFolder(app, tree)
+    }
+    val label = dev.thorreader.app.importer.folderLabel(app.settings.importFolder)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text("Imported books folder", color = Color.White, fontSize = 15.sp)
+            Text(
+                label ?: "Not chosen yet - asked the first time another app shares a book",
+                color = HouseStyle.Subtle, fontSize = 13.sp,
+            )
+        }
+        Chip(if (label == null) "Choose" else "Change") { pick.launch(null) }
+    }
 }

@@ -1089,3 +1089,65 @@ Built and checked once on the Thor, still needing a proper test pass (on a charg
 
 Left before 0.3 is finished: fix whatever the test pass finds, then build the final signed
 ThorReader-0.3.0.apk and publish (tag only when asked).
+
+## Step 25: Thor Bookloader (companion app) - branch "bookloader", not on main
+Thor Reader on this branch: versionName "0.3.0-bookloader", versionCode 4 (not published).
+
+Part A - import entry points in Thor Reader
+- "Imported books folder" (Settings → Library): a folder chosen once with the system picker;
+  asked for the first time something is imported from another app. Shared files are COPIED there
+  (the other app's link is temporary), then imported as usual. Same content (SHA-256) already in
+  the library -> skipped, "Already in library". Existing books get their hash computed lazily,
+  only when an incoming file has the same size.
+- Sharing: ACTION_SEND / SEND_MULTIPLE / VIEW for the supported types (MIME types and file
+  extensions) open a small house-style screen "Import N books?" with the names, then progress
+  and a result per file. (text/plain is only taken from VIEW, so Thor Reader doesn't show up
+  every time someone shares a line of text; images are not taken from other apps.)
+- Trusted API for the companion: an exported bound service with action
+  dev.thorreader.action.IMPORT_BOOKS, protected by dev.thorreader.permission.IMPORT
+  (protectionLevel="signature": only apps signed with the same key). A service, not an activity,
+  so the companion can call it from its background download queue. Content URIs only (the caller
+  grants read access); per-book metadata (title, authors, series, number, type, genres,
+  direction, mode 1-4). No confirm screen; replies with a result per file (imported / duplicate /
+  unsupported / failed / needs folder, plus the new book id). A second signature-protected
+  activity (action dev.thorreader.action.CHOOSE_IMPORT_FOLDER) lets the companion ask for the
+  folder when it isn't set yet.
+- Metadata from the API counts as a hand edit (the online lookup never overwrites it); the
+  lookup still fills the rest.
+- Security: file type from the file's first bytes (magic numbers), not the name (a .cbr that is
+  really a zip imports as CBZ); archives checked before import (no "..", absolute or odd entry
+  names, entry count, unpacked size per entry and in total, really decompressed with caps);
+  content:// only, raw file paths never accepted. Each import is logged with the calling package
+  and the result (never file contents).
+- Content hashes live in their own small store (content_hashes preferences), NOT a new database
+  column: the library database stays at version 6, so a main-branch build can still be installed
+  over this branch without crashing.
+- Tests: magic-byte sniffing, archive safety (zip-slip, bombs), SHA-256 duplicates, metadata
+  extras -> book fields, the manifest's signature protection, plus an on-device instrumentation
+  test of the permission.
+
+Part B - new module :bookloader ("Thor Bookloader", dev.thorreader.bookloader, 0.1.0 / 1)
+- Same key as Thor Reader (keystore.properties), APKs ThorBookloader-<version>[-debug].apk,
+  top screen, controller/d-pad friendly, house style, logs tagged "ThorBookloader".
+- Sources are plugins behind one SourceProvider interface; built in: Project Gutenberg via
+  Gutendex (books, EPUB/PDF), MangaDex public API (manga, chapters packed into CBZ with
+  ComicInfo.xml), OPDS 1.2 / 2.0 (any feed the user adds: Komga, Kavita, public-domain
+  catalogues). Users add OPDS feeds or load a JSON list of sources; no scrapers, no
+  hard-coded unofficial hosts.
+- Screens: Search & browse (type filter, source picker, covers, "In Thor Reader" badge), details
+  with chapter / edition multi-select, metadata override, queue (WorkManager): "Download to
+  storage" (a folder chosen once) or "Import to Thor Reader" (through the API; if Thor Reader is
+  missing or refuses, a clear message and "Save to storage instead"), Sources manager.
+
+### Step 25 status (2026-11-24)
+- Built: Part A and Part B as above. Thor Reader 0.3.0-bookloader (code 4) and Thor Bookloader
+  0.1.0 (code 1), debug and release, all four APKs signed with the same certificate.
+- Tests: 121 in :app (13 new: ImportApiTest), 9 in :bookloader (catalogue parsers with
+  responses shaped like the live APIs, OPDS 1 + 2, CBZ / ComicInfo, metadata, source lists, the
+  contract matching Thor Reader's). On-device test app/src/androidTest/.../ImportPermissionTest
+  (run with: adb install -r -t app/build/outputs/apk/androidTest/debug/*.apk, then
+  adb shell am instrument -w dev.thorreader.app.test/androidx.test.runner.AndroidJUnitRunner -
+  NOT gradle connectedAndroidTest, which uninstalls the app and its library afterwards).
+- NOT yet checked on the Thor (it was disconnected): install / launch commands, signature
+  refusal for the shell, sharing a file, a full Bookloader search -> import. Gutenberg itself
+  (gutenberg.org) was down for maintenance that evening; Gutendex search worked.

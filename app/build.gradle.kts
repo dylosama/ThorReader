@@ -26,7 +26,8 @@ android {
         minSdk = 33
         targetSdk = 34
         versionCode = 4
-        versionName = "0.3.0"
+        versionName = "0.3.0-bookloader"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -126,4 +127,8 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     // Android has org.json built in; plain JVM unit tests need the real one.
     testImplementation("org.json:json:20240303")
+
+    // On-device test of the import permission (run with am instrument, see PLAN.md step 25).
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

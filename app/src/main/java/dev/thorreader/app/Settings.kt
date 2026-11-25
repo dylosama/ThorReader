@@ -489,6 +489,15 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putBoolean("swipe_swap", on).apply()
     }
 
+    /** "Imported books folder": SAF tree URI where files from other apps are copied; null = not chosen. */
+    var importFolder by mutableStateOf(prefs.getString("import_folder", null))
+        private set
+
+    fun updateImportFolder(uri: String?) {
+        importFolder = uri
+        prefs.edit().putString("import_folder", uri).apply()
+    }
+
     /** Size limit for caches the app can re-create (unpacked comics, layouts, lookups...). */
     var cacheLimitMb by mutableIntStateOf(prefs.getInt("cache_limit_mb", dev.thorreader.app.io.CacheBudget.DEFAULT_MB))
         private set
