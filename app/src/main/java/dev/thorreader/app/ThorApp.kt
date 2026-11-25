@@ -48,6 +48,9 @@ class ThorApp : Application() {
         private set
     lateinit var lookup: dev.thorreader.app.metadata.MetadataLookup
 
+    /** The Settings tab shown (kept while the app runs, so Settings reopens where you were). */
+    var settingsTab by mutableStateOf(dev.thorreader.app.ui.SettingsTab.GENERAL)
+
     /** Reading progress sync with a KOReader / CrossPoint sync server (Settings → Sync). */
     lateinit var progressSync: dev.thorreader.app.sync.ProgressSync
         private set

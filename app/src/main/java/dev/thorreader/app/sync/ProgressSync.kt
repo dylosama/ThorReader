@@ -375,6 +375,12 @@ class ProgressSync(private val app: ThorApp) {
     companion object {
         /** CrossPoint's own sync server (the X4's default); KOReader's is https://sync.koreader.rocks. */
         const val DEFAULT_SERVER = "https://sync.crosspointreader.com"
+
+        /** One-tap choices in Settings → Sync (any other KOReader-compatible server can be typed). */
+        val SERVERS = listOf(
+            "CrossPoint" to DEFAULT_SERVER,
+            "KOReader" to "https://sync.koreader.rocks",
+        )
         const val DEVICE_NAME = "Thor Reader"
 
         /** A position read here is sent this long after the last page turn. */

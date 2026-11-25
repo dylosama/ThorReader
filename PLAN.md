@@ -1157,6 +1157,19 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   after a fresh start - every turn a curl, setup 20-100 ms, p95 after setup 16.8-16.9 ms, curl
   never switched off.
 
+### v0.3.0: Settings in tabs; one-tap sync servers (main)
+- Settings has four tabs, pinned under the title (a segmented pill like Library | Completed;
+  `OverlayPanel` got a fixed `header` and resets its scroll per tab; the tab is remembered while
+  the app runs): General (Theme colour, Controls, Screen, Bookmark, About), Animations (Page
+  turns, Books and screens, Battery), Library (Grid, Hidden items, Book info, Storage), Sync.
+  The ComicVine hint's "Settings" opens the Library tab.
+- Other e-reader syncs: Kindle (Whispersync), Kobo's cloud and Apple Books have no open API
+  (only reverse-engineered private services with the store password), so they are not added.
+  KOReader's open sync protocol is what CrossPoint and KOReader (on Kobo, Kindle, PocketBook,
+  Boox, Android) and self-hosted servers use; Sync now offers one-tap servers - CrossPoint,
+  KOReader - or "Your own" address (`ProgressSync.SERVERS`).
+- Checked on the Thor: every tab, the server choice.
+
 ### v0.3.0: reading progress sync with CrossPoint (Xteink X4) / KOReader (main)
 - Settings → Sync: server (default https://sync.crosspointreader.com, the X4's; KOReader's is
   sync.koreader.rocks), username, password → Sign in / Create account; then "Sync reading
@@ -1295,7 +1308,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: reading progress sync with CrossPoint (Xteink X4) / KOReader".
+  "v0.3.0: Settings in tabs; one-tap sync servers".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).

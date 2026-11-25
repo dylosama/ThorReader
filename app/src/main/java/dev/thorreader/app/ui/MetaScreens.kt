@@ -59,7 +59,15 @@ const val COMICVINE_KEY_URL = "https://comicvine.gamespot.com/api"
 
 /** A full-screen overlay panel in the house style (library only). */
 @Composable
-private fun OverlayPanel(title: String, onClose: () -> Unit, content: @Composable () -> Unit) {
+private fun OverlayPanel(
+    title: String,
+    onClose: () -> Unit,
+    /** Stays put above the scrolling content (e.g. Settings' tabs). */
+    header: (@Composable () -> Unit)? = null,
+    /** A new key starts the content scrolled to the top (e.g. another tab). */
+    scrollKey: Any? = null,
+    content: @Composable () -> Unit,
+) {
     Box(
         Modifier
             .fillMaxSize()
@@ -75,19 +83,57 @@ private fun OverlayPanel(title: String, onClose: () -> Unit, content: @Composabl
                 .clip(HouseStyle.PanelShape)
                 .background(HouseStyle.PanelBackground)
                 .border(1.dp, HouseStyle.Hairline, HouseStyle.PanelShape)
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                Chip("✕ Close") { onClose() }
+            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = if (header != null) 4.dp else 0.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Chip("✕ Close") { onClose() }
+                }
+                header?.invoke()
             }
-            content()
+            androidx.compose.runtime.key(scrollKey) {
+                Column(
+                    Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) { content() }
+            }
         }
     }
 }
+
+/** Settings' tabs: a segmented pill like the library's Library | Completed switch. */
+@Composable
+private fun SettingsTabs(current: SettingsTab, onSelect: (SettingsTab) -> Unit) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color(0xFF1E1E1E))
+            .border(1.dp, HouseStyle.Hairline, RoundedCornerShape(50))
+            .padding(3.dp),
+    ) {
+        SettingsTab.entries.forEach { t ->
+            val selected = t == current
+            Text(
+                t.label,
+                color = if (selected) OnAccent else Color.White,
+                fontSize = 15.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(if (selected) Accent else Color.Transparent)
+                    .focusClick(RoundedCornerShape(50)) { onSelect(t) }
+                    .padding(horizontal = 16.dp, vertical = 7.dp),
+            )
+        }
+    }
+}
+
+/** Settings is split into these tabs (the long groups get their own). */
+enum class SettingsTab(val label: String) { GENERAL("General"), ANIMATIONS("Animations"), LIBRARY("Library"), SYNC("Sync") }
 
 /** One labelled text field. */
 @Composable
@@ -129,72 +175,92 @@ fun SettingsPanel() {
     val app = ThorApp.instance
     val settings = app.settings
     val scope = rememberCoroutineScope()
-    OverlayPanel("Settings", onClose = { app.settingsOpen = false }) {
-        SectionLabel("Theme colour")
-        ThemeColorPicker()
-
-        SectionLabel("Library")
-        GridModeIconsRow()
-
-        SectionLabel("Sync")
-        SyncSection()
-
-        SectionLabel("Screen")
-        ScreenSaverRow()
-        Text(
-            "Protects the screens from burn-in: after this long without a touch or button they dim, then go black " +
-                "(the first touch only wakes them). Everything also moves by a pixel or two now and then - only as a page turns, never while you read.",
-            color = HouseStyle.Subtle, fontSize = 13.sp,
-        )
-
-        // (Page theme and Header & page number are set in the reader menu.)
-        SectionLabel("Controls")
-        HoldToMenuRow()
-        SelectButtonRow()
-        SwipeSwapRow()
-
-        SectionLabel("Animations")
-        PageTurnStyleRow()
-        PageTurnSpeedRow()
-        ButtonTurnCornerRow()
-        dev.thorreader.app.engine.TurnSupport.curlDisabledReason?.let {
-            Text("Curl isn't available on this device right now, so Slide is used.", color = HouseStyle.Subtle, fontSize = 13.sp)
-        }
-        BookAnimRows()
-        SwapAnimRows()
-        EdgeShadowRow()
-        LowBatteryRow()
-        Text(
-            "Below 15 % (not charging), pages fade and books open with a quick fade.",
-            color = HouseStyle.Subtle, fontSize = 13.sp,
-        )
-
-        SectionLabel("Bookmark")
-        BookmarkColorPicker()
-
-        SectionLabel("Storage")
-        StorageSection()
-
-        SectionLabel("Hidden items")
-        HiddenItemsSection()
-
-        BookInfoSection()
-
-        SectionLabel("About")
-        val version = remember {
-            runCatching { app.packageManager.getPackageInfo(app.packageName, 0).versionName }.getOrNull() ?: "?"
-        }
-        Text("Thor Reader $version", color = Color.White, fontSize = 15.sp)
-        Text(
-            "Made for the AYN Thor. Uses MuPDF (AGPL), junrar, Apache Commons Compress, XZ for Java and commonmark.",
-            color = HouseStyle.Subtle, fontSize = 13.sp,
-        )
-        Chip("Show tutorial again") {
-            app.restartTutorial()
-            app.settingsOpen = false
+    val tab = app.settingsTab
+    OverlayPanel(
+        "Settings", onClose = { app.settingsOpen = false },
+        header = { SettingsTabs(tab) { app.settingsTab = it } },
+        scrollKey = tab,
+    ) {
+        when (tab) {
+            SettingsTab.GENERAL -> GeneralTab()
+            SettingsTab.ANIMATIONS -> AnimationsTab()
+            SettingsTab.LIBRARY -> LibraryTab()
+            SettingsTab.SYNC -> SyncSection()
         }
     }
+}
 
+// (Page theme and Header & page number are set in the reader menu.)
+@Composable
+private fun GeneralTab() {
+    val app = ThorApp.instance
+    SectionLabel("Theme colour")
+    ThemeColorPicker()
+
+    SectionLabel("Controls")
+    HoldToMenuRow()
+    SelectButtonRow()
+    SwipeSwapRow()
+
+    SectionLabel("Screen")
+    ScreenSaverRow()
+    Text(
+        "Protects the screens from burn-in: after this long without a touch or button they dim, then go black " +
+            "(the first touch only wakes them). Everything also moves by a pixel or two now and then - only as a page turns, never while you read.",
+        color = HouseStyle.Subtle, fontSize = 13.sp,
+    )
+
+    SectionLabel("Bookmark")
+    BookmarkColorPicker()
+
+    SectionLabel("About")
+    val version = remember {
+        runCatching { app.packageManager.getPackageInfo(app.packageName, 0).versionName }.getOrNull() ?: "?"
+    }
+    Text("Thor Reader $version", color = Color.White, fontSize = 15.sp)
+    Text(
+        "Made for the AYN Thor. Uses MuPDF (AGPL), junrar, Apache Commons Compress, XZ for Java and commonmark.",
+        color = HouseStyle.Subtle, fontSize = 13.sp,
+    )
+    Chip("Show tutorial again") {
+        app.restartTutorial()
+        app.settingsOpen = false
+    }
+}
+
+@Composable
+private fun AnimationsTab() {
+    SectionLabel("Page turns")
+    PageTurnStyleRow()
+    PageTurnSpeedRow()
+    ButtonTurnCornerRow()
+    dev.thorreader.app.engine.TurnSupport.curlDisabledReason?.let {
+        Text("Curl isn't available on this device right now, so Slide is used.", color = HouseStyle.Subtle, fontSize = 13.sp)
+    }
+    SectionLabel("Books and screens")
+    BookAnimRows()
+    SwapAnimRows()
+    EdgeShadowRow()
+    SectionLabel("Battery")
+    LowBatteryRow()
+    Text(
+        "Below 15 % (not charging), pages fade and books open with a quick fade.",
+        color = HouseStyle.Subtle, fontSize = 13.sp,
+    )
+}
+
+@Composable
+private fun LibraryTab() {
+    SectionLabel("Grid")
+    GridModeIconsRow()
+
+    SectionLabel("Hidden items")
+    HiddenItemsSection()
+
+    BookInfoSection()
+
+    SectionLabel("Storage")
+    StorageSection()
 }
 
 /**
@@ -325,7 +391,7 @@ fun ComicVineHint() {
             color = HouseStyle.TextColor, fontSize = HouseStyle.ItemTextSize, modifier = Modifier.weight(1f),
         )
         Chip("Get a free key") { app.openWebPage(COMICVINE_KEY_URL) }
-        Chip("Settings") { app.settingsOpen = true; app.lookup.showKeyHint = false }
+        Chip("Settings") { app.settingsTab = SettingsTab.LIBRARY; app.settingsOpen = true; app.lookup.showKeyHint = false }
         Chip("✕") { app.lookup.showKeyHint = false }
     }
 }
@@ -347,9 +413,11 @@ private fun SyncSection() {
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
 
+    SectionLabel("Reading progress")
     Text(
-        "Continue where you left off on your Xteink X4 (CrossPoint) or KOReader, and the other way round. " +
-            "Use the same sync account and the same book files on both.",
+        "Continue where you left off on another e-reader, and the other way round: CrossPoint (Xteink X4) and " +
+            "KOReader (on Kobo, Kindle, PocketBook, Boox, Android) all use the same open sync. Use the same account " +
+            "and the same book files on both. Kindle's own sync, Kobo's and Apple Books' are closed to other apps.",
         color = HouseStyle.Subtle, fontSize = 13.sp,
     )
     if (sync.signedIn) {
@@ -365,7 +433,17 @@ private fun SyncSection() {
         ChoiceRow("Match books by", listOf(false, true), sync.byFileName, { if (it) "File name" else "File contents" }) { sync.updateByFileName(it) }
         sync.status?.let { Text(it, color = HouseStyle.Subtle, fontSize = 13.sp) }
     } else {
-        Field("Server", server, { server = it }, hint = dev.thorreader.app.sync.ProgressSync.DEFAULT_SERVER)
+        // Which reader's server: one tap for the common ones, or type your own (self-hosted, Calibre-Web...).
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Server", color = HouseStyle.Subtle, fontSize = HouseStyle.TextSize)
+            dev.thorreader.app.sync.ProgressSync.SERVERS.forEach { (label, url) ->
+                Chip(label, server.trimEnd('/') == url) { server = url }
+            }
+            Chip("Your own", dev.thorreader.app.sync.ProgressSync.SERVERS.none { it.second == server.trimEnd('/') }) {
+                if (dev.thorreader.app.sync.ProgressSync.SERVERS.any { it.second == server.trimEnd('/') }) server = "https://"
+            }
+        }
+        Field("Server address", server, { server = it }, hint = dev.thorreader.app.sync.ProgressSync.DEFAULT_SERVER)
         Field("Username", name, { name = it })
         Field("Password", password, { password = it }, hidden = true)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -384,8 +462,7 @@ private fun SyncSection() {
             Chip("Create account") { go(true) }
         }
         Text(
-            "The X4's default server is ${dev.thorreader.app.sync.ProgressSync.DEFAULT_SERVER.removePrefix("https://")}; " +
-                "KOReader's is sync.koreader.rocks. Only an encrypted (https) connection is used.",
+            "Pick the server your other reader uses (CrossPoint's is the X4's default). Only an encrypted (https) connection is used.",
             color = HouseStyle.Subtle, fontSize = 12.sp,
         )
     }
