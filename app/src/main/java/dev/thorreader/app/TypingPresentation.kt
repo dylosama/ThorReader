@@ -37,7 +37,7 @@ class TypingPresentation(
             setViewTreeSavedStateRegistryOwner(activity)
             setViewTreeViewModelStoreOwner(activity)
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-            setContent { BottomKeyboard(session) }
+            setContent { dev.thorreader.app.ui.BurnInGuard { BottomKeyboard(session) } }
         }
         setContentView(view)
         window?.let { w ->
@@ -56,9 +56,16 @@ class TypingPresentation(
 
     /** The Thor's buttons and physical keyboards while this screen has focus. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (ThorApp.instance.screenSaverTakesKey(event)) return true // black screens: only wakes them
         ThorApp.instance.userActive()
         if (ThorApp.instance.handleKey(event)) return true
         return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (ThorApp.instance.screenSaverTakesTouch(ev)) return true
+        if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) ThorApp.instance.userActive()
+        return super.dispatchTouchEvent(ev)
     }
 }
 
@@ -79,7 +86,7 @@ class InspectPresentation(
             setViewTreeSavedStateRegistryOwner(activity)
             setViewTreeViewModelStoreOwner(activity)
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-            setContent { dev.thorreader.app.ui.InspectInfo(state) }
+            setContent { dev.thorreader.app.ui.BurnInGuard { dev.thorreader.app.ui.InspectInfo(state) } }
         }
         setContentView(view)
         window?.let { w ->
@@ -97,8 +104,15 @@ class InspectPresentation(
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (ThorApp.instance.screenSaverTakesKey(event)) return true // black screens: only wakes them
         ThorApp.instance.userActive()
         if (ThorApp.instance.handleKey(event)) return true
         return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (ThorApp.instance.screenSaverTakesTouch(ev)) return true
+        if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) ThorApp.instance.userActive()
+        return super.dispatchTouchEvent(ev)
     }
 }

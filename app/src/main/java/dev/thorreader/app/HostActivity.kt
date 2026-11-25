@@ -132,11 +132,13 @@ abstract class HostActivity : ComponentActivity(), HostActions {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (app.screenSaverTakesKey(event)) return true // black screens: this button only wakes them
         app.userActive()
         return app.handleKey(event) || super.dispatchKeyEvent(event)
     }
 
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (app.screenSaverTakesTouch(ev)) return true // black screens: this touch only wakes them
         if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) app.userActive()
         return super.dispatchTouchEvent(ev)
     }

@@ -156,6 +156,13 @@ class ThorApp : Application() {
         trimCaches()
         refreshScreens()
         MuPdf.logNativeSupport()
+        // Burn-in protection: the slow pixel shift (one small step every few minutes).
+        scope.launch {
+            while (true) {
+                delay(dev.thorreader.app.engine.BurnIn.SHIFT_EVERY_MS)
+                pixelShiftStep++
+            }
+        }
         // Settings.mode always starts as Mode 3: the library on the top screen.
         Log.i(TAG, "App started in mode ${settings.mode.number} (${settings.mode.title}), screens=$screens")
     }
@@ -709,8 +716,79 @@ class ThorApp : Application() {
         private set
     private var keepOnJob: Job? = null
 
+    // ---- burn-in protection (AMOLED): screen saver and pixel shift ----------------------------
+
+    /** Both screens are black (pixels off) after Settings → Screen minutes without input. */
+    var screenSaver by mutableStateOf(false)
+        private set
+    private var saverJob: Job? = null
+
+    /** Step of the slow pixel shift ([dev.thorreader.app.engine.BurnIn]); read at layout only. */
+    var pixelShiftStep by androidx.compose.runtime.mutableIntStateOf(0)
+        private set
+
+    /** The touch that woke the screens: swallowed until the finger lifts. */
+    private var swallowingTouch = false
+    private var swallowingKey = -1
+
+    private fun restartScreenSaver() {
+        saverJob?.cancel()
+        val min = settings.screenSaverMin
+        saverJob = scope.launch {
+            delay(debugSaverMs ?: (min * 60_000L))
+            screenSaver = true
+            keepScreenOn = false
+            Log.i(TAG, "No input for ${if (debugSaverMs != null) "$debugSaverMs ms (debug)" else "$min min"}: screens black (burn-in protection)")
+        }
+    }
+
+    /** Debug builds only: `adb shell setprop debug.thorreader.saverms 15000` (read at app start). */
+    private val debugSaverMs: Long? by lazy {
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) return@lazy null
+        runCatching {
+            Runtime.getRuntime().exec(arrayOf("getprop", "debug.thorreader.saverms")).inputStream.bufferedReader().readText().trim().toLongOrNull()
+        }.getOrNull()?.takeIf { it in 3_000..3_600_000 }
+    }
+
+    private fun wakeFromSaver(how: String) {
+        screenSaver = false
+        Log.i(TAG, "Screens woken ($how)")
+        userActive()
+    }
+
+    /** A touch while the screens are black only wakes them (the whole gesture is swallowed). */
+    fun screenSaverTakesTouch(ev: android.view.MotionEvent): Boolean {
+        if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN && screenSaver) {
+            swallowingTouch = true
+            wakeFromSaver("touch")
+            return true
+        }
+        if (swallowingTouch) {
+            val a = ev.actionMasked
+            if (a == android.view.MotionEvent.ACTION_UP || a == android.view.MotionEvent.ACTION_CANCEL) swallowingTouch = false
+            return true
+        }
+        return false
+    }
+
+    /** A button while the screens are black only wakes them (its release is swallowed too). */
+    fun screenSaverTakesKey(e: KeyEvent): Boolean {
+        if (e.keyCode == KeyEvent.KEYCODE_VOLUME_UP || e.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) return false
+        if (e.action == KeyEvent.ACTION_DOWN && screenSaver) {
+            swallowingKey = e.keyCode
+            wakeFromSaver("button")
+            return true
+        }
+        if (swallowingKey == e.keyCode) {
+            if (e.action == KeyEvent.ACTION_UP) swallowingKey = -1
+            return true
+        }
+        return false
+    }
+
     /** Any touch or button on either screen. */
     fun userActive() {
+        restartScreenSaver()
         if (session == null) {
             keepScreenOn = false
             return
@@ -727,7 +805,11 @@ class ThorApp : Application() {
     fun onHostStart(who: String) {
         startedActivities++
         Background.setVisible(true)
-        if (startedActivities == 1) onReturn("$who started again")
+        if (startedActivities == 1) {
+            screenSaver = false // coming back: screens on, the idle time counts again
+            restartScreenSaver()
+            onReturn("$who started again")
+        }
     }
 
     fun onHostStop(who: String) {
@@ -750,6 +832,8 @@ class ThorApp : Application() {
                 }
                 android.content.Intent.ACTION_SCREEN_ON -> {
                     Background.setScreenOn(true)
+                    screenSaver = false
+                    restartScreenSaver()
                     if (startedActivities > 0) onReturn("screen on")
                 }
             }

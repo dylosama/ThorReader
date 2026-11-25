@@ -17,6 +17,19 @@ import dev.thorreader.app.ReadingMode
 import dev.thorreader.app.Screen
 import dev.thorreader.app.ThorApp
 import dev.thorreader.app.TutorialStep
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.IntOffset
+
+/** The idle bottom screen's "Choose a book" hint shows this long, then fades to black. */
+private const val HINT_MS = 8_000L
 
 /**
  * Everything drawn on one physical screen. The same composable runs on the top screen
@@ -32,20 +45,58 @@ fun PhysicalScreen(screen: Screen) {
         Screen.BOTTOM -> mode != ReadingMode.TOP
     }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        if (active) {
-            if (mode.isBook) {
-                RotatedBox(mode.contentRotation) { ScreenBody(screen, mode) }
-            } else {
-                ScreenBody(screen, mode)
+        // Burn-in protection: everything sits a pixel or two off and drifts slowly (BurnIn).
+        Box(
+            Modifier.fillMaxSize().offset {
+                val (x, y) = dev.thorreader.app.engine.BurnIn.shiftAt(app.pixelShiftStep)
+                IntOffset(x, y)
+            },
+        ) {
+            if (active) {
+                if (mode.isBook) {
+                    RotatedBox(mode.contentRotation) { ScreenBody(screen, mode) }
+                } else {
+                    ScreenBody(screen, mode)
+                }
             }
+            // Inspect book: the 3D book over the library (top screen).
+            val inspect = ThorApp.instance.inspecting
+            if (inspect != null && screen == Screen.TOP && ThorApp.instance.session == null) InspectOverlay(inspect)
         }
-        // Inspect book: the 3D book over the library (top screen).
-        val inspect = ThorApp.instance.inspecting
-        if (inspect != null && screen == Screen.TOP && ThorApp.instance.session == null) InspectOverlay(inspect)
         // Book open / close animation: over everything, in unrotated screen pixels (also on a
         // screen that is otherwise idle in the new mode, while the animation still needs it).
         BookAnimOverlay(screen)
+        ScreenSaverCover()
     }
+}
+
+/**
+ * Burn-in protection: [content] drifts a pixel or two (slowly), and everything goes black (pixels
+ * off) after Settings → Screen minutes without input. For the screens' extra windows (keyboard,
+ * Inspect details); [PhysicalScreen] does the same itself.
+ */
+@Composable
+fun BurnInGuard(content: @Composable () -> Unit) {
+    val app = ThorApp.instance
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier.fillMaxSize().offset {
+                val (x, y) = dev.thorreader.app.engine.BurnIn.shiftAt(app.pixelShiftStep)
+                IntOffset(x, y)
+            },
+        ) { content() }
+        ScreenSaverCover()
+    }
+}
+
+/** Black over everything while the screen saver is on (fades in over 1.5 s). */
+@Composable
+private fun ScreenSaverCover() {
+    val app = ThorApp.instance
+    val black by animateFloatAsState(
+        if (app.screenSaver) 1f else 0f, tween(if (app.screenSaver) 1500 else 150), label = "screen saver",
+    )
+    if (black > 0f) Box(Modifier.fillMaxSize().graphicsLayer { alpha = black }.background(Color.Black))
 }
 
 @Composable
@@ -66,11 +117,18 @@ private fun ScreenBody(screen: Screen, mode: ReadingMode) {
                 // Modes 1 and 2: the bottom screen is the keyboard while typing in the library.
                 BottomKeyboard(typing)
             } else {
-                Text(
+                // A hint, then black: still text on an idle screen is what burns in.
+                var shown by remember { mutableStateOf(true) }
+                LaunchedEffect(Unit) {
+                    kotlinx.coroutines.delay(HINT_MS)
+                    shown = false
+                }
+                val a by animateFloatAsState(if (shown) 1f else 0f, tween(1500), label = "bottom hint")
+                if (a > 0f) Text(
                     "Choose a book on the top screen",
                     color = Color(0xFF444444),
                     fontSize = 16.sp,
-                    modifier = Modifier.align(Alignment.Center),
+                    modifier = Modifier.align(Alignment.Center).graphicsLayer { alpha = a },
                 )
             }
         } else {

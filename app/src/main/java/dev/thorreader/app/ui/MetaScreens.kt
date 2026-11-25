@@ -136,6 +136,14 @@ fun SettingsPanel() {
         SectionLabel("Library")
         GridModeIconsRow()
 
+        SectionLabel("Screen")
+        ScreenSaverRow()
+        Text(
+            "Protects the screens from burn-in: both go black after this long without a touch or button " +
+                "(the first touch only wakes them), and everything on screen moves by a pixel or two every few minutes.",
+            color = HouseStyle.Subtle, fontSize = 13.sp,
+        )
+
         // (Page theme and Header & page number are set in the reader menu.)
         SectionLabel("Controls")
         HoldToMenuRow()

@@ -1157,6 +1157,29 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   after a fresh start - every turn a curl, setup 20-100 ms, p95 after setup 16.8-16.9 ms, curl
   never switched off.
 
+### v0.3.0: burn-in protection for the AMOLED screens (main)
+- Before: reading kept the screen on for 10 min after the last input, then Android's own screen
+  timeout decided; the library never held the screen on but also never blanked it. With a long
+  (or "never") system timeout a still page or the library could stay lit for hours.
+- Screen saver (`ThorApp.screenSaver`): after Settings → Screen → "Black screens after no input"
+  (5 / 10 / 20 min, default 10, no "off") both screens go black (pixels off, 1.5 s fade) -
+  whatever Android's timeout is, in the library, reading, Inspect and while typing. The first
+  touch or button only wakes them (the whole gesture / the key's release is swallowed, so no
+  page turns or opens); volume keys pass through. Covered windows: both screens'
+  `PhysicalScreen`, the keyboard and Inspect-details Presentations (`BurnInGuard`).
+- Pixel shift (`engine/BurnIn`): everything drifts around a 3 x 3 loop of positions 2 px apart
+  (at most 2 px off), one step every 3 min, so the page-number pill, header, library controls
+  etc. never sit on the same pixels for hours. Applied at layout only (no recomposition); the
+  page view and the turn overlay shift together. The book open / close animation draws unshifted.
+- The idle bottom screen's "Choose a book on the top screen" hint fades to black after 8 s.
+- Not ours to protect: in Mode 3 the bottom screen shows the Thor's own launcher (another app),
+  and Android's status / navigation bars when swiped in.
+- Debug builds: `adb shell setprop debug.thorreader.saverms 8000` (read at app start) for
+  testing. Tests: BurnInTest (130 in total). Checked on the Thor (debug, 8 s): library, Inspect
+  (both screens incl. its details) and reading Dune in Mode 1 all went to 0/255 on both
+  screens; a tap or button only woke them (Inspect stayed open, no page turned). The pixel shift
+  was not watched on the device (3-minute steps).
+
 ### v0.3.0: your own pictures for the front cover, spine and back cover (main)
 - Edit info: "Pictures: Front cover · Spine · Back cover" under the file details, right of the
   cover and above Title. Each opens the system picker for one image (internal storage, SD card,
@@ -1233,7 +1256,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: Settings tidied (Library section up top; preview row, page theme and header removed)".
+  "v0.3.0: burn-in protection (screen saver, pixel shift)".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1259,6 +1282,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 - Inspect: the spine's title · author is centred along the spine (was at the top). Checked on
   the Thor with Dune.
 - Edit info: pick your own front cover, spine and back cover pictures (↺ to go back).
+- Burn-in protection: black screens after no input (Settings → Screen), slow pixel shift.
 - Grid view: each cover has a small tab at the bottom right with the icon of the mode it opens in
   (its own mode, else the last book mode), styled like the ★ tab. Checked on the Thor (Blue
   Period 1 shows Mode 4, the others Mode 1). Settings → Library → "Mode icons on grid covers"
@@ -1302,7 +1326,7 @@ Thor Reader (main):
     adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-debug.apk
     adb shell am start -n dev.thorreader.app/.MainActivity
     .\gradlew assembleRelease      -> app\build\outputs\apk\release\ThorReader-0.3.0.apk
-    .\gradlew testDebugUnitTest    (126 tests)
+    .\gradlew testDebugUnitTest    (130 tests)
 Bookloader branch (both apps):
     git switch bookloader
     .\gradlew assembleDebug

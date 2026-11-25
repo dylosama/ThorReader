@@ -390,6 +390,19 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putBoolean("library_grid", grid).apply()
     }
 
+    /**
+     * Burn-in protection: both screens go black (pixels off) after this many minutes without a
+     * touch or button, whatever Android's own screen timeout is. No "off": the AMOLED screens
+     * should never show a still picture for hours.
+     */
+    var screenSaverMin by mutableIntStateOf(prefs.getInt("screen_saver_min", 10).let { if (it in SCREEN_SAVER_CHOICES) it else 10 })
+        private set
+
+    fun updateScreenSaverMin(min: Int) {
+        screenSaverMin = min
+        prefs.edit().putInt("screen_saver_min", min).apply()
+    }
+
     /** Grid view: the small reading-mode icon at each cover's bottom right. */
     var gridModeIcons by mutableStateOf(prefs.getBoolean("grid_mode_icons", true))
         private set
@@ -563,6 +576,9 @@ class Settings(private val prefs: SharedPreferences) {
         const val MIN_HOLD_MS = 500
         const val MAX_HOLD_MS = 3000
         val HOLD_CHOICES_MS = listOf(500, 1000, 1500, 2000, 2500, 3000)
+
+        /** Screen saver delays offered in Settings (minutes). */
+        val SCREEN_SAVER_CHOICES = listOf(5, 10, 20)
 
         /**
          * Bookmark colours: mid-tone and fairly saturated, so each stands out on light Paper,

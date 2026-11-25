@@ -70,11 +70,13 @@ class BottomScreenPresentation(
 
     /** Buttons pressed while the bottom screen has focus go to the same handler. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (ThorApp.instance.screenSaverTakesKey(event)) return true // black screens: only wakes them
         ThorApp.instance.userActive()
         return ThorApp.instance.handleKey(event) || super.dispatchKeyEvent(event)
     }
 
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (ThorApp.instance.screenSaverTakesTouch(ev)) return true // black screens: only wakes them
         if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) ThorApp.instance.userActive()
         return super.dispatchTouchEvent(ev)
     }

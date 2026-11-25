@@ -122,6 +122,11 @@ fun HoldToMenuRow() = ChoiceRow(
 ) { settings.updateMenuHold(it) }
 
 @Composable
+fun ScreenSaverRow() = ChoiceRow(
+    "Black screens after no input", Settings.SCREEN_SAVER_CHOICES, settings.screenSaverMin, { "$it min" },
+) { settings.updateScreenSaverMin(it) }
+
+@Composable
 fun SelectButtonRow() = OnOffRow("Select button changes mode", settings.selectCyclesMode) { settings.updateSelectCyclesMode(it) }
 
 @Composable
