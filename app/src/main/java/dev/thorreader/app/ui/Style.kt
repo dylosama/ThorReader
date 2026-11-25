@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -111,11 +110,19 @@ fun HouseBadge(
     }
 }
 
-/** House badge with a tiny spinner: background work in progress. */
+/**
+ * House badge for background work in progress. The little ring is drawn ONCE (no spinning):
+ * an endless animation would redraw the screen 60-120 times a second for as long as the work
+ * runs. The text itself shows progress.
+ */
 @Composable
 fun HouseProgressBadge(text: String, modifier: Modifier = Modifier) {
     HouseBadge(text, modifier) {
-        CircularProgressIndicator(color = HouseStyle.TextColor, strokeWidth = 1.5.dp, modifier = Modifier.size(9.dp))
+        Canvas(Modifier.size(9.dp)) {
+            val sw = 1.5.dp.toPx()
+            drawCircle(HouseStyle.TextColor.copy(alpha = 0.35f), size.minDimension / 2 - sw / 2, style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
+            drawArc(HouseStyle.TextColor, -90f, 120f, false, style = androidx.compose.ui.graphics.drawscope.Stroke(sw, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+        }
     }
 }
 

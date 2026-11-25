@@ -40,7 +40,10 @@ fun isbnOf(s: String): String? {
 
 private fun newParser(input: InputStream): XmlPullParser = Xml.newPullParser().apply {
     setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-    setInput(input, null)
+    // No DOCTYPE processing and the DOCTYPE itself removed: no external entities (XXE),
+    // no entity expansion bombs. Input is size-capped.
+    setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL, false)
+    setInput(java.io.ByteArrayInputStream(dev.thorreader.app.io.SafeXml.read(input)), null)
 }
 
 private val XmlPullParser.local: String get() = name.substringAfter(':').lowercase()
@@ -136,7 +139,7 @@ object EpubMeta {
             val href = coverHref ?: coverId?.let { manifest[it] }
             if (href != null) {
                 val path = resolve(opfDir, href)
-                zip.getEntry(path)?.let { e -> m.coverBytes = zip.getInputStream(e).use { it.readBytes() } }
+                zip.getEntry(path)?.let { e -> m.coverBytes = zip.getInputStream(e).use { dev.thorreader.app.io.Limits.readCapped(it, dev.thorreader.app.io.Limits.MAX_PAGE, "the cover") } }
             }
         }
     }

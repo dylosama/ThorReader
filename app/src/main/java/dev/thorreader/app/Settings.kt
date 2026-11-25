@@ -321,6 +321,15 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putBoolean("swipe_swap", on).apply()
     }
 
+    /** Size limit for caches the app can re-create (unpacked comics, layouts, lookups...). */
+    var cacheLimitMb by mutableIntStateOf(prefs.getInt("cache_limit_mb", dev.thorreader.app.io.CacheBudget.DEFAULT_MB))
+        private set
+
+    fun updateCacheLimit(mb: Int) {
+        cacheLimitMb = mb
+        prefs.edit().putInt("cache_limit_mb", mb).apply()
+    }
+
     // ---- online book info --------------------------------------------------------------
 
     /** "Look up book info online" (default on). */

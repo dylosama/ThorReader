@@ -144,9 +144,20 @@ fun ReaderScreen(session: ReaderSession, screen: Screen, mode: ReadingMode) {
                         PageSlot(session, p, view.units[1 - leftIdx], p.slotFor(view, 1 - leftIdx), screen, setOf(Side.RIGHT), Modifier.weight(1f).fillMaxHeight())
                     }
                 }
-                // Small, non-blocking progress indicator (background layout etc.).
+                // Small, non-blocking progress indicator (background layout etc.): tucked into the
+                // top-left corner margin of each page screen, right of a bookmark ribbon there.
                 session.status?.let { s ->
-                    HouseProgressBadge(s, Modifier.align(Alignment.BottomCenter).padding(bottom = HouseStyle.EdgeGap))
+                    val topLeftUnit: PageUnit? = when {
+                        mode.isBook -> {
+                            val screenIsLeft = (screen == Screen.TOP) == (mode == ReadingMode.BOOK)
+                            val i = bookUnitIndexFor(screen, mode, rtl).let { if (session.isSwapped(mode)) 1 - it else it }
+                            if (screenIsLeft) view.units.getOrNull(i) else null
+                        }
+                        view.wide || view.units.size == 1 -> if (rtl) null else view.units.firstOrNull()
+                        else -> view.units.getOrNull(if (rtl) 1 else 0)
+                    }
+                    val ribbonThere = session.bookmark?.let { a -> topLeftUnit?.let { unitHolds(it, a) } } == true
+                    CornerBadge(s, Modifier.align(Alignment.TopStart).padding(start = if (ribbonThere) 50.dp else 3.dp, top = 2.dp))
                 }
             }
         }
@@ -572,4 +583,23 @@ private fun SwapPillOverlay(session: ReaderSession) {
             HouseBadge(last)
         }
     }
+}
+
+/**
+ * The background-work badge ("Laying out 42%"): the house pill, a size smaller, so it fits in
+ * the page's top corner margin above the running header. Slightly see-through.
+ */
+@Composable
+private fun CornerBadge(text: String, modifier: Modifier) {
+    Text(
+        text,
+        color = HouseStyle.TextColor,
+        fontSize = 10.sp,
+        maxLines = 1,
+        modifier = modifier
+            .graphicsLayer { alpha = 0.85f }
+            .clip(HouseStyle.Shape)
+            .background(HouseStyle.Background)
+            .padding(horizontal = 7.dp, vertical = 1.dp),
+    )
 }

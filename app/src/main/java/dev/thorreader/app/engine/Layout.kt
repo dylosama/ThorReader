@@ -344,3 +344,41 @@ fun unitHolds(u: PageUnit, a: Anchor): Boolean = when (u) {
 
 /** Index (in reading order) of the unit on the physical LEFT of a two-page view. */
 fun leftUnitIndex(rtl: Boolean) = if (rtl) 1 else 0
+
+/**
+ * "Laying out N%" while [done] of [total] chapters are laid out. Never shows 100: the badge
+ * disappears as soon as the last chapter's pages are usable, instead of sitting at 100%.
+ */
+fun layoutPercent(done: Int, total: Int): Int =
+    if (total <= 0) 0 else (100 * done / total).coerceIn(0, 99)
+
+/**
+ * Each chapter's pages, built once per layout + page configuration ([key]) instead of rebuilding
+ * the whole book every time more chapters are laid out. A chapter is only kept when it is
+ * [final]: its running headers can still change while earlier chapters aren't laid out yet.
+ */
+class ChapterViewCache {
+    private var key: Any? = null
+    private val map = HashMap<Int, List<PageView>>()
+
+    /** How many chapters were built (not served from the cache), for tests and logs. */
+    var builds = 0
+        private set
+
+    fun get(key: Any, chapter: Int, final: Boolean, build: () -> List<PageView>): List<PageView> {
+        if (key != this.key) {
+            map.clear()
+            this.key = key
+        }
+        map[chapter]?.let { return it }
+        builds++
+        val v = build()
+        if (final) map[chapter] = v
+        return v
+    }
+
+    fun clear() {
+        map.clear()
+        key = null
+    }
+}

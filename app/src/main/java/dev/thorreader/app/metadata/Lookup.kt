@@ -14,6 +14,7 @@ import dev.thorreader.app.data.Book
 import dev.thorreader.app.data.saveMeta
 import dev.thorreader.app.data.seriesKey
 import dev.thorreader.app.importer.BookFormat
+import dev.thorreader.app.io.Limits
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -48,10 +49,11 @@ class MetadataLookup(private val app: ThorApp) {
     private var retryJob: Job? = null
 
     fun start() {
-        app.scope.launch(Dispatchers.IO) {
+        app.scope.launch(dev.thorreader.app.Background.dispatcher) {
             rescanAfterUpdate()
             enqueue(app.db.books().idsNeedingLookup(), "start-up (pending or retry)")
             for (id in queue) {
+                dev.thorreader.app.Background.awaitAllowed() // no lookups while turning pages, hidden or screen off
                 synchronized(waiting) { waiting.remove(id) }
                 showProgress()
                 try {
@@ -83,7 +85,7 @@ class MetadataLookup(private val app: ThorApp) {
 
     /** "Refresh info" in the library popup: look this book up again, ignoring the cache. */
     fun refresh(book: Book) {
-        app.scope.launch(Dispatchers.IO) {
+        app.scope.launch(dev.thorreader.app.Background.dispatcher) {
             app.db.books().setLookupState(book.id, "pending", book.needsReview, book.lookupAt)
             try {
                 process(book.id, force = true)
@@ -109,7 +111,7 @@ class MetadataLookup(private val app: ThorApp) {
 
     private fun retrySoon(ms: Long, reason: String) {
         retryJob?.cancel()
-        retryJob = app.scope.launch(Dispatchers.IO) {
+        retryJob = app.scope.launch(dev.thorreader.app.Background.dispatcher) {
             delay(ms)
             enqueue(app.db.books().idsNeedingLookup(), "retry: $reason")
         }
@@ -259,12 +261,12 @@ class MetadataLookup(private val app: ThorApp) {
     /** Download a cover picture into app storage (for books whose file has none). */
     suspend fun downloadCover(url: String): String? = withContext(Dispatchers.IO) {
         runCatching {
-            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            val conn = (URL(Http.requireHttps(url)).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 15_000
                 readTimeout = 20_000
                 setRequestProperty("User-Agent", Http.USER_AGENT)
             }
-            val bytes = try { conn.inputStream.use { it.readBytes() } } finally { conn.disconnect() }
+            val bytes = try { conn.inputStream.use { dev.thorreader.app.io.Limits.readCapped(it, Http.MAX_IMAGE, "a cover") } } finally { conn.disconnect() }
             val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@runCatching null
             val dir = File(app.filesDir, "covers").apply { mkdirs() }
             val out = File(dir, UUID.randomUUID().toString() + ".jpg")
@@ -276,12 +278,12 @@ class MetadataLookup(private val app: ThorApp) {
     /** Small picture for the Edit info candidate list. */
     suspend fun thumbnail(url: String): Bitmap? = withContext(Dispatchers.IO) {
         runCatching {
-            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            val conn = (URL(Http.requireHttps(url)).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 10_000
                 readTimeout = 15_000
                 setRequestProperty("User-Agent", Http.USER_AGENT)
             }
-            try { conn.inputStream.use { BitmapFactory.decodeStream(it) } } finally { conn.disconnect() }
+            try { conn.inputStream.use { Limits.readCapped(it, Http.MAX_IMAGE, "a cover").let { b -> BitmapFactory.decodeByteArray(b, 0, b.size) } } } finally { conn.disconnect() }
         }.getOrNull()
     }
 
@@ -297,6 +299,7 @@ class MetadataLookup(private val app: ThorApp) {
         val books = app.db.books().all()
         Log.i(TAG, "Metadata re-scan of ${books.size} books (new rules)")
         books.forEachIndexed { i, b ->
+            dev.thorreader.app.Background.awaitAllowed()
             withContext(Dispatchers.Main) { status = "Updating book info… ${i + 1} of ${books.size}" }
             val fresh = app.importer.rescan(b) ?: b.copy(genres = Genres.join(Genres.normalize(Genres.split(b.genres))), description = b.description ?: Genres.descriptionFrom(Genres.split(b.genres)))
             app.db.books().saveMeta(fresh.copy(lookupState = "pending", needsReview = false))

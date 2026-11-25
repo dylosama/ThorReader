@@ -113,7 +113,9 @@ class ReflowEngine(
         toc = readToc()
         if (chapterToSpine.size != n) chapterToSpine = mapSpine(n)
         layoutId = id
+        chapterViews.clear()
         val loaded = loadCache(id)
+        tocEntries = null
         Log.i(TAG, "Layout $id for '$title': $n chapters, ${toc.size} TOC entries, ${if (loaded) "from disk cache" else "not cached"} (${System.currentTimeMillis() - t0} ms)")
     }
 
@@ -199,6 +201,7 @@ class ReflowEngine(
                 }
             }
             e.resolved = true
+            tocEntries = null // positions changed: rebuild the header list once
         }
     }
 
@@ -223,8 +226,12 @@ class ReflowEngine(
     /** A real text section (not a cover / title page)? null = not laid out yet. */
     private fun isRealSection(ch: Int): Boolean? = chapters.getOrNull(ch)?.let { it.lineCount >= REAL_SECTION_LINES }
 
+    /** TOC entries for [RunningHeader], built once and rebuilt only when a position resolves. */
+    private var tocEntries: List<RunningHeader.Entry>? = null
+
     private fun headerFor(ch: Int, page: Int, y: Float): String? {
-        val entries = toc.map { RunningHeader.Entry(it.title, it.depth, it.chapter, it.page, it.y, it.hasChildren) }
+        val entries = tocEntries ?: toc.map { RunningHeader.Entry(it.title, it.depth, it.chapter, it.page, it.y, it.hasChildren) }
+            .also { tocEntries = it }
         val r = RunningHeader.choose(entries, title, ch, page, y, ::headingOf, ::isRealSection)
         // Log the source once per chapter (and again if it changes).
         val line = "${r.source}: ${r.text ?: "(none)"} - ${r.detail}"
@@ -245,8 +252,23 @@ class ReflowEngine(
     fun buildViews(cfg: LayoutConfig, lo: Int, hi: Int): List<PageView> {
         val n = cfg.perView
         val views = ArrayList<PageView>()
+        // Chapters 0..prefix-1 are all laid out: their pages (and headers) are final and cached.
+        val prefix = chapters.indexOfFirst { it == null }.let { if (it < 0) chapters.size else it }
         for (ch in lo..hi) {
             val chapter = chapters.getOrNull(ch) ?: continue
+            views += chapterViews.get(layoutId to cfg, ch, final = ch < prefix) { chapterPages(cfg, ch, chapter) }
+        }
+        if (views.isEmpty()) views += PageView(List(n) { BlankUnit })
+        return views
+    }
+
+    private val chapterViews = ChapterViewCache()
+
+    /** The screen pages of one chapter (it starts a new view). */
+    private fun chapterPages(cfg: LayoutConfig, ch: Int, chapter: Chapter): List<PageView> {
+        val n = cfg.perView
+        val views = ArrayList<PageView>()
+        run {
             resolveToc(ch)
             val units = ArrayList<PageUnit>()
             for (seg in chapter.segs) {
@@ -272,7 +294,6 @@ class ReflowEngine(
             while (units.size % n != 0) units += BlankUnit
             units.chunked(n).forEach { views += PageView(it) }
         }
-        if (views.isEmpty()) views += PageView(List(n) { BlankUnit })
         return views
     }
 

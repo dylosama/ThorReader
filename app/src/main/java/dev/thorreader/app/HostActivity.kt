@@ -47,7 +47,7 @@ abstract class HostActivity : ComponentActivity(), HostActions {
 
     private fun persist(uri: Uri) {
         runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            .onFailure { Log.w(TAG, "Could not persist permission for $uri", it) }
+            .onFailure { Log.w(TAG, "Could not keep permission for ${uri.lastPathSegment?.substringAfterLast('/')}", it) }
     }
 
     override fun pickFiles() = pickFiles.launch(arrayOf("*/*"))
@@ -55,7 +55,7 @@ abstract class HostActivity : ComponentActivity(), HostActions {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.prefer60Hz(display)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             CompositionLocalProvider(LocalHost provides this) { PhysicalScreen(screen) }
@@ -76,6 +76,11 @@ abstract class HostActivity : ComponentActivity(), HostActions {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 snapshotFlow { app.settings.mode to app.bottomFallback }.collect { reconcile() }
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                snapshotFlow { app.keepScreenOn }.collect { window.keepScreenOn(it) }
             }
         }
         Log.i(TAG, "${javaClass.simpleName} created on display ${display?.displayId}")
@@ -107,7 +112,15 @@ abstract class HostActivity : ComponentActivity(), HostActions {
         super.onPause()
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean = app.handleKey(event) || super.dispatchKeyEvent(event)
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        app.userActive()
+        return app.handleKey(event) || super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) app.userActive()
+        return super.dispatchTouchEvent(ev)
+    }
 
     private fun hideSystemBars() {
         WindowInsetsControllerCompat(window, window.decorView).apply {

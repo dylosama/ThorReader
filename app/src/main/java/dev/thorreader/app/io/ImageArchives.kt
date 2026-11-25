@@ -32,15 +32,28 @@ interface ImageArchive : Closeable {
     fun comicInfo(): ByteArray?
 }
 
-/** CBZ: random access straight from the user's file. */
-class ZipImageArchive(file: SafFile) : ImageArchive {
-    private val zip: ZipFile = ZipFile.builder().setSeekableByteChannel(file.newChannel()).get()
+/**
+ * CBZ: random access straight from the user's file (nothing is extracted to disk). Reads are
+ * size-capped, and symlink entries are ignored.
+ */
+class ZipImageArchive(channel: java.nio.channels.SeekableByteChannel) : ImageArchive {
+    constructor(file: SafFile) : this(file.newChannel())
+
+    private val zip: ZipFile = try {
+        ZipFile.builder().setSeekableByteChannel(channel).get()
+    } catch (e: Exception) {
+        throw IOException("This comic file is damaged (not a readable ZIP).", e)
+    }
     private val entries: Map<String, ZipArchiveEntry>
     override val pages: List<String>
     private val comicInfoEntry: ZipArchiveEntry?
 
     init {
-        val all = zip.entries.toList().filter { !it.isDirectory }
+        val all = zip.entries.toList().filter { !it.isDirectory && !it.isUnixSymlink }
+        if (all.size > Limits.MAX_ENTRIES) {
+            zip.close()
+            throw TooLargeException("the number of files")
+        }
         entries = all.associateBy { it.name }
         pages = all.map { it.name }.filter(::isImageName).sortedWith(NaturalOrder)
         comicInfoEntry = all.firstOrNull { isComicInfoName(it.name) }
@@ -48,13 +61,13 @@ class ZipImageArchive(file: SafFile) : ImageArchive {
 
     override fun read(page: String): ByteArray {
         val e = entries[page] ?: throw IOException("Missing $page")
-        return zip.getInputStream(e).use { it.readBytes() }
+        return zip.getInputStream(e).use { Limits.readCapped(it, Limits.MAX_PAGE, "a page") }
     }
 
     override fun open(page: String): java.io.InputStream =
         zip.getInputStream(entries[page] ?: throw IOException("Missing $page"))
 
-    override fun comicInfo(): ByteArray? = comicInfoEntry?.let { e -> zip.getInputStream(e).use { it.readBytes() } }
+    override fun comicInfo(): ByteArray? = comicInfoEntry?.let { e -> zip.getInputStream(e).use { SafeXml.read(it) } }
 
     override fun close() = zip.close()
 }
@@ -95,8 +108,8 @@ object ComicArchives {
             if (!wanted && !solid) continue
             if (wanted) {
                 val out = ByteArrayOutputStream()
-                rar.extractFile(h, out)
-                if (h.fileName == first) firstBytes = out.toByteArray() else info = out.toByteArray()
+                rar.extractFile(h, Limits.CappedOutput(out, Limits.MAX_PAGE, Limits.Budget(Limits.MAX_PAGE)))
+                if (h.fileName == first) firstBytes = out.toByteArray() else info = SafeXml.strip(out.toByteArray())
             } else {
                 rar.extractFile(h, OutputStream.nullOutputStream())
             }
@@ -116,8 +129,8 @@ object ComicArchives {
             while (true) {
                 val e = z.nextEntry ?: break
                 if (e.isDirectory) continue
-                if (e.name == first) firstBytes = z.getInputStream(e).readBytes()
-                else if (isComicInfoName(e.name)) info = z.getInputStream(e).readBytes()
+                if (e.name == first) firstBytes = Limits.readCapped(z.getInputStream(e), Limits.MAX_PAGE, "a page")
+                else if (isComicInfoName(e.name)) info = SafeXml.read(z.getInputStream(e))
                 if (firstBytes != null && (info != null || !hasInfo)) break
             }
             ComicScan(images.size, firstBytes, info)
@@ -137,48 +150,63 @@ object ComicArchives {
         }
         dir.deleteRecursively()
         dir.mkdirs()
-        Log.i(TAG, "Unpacking ${format.name} into ${dir.path}")
-        when (format) {
-            BookFormat.CBR -> openRar(file).use { rar ->
-                if (rar.isEncrypted) throw IOException("Password-protected RAR")
-                val headers = rar.fileHeaders.filter { !it.isDirectory }
-                val order = headers.map { it.fileName }.filter(::isImageName).sortedWith(NaturalOrder)
-                    .withIndex().associate { it.value to it.index }
-                headers.forEachIndexed { i, h ->
-                    val target = targetFile(dir, h.fileName, order)
-                    if (target == null) {
-                        if (rar.mainHeader?.isSolid == true) rar.extractFile(h, OutputStream.nullOutputStream())
-                    } else {
-                        target.outputStream().use { rar.extractFile(h, it) }
+        Log.i(TAG, "Unpacking ${format.name} ($key)")
+        val budget = Limits.Budget(Limits.MAX_UNPACKED_TOTAL)
+        try {
+            when (format) {
+                BookFormat.CBR -> openRar(file).use { rar ->
+                    if (rar.isEncrypted) throw IOException("Password-protected RAR")
+                    val headers = rar.fileHeaders.filter { !it.isDirectory }
+                    if (headers.size > Limits.MAX_ENTRIES) throw TooLargeException("the number of files")
+                    val order = headers.map { it.fileName }.filter(::isImageName).sortedWith(NaturalOrder)
+                        .withIndex().associate { it.value to it.index }
+                    headers.forEachIndexed { i, h ->
+                        val target = targetFile(dir, h.fileName, order)
+                        if (target == null) {
+                            if (rar.mainHeader?.isSolid == true) rar.extractFile(h, OutputStream.nullOutputStream())
+                        } else {
+                            target.outputStream().use { rar.extractFile(h, Limits.CappedOutput(it, Limits.MAX_UNPACKED_FILE, budget)) }
+                        }
+                        progress((i + 1f) / headers.size)
                     }
-                    progress((i + 1f) / headers.size)
                 }
-            }
-            BookFormat.CB7 -> SevenZFile.builder().setSeekableByteChannel(file.newChannel()).get().use { z ->
-                val all = z.entries.filter { !it.isDirectory }
-                val order = all.map { it.name }.filter(::isImageName).sortedWith(NaturalOrder)
-                    .withIndex().associate { it.value to it.index }
-                var n = 0
-                while (true) {
-                    val e = z.nextEntry ?: break
-                    if (e.isDirectory) continue
-                    targetFile(dir, e.name, order)?.outputStream()?.use { out -> z.getInputStream(e).copyTo(out) }
-                    n++
-                    progress(n.toFloat() / all.size.coerceAtLeast(1))
+                BookFormat.CB7 -> SevenZFile.builder().setSeekableByteChannel(file.newChannel()).get().use { z ->
+                    val all = z.entries.filter { !it.isDirectory }
+                    if (all.size > Limits.MAX_ENTRIES) throw TooLargeException("the number of files")
+                    val order = all.map { it.name }.filter(::isImageName).sortedWith(NaturalOrder)
+                        .withIndex().associate { it.value to it.index }
+                    var n = 0
+                    while (true) {
+                        val e = z.nextEntry ?: break
+                        if (e.isDirectory) continue
+                        targetFile(dir, e.name, order)?.outputStream()?.use { out ->
+                            z.getInputStream(e).copyTo(Limits.CappedOutput(out, Limits.MAX_UNPACKED_FILE, budget))
+                        }
+                        n++
+                        progress(n.toFloat() / all.size.coerceAtLeast(1))
+                    }
                 }
+                else -> throw IllegalArgumentException(format.name)
             }
-            else -> throw IllegalArgumentException(format.name)
+        } catch (t: Throwable) {
+            dir.deleteRecursively() // never leave half an unpack (or a bomb's output) behind
+            throw t
         }
         done.createNewFile()
-        prune(root)
+        // Clearing out older unpacked comics can take a while: not on the way to the first page.
+        Thread({ runCatching { prune(root) } }, "ThorReader-prune").apply { priority = Thread.MIN_PRIORITY }.start()
         return dir
     }
 
-    private fun targetFile(dir: File, name: String, order: Map<String, Int>): File? {
-        if (isComicInfoName(name)) return File(dir, "ComicInfo.xml")
+    /**
+     * Where an entry is written: pages are renamed "00042.jpg" by their reading order (the name
+     * inside the archive is never used as a path), ComicInfo.xml keeps its name. Anything else
+     * is skipped. Always a direct child of [dir].
+     */
+    internal fun targetFile(dir: File, name: String, order: Map<String, Int>): File? {
+        if (isComicInfoName(name)) return Limits.childFile(dir, "ComicInfo.xml")
         val idx = order[name] ?: return null
-        val ext = name.substringAfterLast('.', "jpg").lowercase()
-        return File(dir, "%05d.%s".format(idx, ext))
+        return Limits.childFile(dir, "%05d.%s".format(idx, Limits.safeExtension(name)))
     }
 
     private fun prune(root: File) {
@@ -188,23 +216,39 @@ object ComicArchives {
 }
 
 /** CBT (tar): random access straight from the user's file, like CBZ. */
-class TarImageArchive(file: SafFile) : ImageArchive {
-    private val tar = org.apache.commons.compress.archivers.tar.TarFile(file.newChannel())
-    private val entries = tar.entries.filter { it.isFile }.associateBy { it.name }
+class TarImageArchive(channel: java.nio.channels.SeekableByteChannel) : ImageArchive {
+    constructor(file: SafFile) : this(file.newChannel())
+
+    private val tar = try {
+        org.apache.commons.compress.archivers.tar.TarFile(channel)
+    } catch (e: Exception) {
+        throw IOException("This comic file is damaged (not a readable TAR).", e)
+    }
+
+    // Regular files only: links (symlinks / hard links) are ignored.
+    private val entries = tar.entries.filter { it.isFile && !it.isSymbolicLink && !it.isLink }.also {
+        if (it.size > Limits.MAX_ENTRIES) {
+            tar.close()
+            throw TooLargeException("the number of files")
+        }
+    }.associateBy { it.name }
     override val pages: List<String> = entries.keys.filter(::isImageName).sortedWith(NaturalOrder)
     private val infoEntry = entries.values.firstOrNull { isComicInfoName(it.name) }
 
-    override fun read(page: String): ByteArray = open(page).use { it.readBytes() }
+    override fun read(page: String): ByteArray = open(page).use { Limits.readCapped(it, Limits.MAX_PAGE, "a page") }
     override fun open(page: String): java.io.InputStream = tar.getInputStream(entries[page] ?: throw IOException("Missing $page"))
-    override fun comicInfo(): ByteArray? = infoEntry?.let { e -> tar.getInputStream(e).use { it.readBytes() } }
+    override fun comicInfo(): ByteArray? = infoEntry?.let { e -> tar.getInputStream(e).use { SafeXml.read(it) } }
     override fun close() = tar.close()
 }
 
 /** A single picture file shown as a one-page comic. */
 class SingleImageArchive(private val file: SafFile, name: String) : ImageArchive {
     override val pages: List<String> = listOf(name)
-    override fun read(page: String): ByteArray = file.readAll()
-    override fun open(page: String): java.io.InputStream = file.readAll().inputStream()
+    override fun read(page: String): ByteArray {
+        if (file.size > Limits.MAX_PAGE) throw TooLargeException("this picture")
+        return file.readAll()
+    }
+    override fun open(page: String): java.io.InputStream = read(page).inputStream()
     override fun comicInfo(): ByteArray? = null
     override fun close() = Unit
 }
@@ -229,7 +273,7 @@ class SafFolderImageArchive(private val context: Context, folder: android.net.Ur
             android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
             android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE,
         )
-        context.contentResolver.query(list, cols, null, null, null)?.use { c ->
+        (try { context.contentResolver.query(list, cols, null, null, null) } catch (e: SecurityException) { throw NoAccessException() })?.use { c ->
             while (c.moveToNext()) {
                 val id = c.getString(0) ?: continue
                 val name = c.getString(1) ?: continue
@@ -241,11 +285,11 @@ class SafFolderImageArchive(private val context: Context, folder: android.net.Ur
         if (pages.isEmpty()) throw IOException("No pictures in this folder any more")
     }
 
-    override fun read(page: String): ByteArray = open(page).use { it.readBytes() }
+    override fun read(page: String): ByteArray = open(page).use { Limits.readCapped(it, Limits.MAX_PAGE, "a page") }
     override fun open(page: String): java.io.InputStream =
         context.contentResolver.openInputStream(children[page] ?: throw IOException("Missing $page")) ?: throw IOException("Cannot read $page")
     override fun comicInfo(): ByteArray? = children.entries.firstOrNull { isComicInfoName(it.key) }?.let { e ->
-        context.contentResolver.openInputStream(e.value)?.use { it.readBytes() }
+        context.contentResolver.openInputStream(e.value)?.use { SafeXml.read(it) }
     }
     override fun close() = Unit
 }

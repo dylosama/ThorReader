@@ -54,7 +54,8 @@ class Http(private val cacheDir: File) {
      * request without any secret. Throws [RetryLaterException], [OfflineException] or
      * [BadKeyException].
      */
-    suspend fun request(url: String, cacheKey: String, body: String? = null, useCache: Boolean = true): String {
+    suspend fun request(rawUrl: String, cacheKey: String, body: String? = null, useCache: Boolean = true): String {
+        val url = requireHttps(rawUrl)
         val file = File(cacheDir, sha1(cacheKey + (body ?: "")) + ".json")
         if (useCache && file.exists() && System.currentTimeMillis() - file.lastModified() < CACHE_MS) return file.readText()
         val h = host(URL(url).host)
@@ -105,7 +106,7 @@ class Http(private val cacheDir: File) {
                 }
                 h.backoffMs = 30_000L
                 val text = try {
-                    conn.inputStream.use { String(it.readBytes(), Charsets.UTF_8) }
+                    conn.inputStream.use { String(dev.thorreader.app.io.Limits.readCapped(it, MAX_JSON, "a server answer"), Charsets.UTF_8) }
                 } catch (e: IOException) {
                     throw OfflineException("download broke off (${e.javaClass.simpleName})")
                 }
@@ -119,6 +120,17 @@ class Http(private val cacheDir: File) {
 
     companion object {
         const val USER_AGENT = "ThorReader/0.2.0 (Android e-reader)"
+
+        /** Largest answer we accept from a metadata service (JSON), and for pictures. */
+        const val MAX_JSON = 4L shl 20
+        const val MAX_IMAGE = 10L shl 20
+
+        /** Only https:// addresses are ever fetched (also enforced by the network security config). */
+        fun requireHttps(url: String): String {
+            val u = if (url.startsWith("http://")) "https://" + url.removePrefix("http://") else url
+            if (!u.startsWith("https://")) throw java.io.IOException("Only HTTPS addresses are allowed")
+            return u
+        }
         private const val CACHE_MS = 30L * 24 * 3600 * 1000
         private const val MAX_BACKOFF_MS = 10L * 60 * 1000
 

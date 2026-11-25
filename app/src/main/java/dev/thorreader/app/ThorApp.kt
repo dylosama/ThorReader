@@ -143,6 +143,7 @@ class ThorApp : Application() {
         lookup = dev.thorreader.app.metadata.MetadataLookup(this).also { it.start() }
         settings.onTextChanged = ::saveBookText
         registerScreenReceiver()
+        trimCaches()
         refreshScreens()
         MuPdf.logNativeSupport()
         // Settings.mode always starts as Mode 3: the library on the top screen.
@@ -234,6 +235,7 @@ class ThorApp : Application() {
             applyBookText(book)
             Log.i(TAG, "Opening '${book.title}' (${book.format}) in mode ${mode.number}: ${book.uri}")
             session = ReaderSession(this@ThorApp, book.copy(mode = mode.name))
+            userActive()
             setMode(mode)
             tutorialDone(TutorialStep.ADD_BOOKS)
             tutorialDone(TutorialStep.OPEN_BOOK)
@@ -276,14 +278,47 @@ class ThorApp : Application() {
     private var autoBookmarkBook: Long? = null
     private var returnJob: Job? = null
 
+    /** Keep the re-creatable caches within the limit (background, low priority). */
+    fun trimCaches() {
+        scope.launch(Background.dispatcher) { runCatching { dev.thorreader.app.io.CacheBudget.trim(this@ThorApp, settings.cacheLimitMb) } }
+    }
+
+    // ---- screen on while reading ---------------------------------------------------------
+
+    /**
+     * Keep the screen on while reading, but not forever: it is released [KEEP_ON_MS] after the
+     * last touch or button, so a forgotten book lets the screen time out. The library never
+     * holds the screen on.
+     */
+    var keepScreenOn by mutableStateOf(false)
+        private set
+    private var keepOnJob: Job? = null
+
+    /** Any touch or button on either screen. */
+    fun userActive() {
+        if (session == null) {
+            keepScreenOn = false
+            return
+        }
+        if (!keepScreenOn) keepScreenOn = true
+        keepOnJob?.cancel()
+        keepOnJob = scope.launch {
+            delay(KEEP_ON_MS)
+            keepScreenOn = false
+            Log.i(TAG, "No input for ${KEEP_ON_MS / 60000} min: screen may time out now")
+        }
+    }
+
     fun onHostStart(who: String) {
         startedActivities++
+        Background.setVisible(true)
         if (startedActivities == 1) onReturn("$who started again")
     }
 
     fun onHostStop(who: String) {
         startedActivities = (startedActivities - 1).coerceAtLeast(0)
         if (startedActivities > 0) return
+        Background.setVisible(false) // background work pauses until we're visible again
         if (SystemClock.uptimeMillis() - lastModeChangeAt < HANDOVER_GUARD_MS) {
             Log.i(TAG, "$who stopped during a mode change: not leaving")
             return
@@ -294,8 +329,14 @@ class ThorApp : Application() {
     private val screenReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
             when (intent.action) {
-                android.content.Intent.ACTION_SCREEN_OFF -> onLeave("screen off")
-                android.content.Intent.ACTION_SCREEN_ON -> if (startedActivities > 0) onReturn("screen on")
+                android.content.Intent.ACTION_SCREEN_OFF -> {
+                    Background.setScreenOn(false) // no work while the screen is off
+                    onLeave("screen off")
+                }
+                android.content.Intent.ACTION_SCREEN_ON -> {
+                    Background.setScreenOn(true)
+                    if (startedActivities > 0) onReturn("screen on")
+                }
             }
         }
     }
@@ -351,6 +392,7 @@ class ThorApp : Application() {
         returnJob?.cancel()
         s.close()
         session = null
+        keepScreenOn = false // the library lets the screen time out normally
         menuScreen = null
         if (returnToLibrary) setMode(ReadingMode.TOP, showLabel = false)
     }
@@ -636,6 +678,7 @@ class ThorApp : Application() {
             private set
         private const val HANDOVER_GUARD_MS = 2000L
         private const val AUTO_OFF_DELAY_MS = 1200L
+        private const val KEEP_ON_MS = 10 * 60_000L
         private const val REPEAT_FIRST_DELAY_MS = 450L
         private const val REPEAT_START_MS = 320L
         private const val REPEAT_FASTEST_MS = 60L

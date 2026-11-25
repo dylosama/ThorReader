@@ -9,7 +9,10 @@ import java.io.InputStream
 
 private fun parser(input: InputStream): XmlPullParser = Xml.newPullParser().apply {
     setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-    setInput(input, null)
+    // No DOCTYPE processing and the DOCTYPE itself removed: no external entities (XXE),
+    // no entity expansion bombs. Input is size-capped.
+    setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL, false)
+    setInput(java.io.ByteArrayInputStream(dev.thorreader.app.io.SafeXml.read(input)), null)
 }
 
 private fun XmlPullParser.attr(name: String): String? {
@@ -17,7 +20,8 @@ private fun XmlPullParser.attr(name: String): String? {
     return null
 }
 
-private fun ZipFile.bytes(path: String): ByteArray? = getEntry(path)?.let { e -> getInputStream(e).use { it.readBytes() } }
+private fun ZipFile.bytes(path: String): ByteArray? =
+    getEntry(path)?.let { e -> getInputStream(e).use { dev.thorreader.app.io.Limits.readCapped(it, dev.thorreader.app.io.Limits.MAX_XML, "a document part") } }
 
 /** Normalises "word/../media/x.png" style paths inside a zip. */
 private fun zipPath(base: String, target: String): String {

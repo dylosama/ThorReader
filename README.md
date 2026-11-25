@@ -81,6 +81,43 @@ hand is never overwritten. Turn it off in **Settings** (the ⚙ in the library).
   tagged with ComicTagger) use that information without a key.
 - Books that couldn't be matched confidently show under **Needs review** in the library.
 
+## Privacy & security
+
+**No tracking.** Thor Reader has no analytics, no ads, no accounts, no crash reporting and no
+background syncing. It never sends your books, your reading position or your library anywhere.
+
+**What it can access**
+
+- Only the files and folders you pick with **Add files** / **Add folder** (Android's file
+  picker). It has no storage permission, reads your files in place and never changes them.
+- Its own private storage: the library database, cover pictures, and caches it can re-create
+  (unpacked comics, page layouts, converted books, saved online answers - limit and
+  **Clear cache** in Settings).
+- Permissions: Internet (book info only), network state (to retry a lookup when you're back
+  online) and vibration (the small tick at the end of a book). Nothing else.
+
+**Network calls** - only when **Look up book info online** is on (Settings), HTTPS only:
+
+| Service | When | What is sent |
+|---|---|---|
+| graphql.anilist.co | manga and unlabelled comics | the series name |
+| openlibrary.org, covers.openlibrary.org | books | the title and author, or the ISBN; cover download |
+| comicvine.gamespot.com | comics, only if you entered a key | the series name and issue number, your key |
+
+Each book is looked up once, answers are cached for 30 days, and failures are retried later
+(never in a loop). Book content never leaves the device.
+
+**Safety**
+
+- The ComicVine key is encrypted with a key kept in the Android Keystore, never written to
+  logs, and the app's data is excluded from backups and device transfers.
+- Comic archives and e-books are checked before use: file names inside archives can't escape
+  their folder, and oversized or "zip bomb" content is refused. XML in books is read without
+  external entities. Damaged files show a message instead of crashing.
+- No JavaScript is ever run (there is no web view; MuPDF's PDF scripts are off), and books
+  can't load anything from the internet.
+- Release builds only log warnings and errors, never file contents or keys.
+
 ## Install
 
 1. On the Thor, open this repository's **Releases** page and download the latest

@@ -33,7 +33,7 @@ class SafFile private constructor(private val pfd: ParcelFileDescriptor) : Close
 
     fun readAll(): ByteArray {
         val n = size
-        if (n > Int.MAX_VALUE - 16) throw IOException("File too large")
+        if (n > Limits.MAX_FILE_IN_MEMORY) throw TooLargeException("the file")
         val buf = ByteBuffer.allocate(n.toInt())
         var pos = 0L
         while (buf.hasRemaining()) {
@@ -66,8 +66,15 @@ class SafFile private constructor(private val pfd: ParcelFileDescriptor) : Close
         fun open(file: java.io.File): SafFile = SafFile(ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY))
 
         fun open(context: Context, uri: Uri): SafFile {
-            val pfd = context.contentResolver.openFileDescriptor(uri, "r")
-                ?: throw IOException("Cannot open $uri")
+            // Only files the user picked (persisted SAF grants). If that permission was taken
+            // back (or the file moved), say so plainly instead of crashing.
+            val pfd = try {
+                context.contentResolver.openFileDescriptor(uri, "r")
+            } catch (e: SecurityException) {
+                throw NoAccessException()
+            } catch (e: java.io.FileNotFoundException) {
+                throw IOException("The file can't be found any more (moved, renamed or deleted?).")
+            } ?: throw IOException("The file can't be opened.")
             val f = SafFile(pfd)
             try {
                 f.channel.size() // fails for non-seekable pipes (some cloud providers)
@@ -212,3 +219,8 @@ object NaturalOrder : Comparator<String> {
         return (a.length - i) - (b.length - j)
     }
 }
+
+/** The permission to read a book's file (or folder) is gone. */
+class NoAccessException : IOException(
+    "Thor Reader is no longer allowed to read this file.\nAdd it again with + (Add files / Add folder).",
+)

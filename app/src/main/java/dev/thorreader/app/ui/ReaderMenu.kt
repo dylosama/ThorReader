@@ -388,10 +388,11 @@ private fun Section(title: String) {
 @Composable
 private fun Clock() {
     var now by remember { mutableStateOf(Date()) }
+    // Once a minute, on the minute, and only while the menu (this composable) is showing.
     LaunchedEffect(Unit) {
         while (true) {
             now = Date()
-            delay(10_000)
+            delay(60_000 - System.currentTimeMillis() % 60_000 + 50)
         }
     }
     val fmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }

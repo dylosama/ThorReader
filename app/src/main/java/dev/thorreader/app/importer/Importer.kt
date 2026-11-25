@@ -52,7 +52,7 @@ class Importer(private val context: Context, private val dao: BookDao, private v
 
     fun importFiles(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        scope.launch(Dispatchers.IO) {
+        scope.launch(dev.thorreader.app.Background.dispatcher) {
             mutex.withLock {
                 guarded {
                     val cands = uris.mapNotNull { u -> queryFileInfo(context, u)?.let { Candidate(u, it.name, it.size) } }
@@ -63,7 +63,7 @@ class Importer(private val context: Context, private val dao: BookDao, private v
     }
 
     fun importFolder(tree: Uri) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(dev.thorreader.app.Background.dispatcher) {
             mutex.withLock {
                 guarded {
                     postStatus("Scanning folder…")
@@ -130,6 +130,7 @@ class Importer(private val context: Context, private val dao: BookDao, private v
         val newIds = ArrayList<Long>()
         var comicsAdded = 0
         cands.forEachIndexed { i, c ->
+            dev.thorreader.app.Background.awaitAllowed() // pauses while reading pages / app hidden / screen off
             val format = c.format ?: BookFormat.fromFileName(c.name)
             if (format == null || c.uri.toString() in existing) {
                 skipped++

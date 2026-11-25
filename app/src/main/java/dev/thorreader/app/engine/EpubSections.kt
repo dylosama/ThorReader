@@ -20,14 +20,24 @@ class EpubSections(file: SafFile) : Closeable {
 
     private val headings = HashMap<Int, String?>()
 
-    /** Heading (h1-h3) at the start of spine item [index], or null. */
-    fun heading(index: Int): String? = headings.getOrPut(index) {
-        val path = spine.getOrNull(index) ?: return@getOrPut null
-        val entry = zip.getEntry(path) ?: return@getOrPut null
-        runCatching {
-            val html = zip.getInputStream(entry).use { String(it.readBytes(), Charsets.UTF_8) }
-            HtmlHeading.find(html)
-        }.getOrNull()
+    /**
+     * Heading (h1-h3) at the start of spine item [index], or null. Read once per section:
+     * "no heading" is remembered too. (getOrPut treats a stored null as missing, which made
+     * every page of a heading-less chapter re-read and re-scan that chapter's whole HTML:
+     * 2.8 s before Dune's first page.)
+     */
+    fun heading(index: Int): String? {
+        if (headings.containsKey(index)) return headings[index]
+        val h = run {
+            val path = spine.getOrNull(index) ?: return@run null
+            val entry = zip.getEntry(path) ?: return@run null
+            runCatching {
+                val html = zip.getInputStream(entry).use { String(dev.thorreader.app.io.Limits.readCapped(it, dev.thorreader.app.io.Limits.MAX_XML, "a chapter"), Charsets.UTF_8) }
+                HtmlHeading.find(html)
+            }.getOrNull()
+        }
+        headings[index] = h
+        return h
     }
 
     private fun readSpine(): List<String> {
@@ -65,7 +75,10 @@ class EpubSections(file: SafFile) : Closeable {
 
     private fun parser(s: java.io.InputStream) = Xml.newPullParser().apply {
         setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-        setInput(s, null)
+        // No DOCTYPE processing and the DOCTYPE itself removed: no external entities (XXE),
+        // no entity expansion bombs. Input is size-capped.
+        setFeature(XmlPullParser.FEATURE_PROCESS_DOCDECL, false)
+        setInput(java.io.ByteArrayInputStream(dev.thorreader.app.io.SafeXml.read(s)), null)
     }
 
     private fun resolve(base: String, href: String): String {

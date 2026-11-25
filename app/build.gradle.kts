@@ -46,7 +46,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8: removes unused code and resources, and strips Log.v/d/i (see proguard-rules.pro).
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (keystoreProps.isNotEmpty()) signingConfig = signingConfigs.getByName("release")
         }
         debug {
@@ -102,12 +105,12 @@ dependencies {
     implementation("com.artifex.mupdf:fitz:1.28.5")
 
     // Comic archives: CBR (RAR4), CBZ/CB7 (zip/7z)
-    implementation("com.github.junrar:junrar:7.5.5")
+    implementation("com.github.junrar:junrar:8.1.2")
     implementation("org.apache.commons:commons-compress:1.28.0")
-    implementation("org.tukaani:xz:1.10")
+    implementation("org.tukaani:xz:1.12")
 
     // Markdown -> HTML when MuPDF can't open .md itself (BSD 2-Clause)
-    implementation("org.commonmark:commonmark:0.24.0")
+    implementation("org.commonmark:commonmark:0.33.0")
 
     testImplementation("junit:junit:4.13.2")
     // Android has org.json built in; plain JVM unit tests need the real one.

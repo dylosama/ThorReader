@@ -186,6 +186,9 @@ fun SettingsPanel() {
             color = HouseStyle.Subtle, fontSize = 13.sp,
         )
 
+        SectionLabel("Storage")
+        StorageSection()
+
         SectionLabel("Library lists")
         HiddenItemsSection()
 
@@ -411,4 +414,47 @@ private fun CandidateRow(c: Candidate, selected: Boolean, onPick: () -> Unit) {
             Text("match ${(c.score * 100).toInt()}%", color = SubtleText, fontSize = 11.sp)
         }
     }
+}
+
+/**
+ * Cache limit and "Clear cache": unpacked comics, layouts, converted books and lookup answers,
+ * all re-created when needed. Covers and the library itself are never removed.
+ */
+@Composable
+private fun StorageSection() {
+    val app = ThorApp.instance
+    val settings = app.settings
+    val scope = rememberCoroutineScope()
+    var bytes by remember { mutableStateOf<Long?>(null) }
+    var cleared by remember { mutableStateOf<String?>(null) }
+    androidx.compose.runtime.LaunchedEffect(cleared, settings.cacheLimitMb) {
+        bytes = withContext(dev.thorreader.app.Background.dispatcher) { dev.thorreader.app.io.CacheBudget.totalBytes(app) }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Cache limit", color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        dev.thorreader.app.io.CacheBudget.CHOICES_MB.forEach { mb ->
+            Chip(if (mb >= 1000) "${mb / 1000} GB" else "$mb MB", settings.cacheLimitMb == mb) {
+                settings.updateCacheLimit(mb)
+                app.trimCaches()
+            }
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            "In use: " + (bytes?.let { "%.0f MB".format(it / 1048576.0) } ?: "…"),
+            color = HouseStyle.Subtle, fontSize = 13.sp, modifier = Modifier.weight(1f),
+        )
+        Chip("Clear cache") {
+            scope.launch {
+                val freed = withContext(dev.thorreader.app.Background.dispatcher) { dev.thorreader.app.io.CacheBudget.clear(app) }
+                cleared = "Freed %.0f MB".format(freed / 1048576.0)
+            }
+        }
+    }
+    cleared?.let { HouseBadge(it) }
+    Text(
+        "Unpacked comics, page layouts, converted books and saved online answers. They are made again " +
+            "when needed (the first page of a book may take a little longer once). Covers and your library stay.",
+        color = HouseStyle.Subtle, fontSize = 13.sp,
+    )
 }

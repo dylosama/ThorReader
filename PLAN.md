@@ -47,7 +47,7 @@ must do is explained in plain words.
 ### Four manual reading modes (orientation sensor NOT used)
 
 On-device testing showed gravity auto-detection was unreliable, so it was removed from the UI
-and startup. The sensor code lives unused in `OrientationSensor.kt` and may return later.
+and startup. (The unused sensor code was deleted in step 20.)
 
 1. **BOOK**: device held sideways. Top screen = LEFT page, bottom screen = RIGHT page, both
    rotated 90 degrees so text is upright when held that way.
@@ -351,7 +351,7 @@ adb shell am start -n dev.thorreader.app/.MainActivity
   starts `BottomActivity` on display 4 and finishes, else fallback) and `BottomActivity`
   (display 4, own taskAffinity; any other mode -> starts MainActivity on display 0, finishes).
 - `BottomScreenPresentation.kt` — bottom screen in modes 1/2 and the mode-4 fallback.
-- `OrientationSensor.kt` — UNUSED old gyro code, kept for later.
+- (`OrientationSensor.kt` deleted in step 20: no sensors are used.)
 - `data/Database.kt` — Room `Book` entity (metadata, cover path, rtl, position) + DAO.
 - `io/Files.kt` — `SafFile` (reads user files in place via fd), MuPDF/junrar stream adapters,
   `NaturalOrder`. `io/ImageArchives.kt` — CBZ random access; CBR/CB7 scan (import) and unpack
@@ -659,3 +659,55 @@ Online lookup (`metadata/`), metadata only, never book content, never touches th
   Several authors are joined with " & ". Genre: hide only. Type: nothing.
 - Pure rules in `LibraryLogic` (`categories(... hidden)`, `matchExisting`, `withAuthor`,
   `withSeries`), unit-tested in `ListManageTest`.
+
+### Hardening pass (step 20, still v0.2.0) - no new features
+Found in the audit (code-confirmed) and the fixes:
+1. "Laying out 100%" stays for seconds: after the last chapter, the whole book's page list is
+   rebuilt (buildViews over every chapter, re-running running-header choice per page), then
+   published; only then is the badge cleared. And during layout the full list was rebuilt every
+   0.6 s (quadratic work). Fix: per-chapter view cache (each chapter's pages built once per
+   slicing config), TOC entries prepared once per layout, progress = laid-out chapters only and
+   the badge clears the moment the final pages are published; the disk-cache save runs after,
+   silently. Badge moved to the top-left of each page screen (tiny, in the corner margin; moved
+   right of a bookmark ribbon). Comic unpack: pruning old unpacked comics moved off the
+   critical path.
+2. Power: "Looking up book info…" / progress badges had an endless spinner (continuous redraw)
+   -> static icon. FLAG_KEEP_SCREEN_ON was always on -> only while reading, and released 10
+   minutes after the last touch/button. Menu clock: once a minute, on the minute, only while
+   the menu shows. Windows ask for 60 Hz (preferredRefreshRate / preferredDisplayModeId)
+   instead of 120 Hz. Old gyro code deleted. Shared background executor: 2 threads, background
+   priority, for import / lookups / re-scan; a pause gate stops background work while pages are
+   being turned (1.5 s), the app is in the background or the screen is off; background chapter
+   layout waits on the same gate and runs at background priority on the engine thread.
+   Prefetch current ±2 views (was +3), render cache 120 MB (was 200 MB).
+3. Disk: one cache budget (setting, default 500 MB) over unpacked comics, lookup cache,
+   layouts, page sizes and converted EPUBs (re-created when needed; covers never counted),
+   least-recently-used first; "Clear cache" in Settings.
+4. Security: CBR/CB7 unpack sanitises the extension used in file names (path traversal) and
+   caps entries (10 000), per-file (256 MB) and total (4 GB) size; every in-memory archive
+   read is capped (comic pages 128 MB, XML / metadata 8 MB) against decompression bombs; XML
+   is parsed with DOCTYPE/entities stripped and DOCDECL off (no XXE); network = HTTPS only
+   (network security config, no cleartext), response size caps (JSON 4 MB, images 10 MB);
+   allowBackup=false + data extraction rules exclude everything (the key never leaves the
+   device); revoked file permissions give a friendly message; libraries updated (junrar 8.1.2,
+   XZ 1.12, commonmark 0.33; MuPDF 1.28.5 and Commons Compress 1.28.0 already latest).
+   Release builds: R8 minify + resource shrinking, and Log.v/d/i removed (warnings/errors only).
+   Permissions: INTERNET, ACCESS_NETWORK_STATE (retry when back online), VIBRATE (edge tick).
+5. **Biggest find**: `EpubSections.heading` cached "no heading" as null, and Kotlin's
+   `getOrPut` treats a stored null as missing, so for every page of a heading-less chapter the
+   whole chapter HTML was re-read from the EPUB zip and re-scanned. That was the 2-3 s before
+   Dune's first page (even with the layout from the disk cache) and the long "100%".
+
+Measured on the Thor (AYN Thor, Android 13), Dune (EPUB, Mode 1), before -> after:
+| | before | after |
+|---|---|---|
+| Release APK | 33.1 MB | 13.8 MB |
+| Cold start to library (release, am start -W) | ~195 ms | ~170 ms |
+| Dune first page, layout from disk cache (debug log) | 2,890 ms (release 2,274) | 95 ms |
+| Dune full layout from disk cache | 3,311 ms | 520 ms |
+| Dune with NO layout cache: first page / badge gone | - / long "100%" | 363 ms / 22 ms after the last chapter |
+| Memory while reading (release, TOTAL PSS) | 310 MB | 216 MB |
+| Idle 60 s on a page: CPU / frames drawn | ~0.02 s / 0 | 0.00 s / 0 |
+Idle CPU was already ~0 before; the fixes remove the cases that weren't idle (spinner badges,
+screen kept on forever, 120 Hz). Debug log lines added: "Badge: ...", "Built pages for
+chapters a..b in N ms", "Display N: asking for 60 Hz".

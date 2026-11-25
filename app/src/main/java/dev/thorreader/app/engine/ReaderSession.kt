@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import dev.thorreader.app.ReadingMode
 import dev.thorreader.app.TAG
+import dev.thorreader.app.Background
 import dev.thorreader.app.ThorApp
 import dev.thorreader.app.data.Book
 import dev.thorreader.app.importer.BookFormat
@@ -79,8 +80,8 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
     private var generation = 0
     private var pulseSeq = 0
 
-    // Rendered pages, ~200 MB (the app uses largeHeap).
-    private val cache = object : LruCache<String, Rendered>(200 * 1024) {
+    // Rendered pages, LRU, bounded to CACHE_KB (current view ±2).
+    private val cache = object : LruCache<String, Rendered>(CACHE_KB) {
         override fun sizeOf(key: String, value: Rendered) = value.bitmap.allocationByteCount / 1024
     }
     private val inflight = HashMap<String, Deferred<Rendered?>>()
@@ -99,6 +100,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
     /** Main thread only. */
     private fun showStatus(text: String?) {
         statusToken++
+        if (status != text) Log.d(TAG, "Badge: ${text ?: "(gone)"}")
         status = text
     }
 
@@ -118,7 +120,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
                 throw e
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed to open ${initialBook.fileName}", t)
-                error = if (t is dev.thorreader.app.convert.DrmProtectedException) t.message
+                error = if (t is dev.thorreader.app.convert.DrmProtectedException || t is dev.thorreader.app.io.NoAccessException || t is dev.thorreader.app.io.TooLargeException) t.message
                 else "Could not open this book.\n${t.message ?: t.javaClass.simpleName}"
                 return@launch
             } finally {
@@ -151,6 +153,18 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
     private suspend fun <T> onEngine(block: () -> T): T = withContext(engineDispatcher) {
         coroutineContext.ensureActive()
         block()
+    }
+
+    /** Engine work that isn't the page on screen: runs at Android's background priority. */
+    private suspend fun <T> onEngineBackground(block: () -> T): T = onEngine {
+        val tid = android.os.Process.myTid()
+        val old = android.os.Process.getThreadPriority(tid)
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+        try {
+            block()
+        } finally {
+            android.os.Process.setThreadPriority(old)
+        }
     }
 
     private fun currentAnchor(): Anchor = pagination?.anchorOf(viewIndex) ?: Anchor(book.posChapter, book.posFraction)
@@ -187,6 +201,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         }
         val start = currentAnchor().chapter.coerceIn(0, n - 1)
         if (pagination == null) showStatus("Laying out pages…")
+        Log.d(TAG, "Layout ready to slice after ${SystemClock.uptimeMillis() - t0} ms")
         val cached = onEngine {
             eng.layoutChapter(start)
             eng.allReady
@@ -194,25 +209,33 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         var lo = if (cached) 0 else start
         var hi = if (cached) n - 1 else start
         suspend fun publishRange(complete: Boolean) {
+            val tb = SystemClock.uptimeMillis()
             val views = onEngine { eng.buildViews(cfg, lo, hi) }
+            Log.d(TAG, "Built pages for chapters ${lo + 1}..${hi + 1} in ${SystemClock.uptimeMillis() - tb} ms")
             publish(Pagination(cfg, views, ++generation, id, complete, n))
         }
         publishRange(lo == 0 && hi == n - 1)
         Log.i(TAG, "First page ready (chapter ${start + 1}/$n) in ${SystemClock.uptimeMillis() - t0} ms")
         var lastPublish = SystemClock.uptimeMillis()
         while (lo > 0 || hi < n - 1) {
-            if (hi < n - 1) onEngine { eng.layoutChapter(hi + 1) }.also { hi++ }
-            if (lo > 0) onEngine { eng.layoutChapter(lo - 1) }.also { lo-- }
-            showStatus("Laying out ${(100 * (hi - lo + 1)) / n}%")
+            // Background work: waits while pages are being turned, the app is in the background
+            // or the screen is off, and runs at background priority (keeps the Thor cool).
+            Background.awaitAllowed()
+            if (hi < n - 1) onEngineBackground { eng.layoutChapter(hi + 1) }.also { hi++ }
+            if (lo > 0) onEngineBackground { eng.layoutChapter(lo - 1) }.also { lo-- }
+            showStatus("Laying out ${layoutPercent(hi - lo + 1, n)}%")
             if (SystemClock.uptimeMillis() - lastPublish > 600) {
                 publishRange(false)
                 lastPublish = SystemClock.uptimeMillis()
             }
         }
+        // Final page list (cheap: each chapter's pages are cached in the engine), then the badge
+        // goes away at once; saving the layout cache afterwards is silent background work.
         if (pagination?.complete != true || pagination?.layoutId != id) publishRange(true)
-        rememberPageCount()
         showStatus(null)
-        onEngine { eng.saveCache() }
+        rememberPageCount()
+        onEngineBackground { eng.saveCache() }
+        app.trimCaches()
         Log.i(TAG, "Full layout for mode ${cfg.mode.number}: ${pagination?.views?.size} views in ${SystemClock.uptimeMillis() - t0} ms")
     }
 
@@ -358,7 +381,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         prefetchJob?.cancel()
         prefetchJob = scope.launch {
             val p = pagination ?: return@launch
-            for (d in intArrayOf(0, 1, -1, 2, -2, 3)) {
+            for (d in intArrayOf(0, 1, -1, 2, -2)) { // current ±2 views only
                 val v = p.views.getOrNull(viewIndex + d) ?: continue
                 v.units.forEachIndexed { i, u -> render(p, u, p.slotFor(v, i), 1f) }
             }
@@ -372,6 +395,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         val target = index.coerceIn(0, p.views.size - 1)
         if (target == viewIndex) return
         viewIndex = target
+        dev.thorreader.app.Background.markBusy() // background work waits while pages are being turned
         prefetch()
         scheduleSave()
         checkCompleted()
@@ -620,6 +644,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
                     v.units.forEachIndexed { i, u -> render(p, u, p.slotFor(v, 1 - i), 1f) }
                 }
                 if (viewIndex == target && pagination === p) {
+                    dev.thorreader.app.Background.markBusy() // the swap animation runs now
                     swappedView = target
                     announceSwap(mode, p, v, true, source)
                 }
@@ -683,5 +708,8 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
     private companion object {
         const val SETTINGS_DEBOUNCE_MS = 400L
         const val BACK_PILL_MS = 6000L
+
+        /** Rendered pages kept in memory: enough for the current view ±2 plus a zoom (~120 MB). */
+        const val CACHE_KB = 120 * 1024
     }
 }

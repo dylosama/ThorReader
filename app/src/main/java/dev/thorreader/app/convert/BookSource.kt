@@ -142,7 +142,7 @@ object BookSource {
             val id = joinId(folder, decoded) ?: continue
             if (!id.startsWith(treeId.trimEnd('/')) && !treeId.endsWith(":")) continue
             val child = DocumentsContract.buildDocumentUriUsingTree(tree, id)
-            val bytes = runCatching { context.contentResolver.openInputStream(child)?.use { it.readBytes() } }.getOrNull() ?: continue
+            val bytes = runCatching { context.contentResolver.openInputStream(child)?.use { dev.thorreader.app.io.Limits.readCapped(it, 25L shl 20, "a picture") } }.getOrNull() ?: continue
             if (bytes.size > 25 shl 20) continue
             val buf = Buffer().apply { writeBytes(bytes) }
             archive.add(clean(decoded), buf)
@@ -151,7 +151,7 @@ object BookSource {
         }
         Log.i(TAG, "Pictures next to the file: $added of ${refs.size} found")
         if (added == 0) null else archive
-    }.onFailure { Log.w(TAG, "Could not read the files next to $uri", it) }.getOrNull()
+    }.onFailure { Log.w(TAG, "Could not read the files next to ${uri.lastPathSegment?.substringAfterLast('/')}", it) }.getOrNull()
 
     private val SIBLING_EXTS = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "css")
 

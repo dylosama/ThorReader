@@ -11,6 +11,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import dev.thorreader.app.ui.LocalHost
@@ -42,18 +44,38 @@ class BottomScreenPresentation(
             w.decorView.setViewTreeLifecycleOwner(activity)
             w.decorView.setViewTreeSavedStateRegistryOwner(activity)
             w.decorView.setViewTreeViewModelStoreOwner(activity)
-            w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            w.keepScreenOn(ThorApp.instance.keepScreenOn)
+            w.prefer60Hz(display)
             w.setBackgroundDrawableResource(android.R.color.black)
             w.insetsController?.let {
                 it.hide(WindowInsets.Type.systemBars())
                 it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
         }
+        // Follow "keep the screen on while reading" (released 10 min after the last input).
+        keepOnJob = activity.lifecycleScope.launch {
+            androidx.compose.runtime.snapshotFlow { ThorApp.instance.keepScreenOn }.collect { window?.keepScreenOn(it) }
+        }
+    }
+
+    private var keepOnJob: kotlinx.coroutines.Job? = null
+
+    override fun onStop() {
+        keepOnJob?.cancel() // nothing of this window outlives it
+        keepOnJob = null
+        super.onStop()
     }
 
     /** Buttons pressed while the bottom screen has focus go to the same handler. */
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean =
-        ThorApp.instance.handleKey(event) || super.dispatchKeyEvent(event)
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        ThorApp.instance.userActive()
+        return ThorApp.instance.handleKey(event) || super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) ThorApp.instance.userActive()
+        return super.dispatchTouchEvent(ev)
+    }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
