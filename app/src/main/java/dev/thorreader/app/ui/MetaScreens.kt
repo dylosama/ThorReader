@@ -360,6 +360,7 @@ fun EditInfoPanel(book: Book) {
                 listOfNotNull(book.publisher, book.year?.toString(), book.storyArc?.let { "Arc: $it" }).joinToString(" · ").takeIf { it.isNotEmpty() }?.let {
                     Text(it, color = HouseStyle.Subtle, fontSize = 13.sp)
                 }
+                CustomCoverChoices(book)
             }
         }
         Field("Title", title, { title = it })
@@ -461,6 +462,41 @@ fun EditInfoPanel(book: Book) {
             Chip("Cancel") { close() }
         }
     }
+}
+
+/**
+ * Your own pictures for the front cover, spine and back cover, picked from internal storage or
+ * the SD card (a ✓ when one is set; ↺ goes back to the original cover / the default spine or
+ * back). Applied at once, independent of Save / Cancel. Spine and back show in Inspect.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun CustomCoverChoices(book: Book) {
+    val app = ThorApp.instance
+    val host = LocalHost.current ?: return
+    val scope = rememberCoroutineScope()
+    var failed by remember { mutableStateOf(false) }
+    androidx.compose.foundation.layout.FlowRow(
+        Modifier.padding(top = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("Pictures:", color = HouseStyle.Subtle, fontSize = 13.sp, modifier = Modifier.align(Alignment.CenterVertically))
+        dev.thorreader.app.io.CustomCovers.Part.entries.forEach { part ->
+            val custom = dev.thorreader.app.io.CustomCovers.has(book.id, part)
+            Chip(if (custom) "${part.label} ✓" else part.label, custom) {
+                host.pickImage { uri ->
+                    scope.launch { failed = !dev.thorreader.app.io.CustomCovers.set(app, book.id, part, uri) }
+                }
+            }
+            if (custom) {
+                Chip(if (part == dev.thorreader.app.io.CustomCovers.Part.FRONT) "↺ Original" else "↺ Default") {
+                    dev.thorreader.app.io.CustomCovers.reset(book.id, part)
+                }
+            }
+        }
+    }
+    if (failed) Text("That file couldn't be opened as a picture.", color = HouseStyle.Warning, fontSize = 13.sp)
 }
 
 @Composable

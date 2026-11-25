@@ -1157,6 +1157,26 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   after a fresh start - every turn a curl, setup 20-100 ms, p95 after setup 16.8-16.9 ms, curl
   never switched off.
 
+### v0.3.0: your own pictures for the front cover, spine and back cover (main)
+- Edit info: "Pictures: Front cover · Spine · Back cover" under the file details, right of the
+  cover and above Title. Each opens the system picker for one image (internal storage, SD card,
+  Downloads...; `HostActions.pickImage`, OpenDocument "image/*"). A set one shows ✓ and a
+  "↺ Original" (front) / "↺ Default" (spine, back) chip to go back. Applied at once, separate
+  from Save / Cancel.
+- `io/CustomCovers`: the picture is copied into files/covers/custom as
+  "<book id>-<part>-<time>.jpg" (upright via ImageDecoder, longest side at most 2000 px), so the
+  book file and its original cover are never touched; reset deletes the copy. A Compose state
+  map, so covers on screen update at once. Removed with the book.
+- Front: `CustomCovers.frontPath(book)` everywhere the cover is shown - library list and grid,
+  Edit info, the open / close animation and Inspect (whose generated spine / back then take its
+  colour). Spine and back: Inspect only (spine: a landscape picture is stood up, then cropped
+  from the middle to the spine; back: before the book's own back cover and the generated one).
+  The pages of the book itself are unchanged.
+- Checked on the Thor (Dune): picked a test image as front cover and spine through the system
+  picker - Edit info and the grid updated at once, Inspect showed both; ↺ Original / ↺ Default
+  brought the original cover and the generated spine back. Back cover not tried by hand (same
+  picking code; Inspect decodes it like the book's own back cover).
+
 ### v0.3.0: closing a book lands its cover in its new library place (main)
 - Before: the close animation flew the cover back to where it was when the book was opened, but
   the library re-sorts (Recently read puts the book first), so it landed on another book's spot.
@@ -1213,7 +1233,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: Inspect spine text centred along the spine".
+  "v0.3.0: your own pictures for the front cover, spine and back cover".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1238,6 +1258,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 - Closing a book lands its cover in its new library place (re-sorted, scrolled into view).
 - Inspect: the spine's title · author is centred along the spine (was at the top). Checked on
   the Thor with Dune.
+- Edit info: pick your own front cover, spine and back cover pictures (↺ to go back).
 
 ### Built, not yet fully tested on the Thor (test list before releasing 0.3)
 Checked on the Thor already: popup on the last list row and last grid cover (scroll, pinned

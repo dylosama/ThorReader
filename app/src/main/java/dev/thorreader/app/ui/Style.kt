@@ -129,8 +129,10 @@ fun HouseProgressBadge(text: String, modifier: Modifier = Modifier) {
 /** A book's cached cover, or a generated placeholder from its title and author. */
 @Composable
 fun BookCover(book: Book, modifier: Modifier) {
-    val image by produceState<ImageBitmap?>(null, book.coverPath) {
-        value = book.coverPath?.let { withContext(Dispatchers.IO) { BitmapFactory.decodeFile(it)?.asImageBitmap() } }
+    // The user's own picture (Edit info) if set, else the book's cover.
+    val path = dev.thorreader.app.io.CustomCovers.frontPath(book)
+    val image by produceState<ImageBitmap?>(null, path) {
+        value = path?.let { withContext(Dispatchers.IO) { BitmapFactory.decodeFile(it)?.asImageBitmap() } }
     }
     Box(modifier.clip(RoundedCornerShape(4.dp))) {
         val img = image

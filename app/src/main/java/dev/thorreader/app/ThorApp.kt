@@ -144,6 +144,7 @@ class ThorApp : Application() {
         super.onCreate()
         instance = this
         MuPdf.init()
+        dev.thorreader.app.io.CustomCovers.load(this) // the user's own cover / spine / back pictures
         settings = Settings(getSharedPreferences("thor_reader", MODE_PRIVATE))
         db = Room.databaseBuilder(this, AppDatabase::class.java, "thor_reader.db")
             .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
@@ -317,7 +318,8 @@ class ThorApp : Application() {
 
     /** The book's cover (decoded at a size good for full screen), or a generated one. */
     suspend fun loadCover(book: Book): android.graphics.Bitmap = withContext(Dispatchers.IO) {
-        book.coverPath?.let { path ->
+        // The user's own picture (Edit info) first, else the book's cover.
+        dev.thorreader.app.io.CustomCovers.frontPath(book)?.let { path ->
             runCatching {
                 val o = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 android.graphics.BitmapFactory.decodeFile(path, o)
@@ -848,6 +850,7 @@ class ThorApp : Application() {
         scope.launch(Dispatchers.IO) {
             db.books().delete(book.id)
             book.coverPath?.let { File(it).delete() }
+            dev.thorreader.app.io.CustomCovers.removeAll(book.id)
             dev.thorreader.app.convert.BookSource.convertedFile(this@ThorApp, book.uri, book.sizeBytes).delete()
             runCatching {
                 contentResolver.releasePersistableUriPermission(

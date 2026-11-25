@@ -45,6 +45,19 @@ abstract class HostActivity : ComponentActivity(), HostActions {
         app.importer.importFolder(uri)
     }
 
+    /** Who asked for the picture being picked (Edit info's cover / spine / back). */
+    private var onImage: ((Uri) -> Unit)? = null
+    private val pickImage = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val cb = onImage
+        onImage = null
+        if (uri != null) cb?.invoke(uri)
+    }
+
+    override fun pickImage(onPicked: (Uri) -> Unit) {
+        onImage = onPicked
+        pickImage.launch(arrayOf("image/*"))
+    }
+
     private fun persist(uri: Uri) {
         runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             .onFailure { Log.w(TAG, "Could not keep permission for ${uri.lastPathSegment?.substringAfterLast('/')}", it) }

@@ -143,8 +143,10 @@ private fun buildTextures(app: ThorApp, book: Book, front: Bitmap, model: Book3D
     // Spine and back in the front cover's dominant colour (only lightly shaded for depth).
     val base = dominantColor(front)
     val dark = shade(base, 0.8f)
-    // Back cover: the book's own, else generated in the cover's colours.
-    val own = BackCovers.find(app, book)?.let { bytes ->
+    // Back cover: the user's picture (Edit info), else the book's own, else generated in the cover's colours.
+    val custom = dev.thorreader.app.io.CustomCovers.file(book.id, dev.thorreader.app.io.CustomCovers.Part.BACK)
+        ?.let { runCatching { BitmapFactory.decodeFile(it.path) }.getOrNull() }
+    val own = custom ?: BackCovers.find(app, book)?.let { bytes ->
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
         var sample = 1
@@ -154,7 +156,8 @@ private fun buildTextures(app: ThorApp, book: Book, front: Bitmap, model: Book3D
     val back = own ?: generatedBack(book, front.width, front.height, base, dark)
     val texH = 1200
     val spineW = (texH * model.d).toInt().coerceIn(24, 700)
-    return InspectTextures(front, back, generatedSpine(book, spineW, texH, base, dark), pageEdges(spineW, texH, vertical = true, dark), pageEdges((texH * model.w).toInt().coerceAtLeast(64), spineW, vertical = false, dark), own != null)
+    val spine = customSpine(book, spineW, texH) ?: generatedSpine(book, spineW, texH, base, dark)
+    return InspectTextures(front, back, spine, pageEdges(spineW, texH, vertical = true, dark), pageEdges((texH * model.w).toInt().coerceAtLeast(64), spineW, vertical = false, dark), own != null)
 }
 
 private fun generatedBack(book: Book, w0: Int, h0: Int, base: Int, dark: Int): Bitmap {
@@ -188,6 +191,28 @@ private fun generatedBack(book: Book, w0: Int, h0: Int, base: Int, dark: Int): B
         x += 7f
     }
     return b
+}
+
+/**
+ * The user's spine picture (Edit info), fitted to the spine: a picture wider than tall is a spine
+ * photographed lying down, so it is stood up (reading top to bottom); then it is cropped from the
+ * middle to the spine's shape.
+ */
+private fun customSpine(book: Book, w: Int, h: Int): Bitmap? {
+    val f = dev.thorreader.app.io.CustomCovers.file(book.id, dev.thorreader.app.io.CustomCovers.Part.SPINE) ?: return null
+    val src = runCatching { BitmapFactory.decodeFile(f.path) }.getOrNull() ?: return null
+    val upright = if (src.width > src.height) {
+        Bitmap.createBitmap(src, 0, 0, src.width, src.height, Matrix().apply { postRotate(90f) }, true).also { src.recycle() }
+    } else src
+    val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val c = android.graphics.Canvas(out)
+    // Fill the spine, cropping the overflow evenly (like ContentScale.Crop).
+    val k = max(w.toFloat() / upright.width, h.toFloat() / upright.height)
+    val dw = upright.width * k
+    val dh = upright.height * k
+    c.drawBitmap(upright, null, android.graphics.RectF((w - dw) / 2f, (h - dh) / 2f, (w + dw) / 2f, (h + dh) / 2f), Paint(Paint.FILTER_BITMAP_FLAG))
+    upright.recycle()
+    return out
 }
 
 private fun generatedSpine(book: Book, w: Int, h: Int, base: Int, dark: Int): Bitmap {

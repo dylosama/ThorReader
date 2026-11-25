@@ -113,10 +113,11 @@ private fun GridCover(book: Book, cellPx: Int) {
     var popup by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(8.dp)
+    val path = dev.thorreader.app.io.CustomCovers.frontPath(book) // the user's own picture first
     val thumb by produceState<ImageBitmap?>(
-        book.coverPath?.let { CoverThumbs.cached(it, cellPx) }?.asImageBitmap(), book.coverPath, cellPx,
+        path?.let { CoverThumbs.cached(it, cellPx) }?.asImageBitmap(), path, cellPx,
     ) {
-        val p = book.coverPath ?: return@produceState
+        val p = path ?: return@produceState
         value = CoverThumbs.load(p, cellPx)?.asImageBitmap()
     }
     val img = thumb

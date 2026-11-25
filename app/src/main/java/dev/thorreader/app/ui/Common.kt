@@ -42,6 +42,9 @@ import dev.thorreader.app.ThorApp
 interface HostActions {
     fun pickFiles()
     fun pickFolder()
+
+    /** The system picker for one picture (internal storage, SD card...); [onPicked] gets it. */
+    fun pickImage(onPicked: (android.net.Uri) -> Unit)
 }
 
 val LocalHost = compositionLocalOf<HostActions?> { null }
