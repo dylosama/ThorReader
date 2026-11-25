@@ -67,6 +67,17 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    // APK names: assembleRelease -> app/build/outputs/apk/release/ThorReader-<version>.apk,
+    // assembleDebug -> app/build/outputs/apk/debug/ThorReader-<version>-debug.apk. No copy step.
+    applicationVariants.all {
+        val variant = this
+        outputs.all {
+            val suffix = if (variant.buildType.name == "release") "" else "-${variant.buildType.name}"
+            (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
+                "ThorReader-${variant.versionName}$suffix.apk"
+        }
+    }
+
     buildFeatures {
         compose = true
     }

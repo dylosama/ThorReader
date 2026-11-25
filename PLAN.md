@@ -267,7 +267,9 @@ page" always moves the right way physically.
   its password must be backed up**: without them no update can ever install over v0.1.0.
 - Version: versionName 0.2.0, versionCode 3 (increase versionCode for every release; code 3 =
   0.2.0 re-release with the step-21 fixes).
-- Build: `.\gradlew assembleRelease` -> `app\build\outputs\apk\release\app-release.apk`.
+- Build: `.\gradlew assembleRelease` -> `app\build\outputs\apk\release\ThorReader-<versionName>.apk`
+  (named by Gradle itself, `applicationVariants` in app/build.gradle.kts; debug:
+  `app\build\outputs\apk\debug\ThorReader-<versionName>-debug.apk`).
   The owner uploads it to GitHub Releases manually.
 - Since v0.2.0 debug builds are signed with the release key too (when keystore.properties
   exists), so debug and release install over each other. A debug APK built BEFORE v0.2.0 (old
@@ -321,7 +323,7 @@ book's own font (see above) so the page looks printed.
 
 ```
 .\gradlew assembleDebug
-adb install -r app\build\outputs\apk\debug\app-debug.apk
+adb install -r app\build\outputs\apk\debug\ThorReader-0.2.0-debug.apk
 adb shell am start -n dev.thorreader.app/.MainActivity
 ```
 
@@ -758,3 +760,16 @@ Fix:
   (>= 1.05); Never = no splitting. Per-book reader-menu option "Split wide pages: Auto /
   Always / Never" (pref `split_wide`, "bookId:MODE" entries; part of LayoutConfig so changing
   it re-paginates). Every page's ratio and decision is logged once per book and mode (debug).
+
+### Last 0.2 changes (still versionName 0.2.0, versionCode 3)
+- Reader menu: battery next to the clock - "17:36 │ ▭ 84%": thin divider, outline battery icon
+  (fill = charge, lightning bolt while charging), percentage smaller/lighter than the time;
+  warning colour below 20% when not charging. `ui/Battery.kt`: the level comes from the sticky
+  ACTION_BATTERY_CHANGED intent when the menu opens, and the receiver is registered only while
+  the menu is on screen (unregistered when it closes); no polling. The menu panel is the same
+  dark house panel in Paper, Sepia and Night, and the clock isn't mirrored in RTL books, so the
+  battery isn't either. Checked on the Thor (16%, charging over USB: bolt, normal colour).
+- APK names come from Gradle (`applicationVariants` in app/build.gradle.kts): assembleRelease
+  -> `ThorReader-0.2.0.apk`, assembleDebug -> `ThorReader-0.2.0-debug.apk`. No copy step.
+- The GitHub release tag is `0.2` (remote tags: `0.1`, `0.2`); it is moved to the final commit
+  (tag only).

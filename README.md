@@ -134,7 +134,8 @@ Updates from Releases install over the previous version and keep your library.
 Requires JDK 17 and the Android SDK (platform 34).
 
 ```
-.\gradlew assembleDebug
+.\gradlew assembleDebug      # -> app\build\outputs\apk\debug\ThorReader-<version>-debug.apk
+.\gradlew assembleRelease    # -> app\build\outputs\apk\release\ThorReader-<version>.apk
 ```
 
 Release builds are signed with a keystore described by a local, untracked

@@ -411,5 +411,14 @@ private fun Clock() {
         }
     }
     val fmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
-    Text(fmt.format(now), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Light)
+    // Time │ battery: a thin divider and spacing, and the percentage smaller and muted, so the
+    // two never read as one number. The battery is only read while the menu is open.
+    val battery = rememberBattery()
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(fmt.format(now), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Light)
+        if (battery != null) {
+            Box(Modifier.width(1.dp).height(20.dp).background(HouseStyle.Hairline))
+            BatteryIndicator(battery)
+        }
+    }
 }
