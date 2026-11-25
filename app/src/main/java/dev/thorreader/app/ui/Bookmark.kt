@@ -317,19 +317,5 @@ fun ThemeColorPicker() {
                 settings.updateAccentColor(dev.thorreader.app.AccentMath.fromHue(it))
             }
         }
-        // Live preview: an active chip, a toggle that's on, and a main button.
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Chip("Active chip", true) {}
-            Chip("On", true) {}
-            Chip("Off", false) {}
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Accent)
-                    .padding(horizontal = 22.dp, vertical = 12.dp),
-            ) {
-                Text("Button", color = OnAccent, fontSize = 16.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-            }
-        }
     }
 }

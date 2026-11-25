@@ -110,9 +110,6 @@ fun SpeedRow(labels: List<String>, ms: List<Int>, selected: Int, enabled: Boolea
 private val settings get() = ThorApp.instance.settings
 
 @Composable
-fun PageThemeRow() = ChoiceRow("Page theme", PageTheme.entries, settings.theme, { it.label }) { settings.updateTheme(it) }
-
-@Composable
 fun GridModeIconsRow() = OnOffRow("Mode icons on grid covers", settings.gridModeIcons) { settings.updateGridModeIcons(it) }
 
 @Composable

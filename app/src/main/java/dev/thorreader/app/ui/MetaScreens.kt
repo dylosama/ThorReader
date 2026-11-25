@@ -133,10 +133,10 @@ fun SettingsPanel() {
         SectionLabel("Theme colour")
         ThemeColorPicker()
 
-        SectionLabel("Reading")
-        PageThemeRow()
-        HeaderRow()
+        SectionLabel("Library")
+        GridModeIconsRow()
 
+        // (Page theme and Header & page number are set in the reader menu.)
         SectionLabel("Controls")
         HoldToMenuRow()
         SelectButtonRow()
@@ -161,8 +161,7 @@ fun SettingsPanel() {
         SectionLabel("Bookmark")
         BookmarkColorPicker()
 
-        SectionLabel("Library")
-        GridModeIconsRow()
+        SectionLabel("Storage")
         StorageSection()
 
         SectionLabel("Hidden items")
