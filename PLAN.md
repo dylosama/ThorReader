@@ -1111,11 +1111,44 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   library order and list view were left as they were. The popup background was made almost
   opaque (bright covers showed through behind the items in the grid).
 
+### v0.3.0 fix: no low-resolution page after a turn lands (main)
+- Bug: after a page turn, the new page looked pixelated for a moment, then switched to full
+  quality (books and comics, book and single-screen modes). Cause: the curl drew the page being
+  turned to from a texture made when the turn started - for comics / PDF at half size, sampled
+  without smoothing - so the last frames before landing were blocky; the at-rest page view then
+  replaced it.
+- Now: the NEW (landing) page is a full-quality texture for the whole curl
+  (`PageTurnMath.textureScales`: old page 0.5 for comics / PDF, new page always 1); only the old
+  page, moving away, stays lighter, now with linear filtering. The turn's textures are built as
+  soon as the turn is composed (`TurnRegion.prepareCurl` in `buildRegions`), never at landing;
+  pre-rendered pages are handed to the GPU early (`Bitmap.prepareToDraw` in the prefetch).
+- Landing (`ReaderSession.land`): the page views take over only when every screen showing the
+  turn has its full-quality landing page ready (the overlay reports `landingTextureReady`) and the
+  view's pages are rendered; both screens switch in one state change (same frame, step 21). If not
+  ready, the final animation frame (already the full-quality page) is held, at most 1.5 s. A new
+  turn during the hold still finishes it instantly. Textures are released when the overlay leaves
+  (after the commit), as before (step 20).
+- Pixel-exact hand-over: the page view and the turn pictures place the page with the same
+  `PageTurnMath.fitRect` (whole pixels) and both use bilinear filtering.
+- Log per turn: "Turn landing view N (curl): TOP full-res ready, BOTTOM full-res ready at
+  animation end; committed X ms, shown Y ms after animation end" (a warning if a screen was NOT
+  ready). Tests: LandingTest (116 tests in total).
+- Checked on the Thor (debug build, slowed turns, screen captures every ~80 ms around landing,
+  compared pixel by pixel with the page at rest): Spider-Man Mode 1 top screen and Dune Mode 1
+  both screens - the last animation frames differ from the at-rest page only by shader rounding
+  (max 2 of 255 in under 1 % of pixels), identical right after the commit; no low-resolution
+  frame. Per-turn logs at normal speed (normal, rapid repeated and back turns): Dune with Curl,
+  Flip, Slide and separate font sizes (8 / 10 pt), Chainsaw Man right-to-left - every landing
+  ready on both screens, commit within 1 ms, shown on the next frame. Not covered: holding a
+  physical button for the fast slide (adb can't send real key repeats) - try it by hand.
+- Note: a button / tap curl now takes ~40-100 ms to show its first frame (was ~20-30 ms) because
+  the full-quality textures are built up front.
+
 ## Where we left off (2026-11-25)
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: Inspect tap to read; book popup always fits the screen".
+  "v0.3.0: no low-resolution page after a turn lands".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1130,6 +1163,8 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 - Library grid view and the view | + | gear pill.
 - Book popup always fits the screen (scrolls, Remove pinned, no manga toggle).
 - Low-battery simple animations.
+- Fix: no low-resolution page after a turn lands (full-quality landing texture, synchronized
+  hand-over, pixel-exact placement, per-turn landing log).
 
 ### Built, not yet fully tested on the Thor (test list before releasing 0.3)
 Checked on the Thor already: popup on the last list row and last grid cover (scroll, pinned
@@ -1164,7 +1199,7 @@ Thor Reader (main):
     adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-debug.apk
     adb shell am start -n dev.thorreader.app/.MainActivity
     .\gradlew assembleRelease      -> app\build\outputs\apk\release\ThorReader-0.3.0.apk
-    .\gradlew testDebugUnitTest    (111 tests)
+    .\gradlew testDebugUnitTest    (116 tests)
 Bookloader branch (both apps):
     git switch bookloader
     .\gradlew assembleDebug

@@ -396,7 +396,9 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
             // By VIEW, every page at its own slot size (the same mapping the screens use):
             // current, NEXT, previous, then ±2. Bounded by the LRU cache (pages are screen-sized).
             for (i in prefetchOrder(viewIndex, p.views.size)) {
-                for ((u, slot) in prefetchRequests(p, i)) render(p, u, slot, 1f)
+                // prepareToDraw: the GPU upload starts now, in the background, so neither a turn
+                // nor the page at rest has to upload the full-quality page when it lands.
+                for ((u, slot) in prefetchRequests(p, i)) render(p, u, slot, 1f)?.bitmap?.prepareToDraw()
                 // The book-open animation reveals the pages only once these exist.
                 if (!firstViewShown && i == viewIndex && viewReady(p, i)) firstViewShown = true
             }
@@ -608,6 +610,24 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         }
     }
 
+    // ---- landing: hand over to the page views only with full-quality pages on every screen ----
+
+    /** Per screen showing this turn: the id of the turn whose landing textures are uploaded. */
+    private val landingTex = HashMap<Screen, Int>()
+
+    /** Screens that composed an overlay for a turn (the ones that must be ready at landing). */
+    private val turnScreens = HashMap<Screen, Int>()
+
+    /** Called by each screen's overlay once its full-quality landing page is on the GPU. */
+    fun landingTextureReady(screen: Screen, turnId: Int) {
+        turnScreens[screen] = turnId
+        landingTex[screen] = turnId
+    }
+
+    /** Is [screen] ready to show view [landing] at rest in full quality, right now? */
+    private fun screenLandingReady(p: Pagination, t: Turn, landing: Int, screen: Screen): Boolean =
+        landingTex[screen] == t.id && viewReady(p, landing)
+
     private fun endTurn(t: Turn, intervals: List<Float>) {
         if (turn !== t) return
         val p50 = PageTurnMath.percentile(intervals, 50f)
@@ -624,10 +644,53 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
                 TurnSupport.disableCurl("too slow: frame interval p95 ${"%.1f".format(p95)} ms in $slowCurlTurns curl turns in a row")
             }
         }
-        turn = null
+        land(t, SystemClock.uptimeMillis())
+    }
+
+    /**
+     * The animation has reached its last frame (which already shows the landing page in full
+     * quality). Commit to the real page views - both screens in one state change, so the same
+     * frame - only when every screen's full-quality page is ready; until then the final frame
+     * simply stays up. Never shows a downsampled page at rest.
+     */
+    private fun land(t: Turn, endedAt: Long) {
+        val p = pagination
+        val landing = if (t.target == 0f) t.from else t.to
+        val screens = turnScreens.filterValues { it == t.id }.keys.sortedBy { it.ordinal }
+        fun readyNow() = p != null && screens.all { screenLandingReady(p, t, landing, it) }
+        val readyAtEnd = screens.associateWith { s -> p != null && screenLandingReady(p, t, landing, s) }
+        if (p == null || readyNow()) {
+            commitLanding(t, landing, endedAt, readyAtEnd)
+            return
+        }
+        // Rare: hold the final frame while the missing page renders / uploads.
+        turnJob = scope.launch(androidx.compose.ui.platform.AndroidUiDispatcher.Main) {
+            val v = p.views.getOrNull(landing)
+            v?.units?.withIndex()?.map { (i, u) -> async { render(p, u, p.slotFor(v, i), 1f)?.bitmap?.prepareToDraw() } }?.forEach { it.await() }
+            val deadline = endedAt + PageTurnMath.LANDING_WAIT_MAX_MS
+            while (!readyNow() && SystemClock.uptimeMillis() < deadline) androidx.compose.runtime.withFrameNanos { }
+            if (turn === t) commitLanding(t, landing, endedAt, readyAtEnd)
+        }
+    }
+
+    private fun commitLanding(t: Turn, landing: Int, endedAt: Long, readyAtEnd: Map<Screen, Boolean>) {
+        turn = null // both screens' overlays go away together, revealing the page views
         dragCurl = null
         turnT.floatValue = 0f
         turnJob = null
+        turnScreens.values.removeAll { it == t.id }
+        landingTex.values.removeAll { it == t.id }
+        val waited = SystemClock.uptimeMillis() - endedAt
+        // Log on the frame that shows the committed pages.
+        scope.launch(androidx.compose.ui.platform.AndroidUiDispatcher.Main) {
+            androidx.compose.runtime.withFrameNanos { }
+            val shown = SystemClock.uptimeMillis() - endedAt
+            val states = readyAtEnd.entries.joinToString(", ") { (s, ok) -> "${s.name} full-res ${if (ok) "ready" else "NOT ready"}" }
+                .ifEmpty { "no screen reported" }
+            val line = "Turn landing view ${landing + 1} (${t.style.name.lowercase()}): $states at animation end; " +
+                "committed $waited ms, shown $shown ms after animation end"
+            if (readyAtEnd.values.any { !it }) Log.w(TAG, line) else Log.d(TAG, line)
+        }
     }
 
     /**
@@ -644,6 +707,8 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         turn = null
         dragCurl = null
         turnT.floatValue = 0f
+        turnScreens.values.removeAll { it == t.id }
+        landingTex.values.removeAll { it == t.id }
         Log.d(TAG, "Turn animation finished early ($reason)")
     }
 

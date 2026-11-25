@@ -8,7 +8,6 @@ import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Picture
-import android.graphics.RectF
 import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.util.Log
@@ -64,11 +63,15 @@ fun PageTurnOverlay(session: ReaderSession, p: Pagination, screen: Screen, mode:
         val w = constraints.maxWidth
         val h = constraints.maxHeight
         val regions = remember(turn.id, w, h, p) { buildRegions(session, p, turn, screen, mode, w, h, dpi, density) }
+        // The textures belong to this turn: released once the reader has committed to the real
+        // pages (the overlay leaves composition then) or a new turn replaces them.
         DisposableEffect(regions) { onDispose { regions?.forEach { it.release() } } }
         if (regions == null) {
             LaunchedEffect(turn.id) { session.finishTurnNow("a page picture was missing") }
             return@BoxWithConstraints
         }
+        // This screen's landing page is in full quality on the GPU (built when the turn began).
+        LaunchedEffect(turn.id, regions) { session.landingTextureReady(screen, turn.id) }
         Canvas(Modifier.fillMaxSize()) {
             val t = session.turnProgress // read in the draw phase: only redraws, no recomposition
             val drag = session.dragCurl
@@ -98,13 +101,17 @@ private fun buildRegions(
     val style = Pictures(session, p, density)
     val hinge = session.turnHasHinge(p, turn, mode)
 
+    val (oldScale, newScale) = PageTurnMath.textureScales(session.reflowable)
     fun region(left: Int, width: Int, side: Side?, role: RegionRole, oldPic: Picture?, newPic: Picture?, oldBack: Int, newBack: Int): TurnRegion? {
         if (oldPic == null || newPic == null) return null
         return TurnRegion(
             left.toFloat(), width, h, role, side, PageTurnMath.freeEdgeLeft(role, side, rtl), oldPic, newPic,
-            PageTurnMath.radiusPx(dpi, width.toFloat()), if (session.reflowable) 1f else 0.5f, style.theme, session.reflowable, start,
+            PageTurnMath.radiusPx(dpi, width.toFloat()), oldScale, newScale, style.theme, session.reflowable, start,
             oldBack, newBack,
-        )
+        ).also { r ->
+            // Upload the textures now, as the turn begins - never at the landing moment.
+            if (turn.style == TurnStyle.CURL) r.prepareCurl()
+        }
     }
 
     return when {
@@ -221,14 +228,9 @@ private class Pictures(val session: ReaderSession, val p: Pagination, val densit
                 c.restore()
                 return false
             }
-            val bw = r.bitmap.width.toFloat()
-            val bh = r.bitmap.height.toFloat()
-            val scale = if (r.overflow) w / bw else min(w / bw, h / bh)
-            val dw = bw * scale
-            val dh = bh * scale
-            val dx = (w - dw) / 2f
-            val dy = if (r.overflow) 0f else (h - dh) / 2f
-            c.drawBitmap(r.bitmap, null, RectF(dx, dy, dx + dw, dy + dh), bitmapPaint)
+            // Exactly where the page view at rest draws it (whole pixels, bilinear).
+            val f = PageTurnMath.fitRect(r.bitmap.width.toFloat(), r.bitmap.height.toFloat(), w.toFloat(), h.toFloat(), r.overflow)
+            c.drawBitmap(r.bitmap, null, android.graphics.Rect(f.x, f.y, f.x + f.w, f.y + f.h), bitmapPaint)
             if (dim) c.drawColor(android.graphics.Color.argb(153, 0, 0, 0))
             // Comics / PDF: the page number pill (books have it printed in the page).
             if (!reflow && settings.showHeader) p.pageNumber(unit)?.let { drawNumberPill(c, it.toString(), w, h, p.config.rtl) }
@@ -327,8 +329,10 @@ private class TurnRegion(
     val oldPic: Picture,
     val newPic: Picture,
     val radius: Float,
-    /** Texture size factor: books full size (crisp), comics / PDF half size. */
-    val texScale: Float,
+    /** Texture size factor of the old page (comics / PDF: lighter, it only moves away). */
+    val oldScale: Float,
+    /** Texture size factor of the new (landing) page: always 1, full quality. */
+    val newScale: Float,
     val theme: PageTheme,
     val reflow: Boolean,
     val startSide: Side,
@@ -456,8 +460,8 @@ private class TurnRegion(
             android.graphics.Color.red(back) / 255f, android.graphics.Color.green(back) / 255f, android.graphics.Color.blue(back) / 255f, 1f,
         )
         s.setFloatUniform("pivotY", pivotY)
-        s.setInputShader("sheet", textureShader(if (sheetOld) oldBmp!! else newBmp!!))
-        s.setInputShader("under", textureShader(if (sheetOld) newBmp!! else oldBmp!!))
+        s.setInputShader("sheet", if (sheetOld) textureShader(oldBmp!!, oldScale) else textureShader(newBmp!!, newScale))
+        s.setInputShader("under", if (sheetOld) textureShader(newBmp!!, newScale) else textureShader(oldBmp!!, oldScale))
         s.setFloatUniform("size", w.toFloat(), h.toFloat())
         s.setFloatUniform("mirror", if (mirror) 1f else 0f)
         s.setFloatUniform("axisA", a)
@@ -470,20 +474,25 @@ private class TurnRegion(
 
     private val shaders = HashMap<Bitmap, BitmapShader>(2)
 
-    private fun textureShader(b: Bitmap): BitmapShader = shaders.getOrPut(b) {
+    private fun textureShader(b: Bitmap, scale: Float): BitmapShader = shaders.getOrPut(b) {
         BitmapShader(b, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
-            setLocalMatrix(Matrix().apply { setScale(1f / texScale, 1f / texScale) })
+            // Smooth sampling: a lighter texture is never shown as blocky pixels.
+            filterMode = BitmapShader.FILTER_MODE_LINEAR
+            setLocalMatrix(Matrix().apply { setScale(1f / scale, 1f / scale) })
         }
     }
 
-    /** GPU textures + the shader, once per turn. On any failure: Slide, and curl off (logged). */
-    private fun prepareCurl(): Boolean {
+    /**
+     * GPU textures + the shader, once per turn: called as soon as the turn is built (not on a
+     * later frame) so nothing is uploaded at landing. On failure: Slide, and curl off (logged).
+     */
+    fun prepareCurl(): Boolean {
         if (TurnSupport.curlDisabledReason != null) return false
         if (curlTried) return shader != null
         curlTried = true
         return try {
-            oldBmp = texture(oldPic)
-            newBmp = texture(newPic)
+            oldBmp = texture(oldPic, oldScale)
+            newBmp = texture(newPic, newScale)
             shader = RuntimeShader(CURL_AGSL).apply {
                 // Back of the page: books show a faint, lightened mirror image of the page (85 %
                 // theme paper; Night stays dark); comics / PDF their own sampled paper colour
@@ -501,13 +510,14 @@ private class TurnRegion(
         }
     }
 
-    /** A picture rasterised on the GPU (hardware bitmap), at [texScale]. */
-    private fun texture(pic: Picture): Bitmap {
-        val tw = max(1, (w * texScale).toInt())
-        val th = max(1, (h * texScale).toInt())
+    /** A picture rasterised on the GPU (hardware bitmap), at [scale] (1 = the picture as is). */
+    private fun texture(pic: Picture, scale: Float): Bitmap {
+        if (scale >= 1f) return Bitmap.createBitmap(pic, w, h, Bitmap.Config.HARDWARE)
+        val tw = max(1, (w * scale).toInt())
+        val th = max(1, (h * scale).toInt())
         val scaled = Picture()
         val c = scaled.beginRecording(tw, th)
-        c.scale(texScale, texScale)
+        c.scale(scale, scale)
         c.drawPicture(pic)
         scaled.endRecording()
         return Bitmap.createBitmap(scaled, tw, th, Bitmap.Config.HARDWARE)

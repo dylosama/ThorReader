@@ -322,4 +322,37 @@ object PageTurnMath {
     /** The front of the bent part gets darker toward the crest (lighting along the bend). */
     fun frontShade(arc: Float, r: Float): Float = 1f - 0.28f * sin((arc / r).coerceIn(0f, (PI / 2).toFloat()))
 
+    // ---- texture quality (v0.3.0 landing fix) --------------------------------------------------
+
+    /** Comics / PDF: size factor of the lighter texture the OLD page (the moving flap) may use. */
+    const val LIGHT_TEXTURE = 0.5f
+
+    /** A landing turn waits at most this long for full-quality pages before committing anyway. */
+    const val LANDING_WAIT_MAX_MS = 1500L
+
+    /**
+     * Curl texture size factors (old page, new page). The NEW page is what the turn lands on
+     * (revealed under the flap, or the sheet settling flat), so it is always full quality: the
+     * animation's last frame is then identical to the page at rest. Only the old page (moving
+     * away) may be lighter, and only for comics / PDF.
+     */
+    fun textureScales(reflow: Boolean): Pair<Float, Float> = (if (reflow) 1f else LIGHT_TEXTURE) to 1f
+
+    /**
+     * Where a [bw] x [bh] page bitmap is drawn in a [w] x [h] page area, in whole pixels. The
+     * reader's page view (PageSlot) and the page-turn pictures both use this, so the animation's
+     * final frame and the page at rest line up pixel for pixel. Normal pages fit the area,
+     * centred; overflowing pages fill its width from the top, scrolled by [scroll].
+     */
+    fun fitRect(bw: Float, bh: Float, w: Float, h: Float, overflow: Boolean, scroll: Float = 0f): PixelRect {
+        val scale = if (overflow) w / bw else min(w / bw, h / bh)
+        val dw = bw * scale
+        val dh = bh * scale
+        val dx = (w - dw) / 2f
+        val dy = if (overflow) -scroll else (h - dh) / 2f
+        return PixelRect(Math.round(dx), Math.round(dy), Math.round(dw), Math.round(dh))
+    }
 }
+
+/** A rectangle in whole pixels: left, top, width, height. */
+data class PixelRect(val x: Int, val y: Int, val w: Int, val h: Int)

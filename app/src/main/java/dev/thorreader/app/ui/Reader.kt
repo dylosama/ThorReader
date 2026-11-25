@@ -51,6 +51,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -467,14 +468,12 @@ fun PageSlot(
             val image = remember(r.bitmap) { r.bitmap.asImageBitmap() }
             val bw = r.bitmap.width.toFloat()
             val bh = r.bitmap.height.toFloat()
-            // Normal pages fit the area; overflowing pages fill its width and scroll.
-            val scale = if (r.overflow) boxW / bw else min(boxW / bw, boxH / bh)
-            val dw = bw * scale
-            val dh = bh * scale
+            // Normal pages fit the area; overflowing pages fill its width and scroll. The same
+            // rectangle as the page-turn pictures (no jump when the animation hands over).
+            val dh = bh * (if (r.overflow) boxW / bw else min(boxW / bw, boxH / bh))
             val maxScroll = if (r.overflow) max(0f, dh - boxH) else 0f
             val sc = scroll.coerceIn(0f, maxScroll)
-            val dx = (boxW - dw) / 2f
-            val dy = if (r.overflow) -sc else (boxH - dh) / 2f
+            val rect = dev.thorreader.app.engine.PageTurnMath.fitRect(bw, bh, boxW, boxH, r.overflow, sc)
             val filter = if (reflow) ColorFilter.colorMatrix(theme.colorMatrix) else null
             Canvas(
                 Modifier
@@ -490,9 +489,10 @@ fun PageSlot(
                     image = image,
                     srcOffset = IntOffset.Zero,
                     srcSize = IntSize(image.width, image.height),
-                    dstOffset = IntOffset(dx.roundToInt(), dy.roundToInt()),
-                    dstSize = IntSize(dw.roundToInt(), dh.roundToInt()),
+                    dstOffset = IntOffset(rect.x, rect.y),
+                    dstSize = IntSize(rect.w, rect.h),
                     colorFilter = filter,
+                    filterQuality = FilterQuality.Low, // bilinear, as in the turn pictures
                 )
             }
             if (maxScroll > 1f) OverflowHints(sc, maxScroll, background)
