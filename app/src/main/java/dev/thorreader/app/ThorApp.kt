@@ -47,6 +47,9 @@ class ThorApp : Application() {
     lateinit var importer: Importer
         private set
     lateinit var lookup: dev.thorreader.app.metadata.MetadataLookup
+
+    /** Reading progress sync with a KOReader / CrossPoint sync server (Settings → Sync). */
+    lateinit var progressSync: dev.thorreader.app.sync.ProgressSync
         private set
     val scope = MainScope()
 
@@ -151,6 +154,7 @@ class ThorApp : Application() {
             .build()
         importer = Importer(this, db.books(), scope)
         lookup = dev.thorreader.app.metadata.MetadataLookup(this).also { it.start() }
+        progressSync = dev.thorreader.app.sync.ProgressSync(this)
         settings.onTextChanged = ::saveBookText
         registerScreenReceiver()
         trimCaches()
@@ -896,6 +900,7 @@ class ThorApp : Application() {
     private fun onLeave(reason: String) {
         Log.i(TAG, "Leaving: $reason")
         session?.finishTurnNow("leaving: $reason") // lid closed mid-turn: finish instantly (position is saved below)
+        progressSync.flush("leaving: $reason") // the X4 can pick up from here right away
         val s = session ?: return
         returnJob?.cancel()
         if (autoBookmarkBook == s.book.id && s.bookmarkHere) return // already done (screen off + stop)
@@ -905,6 +910,7 @@ class ThorApp : Application() {
     private fun onReturn(reason: String) {
         Log.i(TAG, "Back: $reason")
         val s = session ?: return
+        progressSync.bookReady(s, "back to the book: $reason") // read on the X4 meanwhile?
         if (autoBookmarkBook != s.book.id) return
         returnJob?.cancel()
         returnJob = scope.launch {

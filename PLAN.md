@@ -1157,6 +1157,35 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   after a fresh start - every turn a curl, setup 20-100 ms, p95 after setup 16.8-16.9 ms, curl
   never switched off.
 
+### v0.3.0: reading progress sync with CrossPoint (Xteink X4) / KOReader (main)
+- Settings → Sync: server (default https://sync.crosspointreader.com, the X4's; KOReader's is
+  sync.koreader.rocks), username, password → Sign in / Create account; then "Sync reading
+  progress" On/Off, "Match books by" File contents (default) / File name, last status, Sign out.
+  Only the MD5 of the password is stored (the protocol's x-auth-key); HTTPS only.
+- Protocol (KOReader sync, as CrossPoint and KOReader use it; researched from CrossPoint's
+  lib/KOReaderSync and KOReader's kosync plugin): `Accept: application/vnd.koreader.v1+json`,
+  x-auth-user / x-auth-key; GET /users/auth, POST /users/create, GET /syncs/progress/<doc>,
+  PUT /syncs/progress {document, progress, percentage, device "Thor Reader", device_id}.
+- Document id (`engine/KoSync.partialMd5`): KOReader's partial MD5 (1 KB samples at 0, 1024,
+  4096 … 1024·4^i), or MD5 of the file name. Cached per book.
+- Positions: EPUB - XPointer "/body/DocFragment[N]/body/<path>/text().0" to the paragraph at
+  the reading position (a tolerant tag scanner, `KoSync.scan`, maps elements to visible-text
+  fractions), and the book-wide percentage by section bytes (CrossPoint's fallback lands in the
+  same place). Incoming: DocFragment = spine item, the element path (CrossPoint's
+  "text()[n].k", KOReader's "text().0", "img.0"...) resolved to its paragraph, else the
+  percentage. PDF / comics: the page number. Converted formats (MOBI, FB2, DOCX...) are not
+  synced (their chapters don't line up with the original file the other device reads).
+- Seamless (`sync/ProgressSync`): when a book opens (once it is fully laid out) and when the
+  app comes back to an open book, the server is asked; another device's position that is newer
+  than the last page turned here is jumped to like a jump ("Synced from CrossPoint" pill, and
+  "↩ Back to page N" undoes it). A position read here is sent 8 s after the last turn, and at
+  once when the book closes or the app is left. A synced position is not sent back.
+- Tests: KoSyncTest (137 in total). Checked: the mapping over every section of the real Dune
+  EPUB (750-1500 paragraph positions per text section; a position comes back at or just before
+  itself, within one paragraph); the Settings section on the Thor; the CrossPoint server
+  answers the protocol (401 code 2001 without credentials). NOT checked end to end: signing in
+  and syncing with a real X4 needs your account (not created or entered by me).
+
 ### v0.3.0: burn-in protection for the AMOLED screens (main)
 - Before: reading kept the screen on for 10 min after the last input, then Android's own screen
   timeout decided; the library never held the screen on but also never blanked it. With a long
@@ -1266,7 +1295,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: burn-in protection never disturbs reading (shift at page turns, dim before black)".
+  "v0.3.0: reading progress sync with CrossPoint (Xteink X4) / KOReader".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1293,6 +1322,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   the Thor with Dune.
 - Edit info: pick your own front cover, spine and back cover pictures (↺ to go back).
 - Burn-in protection: black screens after no input (Settings → Screen), slow pixel shift.
+- Reading progress sync with CrossPoint (Xteink X4) / KOReader (Settings → Sync).
 - Grid view: each cover has a small tab at the bottom right with the icon of the mode it opens in
   (its own mode, else the last book mode), styled like the ★ tab. Checked on the Thor (Blue
   Period 1 shows Mode 4, the others Mode 1). Settings → Library → "Mode icons on grid covers"
@@ -1336,7 +1366,7 @@ Thor Reader (main):
     adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-debug.apk
     adb shell am start -n dev.thorreader.app/.MainActivity
     .\gradlew assembleRelease      -> app\build\outputs\apk\release\ThorReader-0.3.0.apk
-    .\gradlew testDebugUnitTest    (130 tests)
+    .\gradlew testDebugUnitTest    (137 tests)
 Bookloader branch (both apps):
     git switch bookloader
     .\gradlew assembleDebug

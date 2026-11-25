@@ -136,6 +136,9 @@ fun SettingsPanel() {
         SectionLabel("Library")
         GridModeIconsRow()
 
+        SectionLabel("Sync")
+        SyncSection()
+
         SectionLabel("Screen")
         ScreenSaverRow()
         Text(
@@ -325,6 +328,68 @@ fun ComicVineHint() {
         Chip("Settings") { app.settingsOpen = true; app.lookup.showKeyHint = false }
         Chip("✕") { app.lookup.showKeyHint = false }
     }
+}
+
+// ---- Sync --------------------------------------------------------------------------------------
+
+/**
+ * Reading progress sync with a KOReader sync server - CrossPoint's (the Xteink X4) by default.
+ * Sign in with the same account as on the X4; then it runs by itself.
+ */
+@Composable
+private fun SyncSection() {
+    val app = ThorApp.instance
+    val sync = app.progressSync
+    val scope = rememberCoroutineScope()
+    var server by remember { mutableStateOf(sync.server) }
+    var name by remember { mutableStateOf(sync.user) }
+    var password by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+
+    Text(
+        "Continue where you left off on your Xteink X4 (CrossPoint) or KOReader, and the other way round. " +
+            "Use the same sync account and the same book files on both.",
+        color = HouseStyle.Subtle, fontSize = 13.sp,
+    )
+    if (sync.signedIn) {
+        OnOffRow("Sync reading progress", sync.enabled) { sync.updateEnabled(it) }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Signed in as ${sync.user} · ${sync.server.removePrefix("https://")}", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+            Chip("Sign out") {
+                sync.logOut()
+                password = ""
+                message = null
+            }
+        }
+        ChoiceRow("Match books by", listOf(false, true), sync.byFileName, { if (it) "File name" else "File contents" }) { sync.updateByFileName(it) }
+        sync.status?.let { Text(it, color = HouseStyle.Subtle, fontSize = 13.sp) }
+    } else {
+        Field("Server", server, { server = it }, hint = dev.thorreader.app.sync.ProgressSync.DEFAULT_SERVER)
+        Field("Username", name, { name = it })
+        Field("Password", password, { password = it }, hidden = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            fun go(create: Boolean) {
+                if (busy) return
+                busy = true
+                message = null
+                sync.updateServer(server)
+                scope.launch {
+                    message = sync.logIn(name, password, create)
+                    if (sync.signedIn) password = ""
+                    busy = false
+                }
+            }
+            Chip(if (busy) "Signing in…" else "Sign in", true) { go(false) }
+            Chip("Create account") { go(true) }
+        }
+        Text(
+            "The X4's default server is ${dev.thorreader.app.sync.ProgressSync.DEFAULT_SERVER.removePrefix("https://")}; " +
+                "KOReader's is sync.koreader.rocks. Only an encrypted (https) connection is used.",
+            color = HouseStyle.Subtle, fontSize = 12.sp,
+        )
+    }
+    message?.let { Text(it, color = if (sync.signedIn) HouseStyle.Subtle else HouseStyle.Warning, fontSize = 13.sp) }
 }
 
 // ---- Edit info ---------------------------------------------------------------------------------

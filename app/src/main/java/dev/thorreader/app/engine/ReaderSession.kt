@@ -347,6 +347,39 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         commitJob?.cancel()
         turnWaiting = false
         prefetch()
+        // Progress sync: once the whole book is laid out, see if another device read further.
+        if (p.complete && !syncChecked) {
+            syncChecked = true
+            app.progressSync.bookReady(this, "book opened")
+        }
+    }
+
+    // ---- progress sync (KOReader / CrossPoint) ----------------------------------------------
+
+    private var syncChecked = false
+
+    /** The next position save comes from a sync jump, not from reading here. */
+    private var savingSyncJump = false
+
+    /** The reading position now (chapter + fraction; fixed formats: page index). */
+    fun syncAnchor(): Anchor? = pagination?.anchorOf(viewIndex)
+
+    /** Is the whole book laid out (so any position can be shown)? */
+    val syncReady: Boolean get() = pagination?.complete == true
+
+    /**
+     * Another device read further: go to [a] like a jump (so "↩ Back to page N" can undo it)
+     * and say where it came from. False if already there.
+     */
+    fun syncJump(a: Anchor, device: String): Boolean {
+        val p = pagination ?: return false
+        val target = p.findView(a).coerceIn(0, p.views.size - 1)
+        if (target == viewIndex) return false
+        savingSyncJump = true
+        jumpTo(target)
+        showSwapPill("Synced from $device")
+        Log.i(TAG, "Progress sync: jumped to view ${target + 1} (from $device)")
+        return true
     }
 
     // ---- rendering ------------------------------------------------------------------------
@@ -1130,8 +1163,12 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         val p = pagination ?: return
         val a = p.anchorOf(viewIndex) ?: return
         val prog = progress
+        val moved = a.chapter != book.posChapter || a.fraction != book.posFraction
         book = book.copy(posChapter = a.chapter, posFraction = a.fraction, progress = prog)
         saveCurrentPage()
+        // Progress sync: a move made here is sent (soon); one from a sync jump isn't.
+        if (moved) app.progressSync.positionSaved(this, a, fromSync = savingSyncJump)
+        savingSyncJump = false
         val id = book.id
         app.scope.launch(Dispatchers.IO + NonCancellable) {
             app.db.books().savePosition(id, a.chapter, a.fraction, prog, System.currentTimeMillis())
@@ -1150,6 +1187,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
     fun close() {
         finishTurnNow("book closed")
         savePosition()
+        app.progressSync.flush("book closed")
         showStatus(null)
         scope.cancel()
         val eng = engine

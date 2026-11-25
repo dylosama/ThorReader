@@ -40,6 +40,17 @@ class EpubSections(file: SafFile) : Closeable {
         return h
     }
 
+    /** Uncompressed size in bytes of spine item [index] (0 if unknown). */
+    fun sectionSize(index: Int): Long = spine.getOrNull(index)?.let { zip.getEntry(it)?.size?.coerceAtLeast(0L) } ?: 0L
+
+    /** The HTML of spine item [index] (size-capped), or null. */
+    fun sectionHtml(index: Int): String? {
+        val entry = spine.getOrNull(index)?.let { zip.getEntry(it) } ?: return null
+        return runCatching {
+            zip.getInputStream(entry).use { String(dev.thorreader.app.io.Limits.readCapped(it, dev.thorreader.app.io.Limits.MAX_XML, "a chapter"), Charsets.UTF_8) }
+        }.getOrNull()
+    }
+
     private fun readSpine(): List<String> {
         val container = zip.getEntry("META-INF/container.xml") ?: return emptyList()
         var opfPath: String? = null
