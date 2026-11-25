@@ -1173,3 +1173,27 @@ Part B - new module :bookloader ("Thor Bookloader", dev.thorreader.bookloader, 0
 - Status 2026-11-24: built; tests 121 (:app) + 11 (:bookloader, 2 new in ConnectionTest: the
   routes, and a dead protected route stops the request with "nothing was sent"). Not yet seen on
   the Thor (disconnected).
+
+### Step 25c: Bookloader background music and sound effects (bookloader branch)
+- An ORIGINAL looping track, composed as notes in code (bookloader/.../music/Song.kt) and played
+  by a tiny built-in synthesizer - no audio files. Relaxed bossa / lounge, 116 BPM, D major,
+  32 bars = 66 s: marimba-bell lead with its own melody, FM electric-piano comping in a bossa
+  rhythm, soft round bass (roots and fifths), brushed snare swishes, rim clicks and a soft kick,
+  a little room reverb. Our own chord progression and melody, not based on any existing song.
+- Rendered once to a 22,050 Hz mono PCM buffer (about 2.9 MB, cached on disk), then played in a
+  loop by an AudioTrack; the loop point is seamless (notes and the reverb tail wrap around).
+- Default 40 % of the media volume, 1.5 s fade-in. A small ♪ button next to the top-right pill
+  switches music on / off (remembered). Settings → Sound: Music on / off, Music volume, Send
+  sound effects on / off.
+- A short original "bloop" when a book has been sent (imported or saved), a soft three-note
+  chime when the whole queue is done. Only while Bookloader is on screen.
+- Audio focus: another app's music -> fade out and pause (back when Bookloader comes to the
+  front again); a call or anything short -> fade out, resume when it's over; a notification ->
+  quieter for a moment. Bookloader in the background, screen off or lid closed -> pause; app
+  closed -> stop. Paused over a minute -> the player and the PCM buffer are released. No
+  wakelocks. Thor Reader never plays any of it (it's Bookloader's own process).
+- Log lines (ThorBookloader): "Music start / pause / stop (reason)".
+- Status 2026-11-24: built; tests 121 (:app) + 15 (:bookloader, MusicTest: composition fills
+  the 32 bars, loop 66 s, no clipping, no silent gaps, seamless seam, deterministic; effects).
+  MusicPreview writes bookloader/build/music-preview.wav to listen on a PC. Not yet heard on
+  the Thor (disconnected).

@@ -32,6 +32,36 @@ class BookloaderApp : Application() {
             port = prefs.getInt("proxy_port", 0),
         )
         Http.route = net
+        musicOn = prefs.getBoolean("music_on", true)
+        musicVolume = prefs.getFloat("music_volume", 0.4f)
+        sfxOn = prefs.getBoolean("sfx_on", true)
+    }
+
+    /** Background music on (♪ button / Settings → Sound). Remembered. */
+    var musicOn by mutableStateOf(true)
+        private set
+
+    fun updateMusicOn(on: Boolean) {
+        musicOn = on
+        prefs.edit().putBoolean("music_on", on).apply()
+    }
+
+    /** Music volume, 0..1 of the media volume (default 40 %). */
+    var musicVolume by mutableStateOf(0.4f)
+        private set
+
+    fun updateMusicVolume(v: Float) {
+        musicVolume = v.coerceIn(0f, 1f)
+        prefs.edit().putFloat("music_volume", musicVolume).apply()
+    }
+
+    /** "Send sound effects": the bloop per book sent and the chime when the queue is done. */
+    var sfxOn by mutableStateOf(true)
+        private set
+
+    fun updateSfxOn(on: Boolean) {
+        sfxOn = on
+        prefs.edit().putBoolean("sfx_on", on).apply()
     }
 
     /** Connection route (Direct / Tor / proxy). Changing it applies to every later request at once. */

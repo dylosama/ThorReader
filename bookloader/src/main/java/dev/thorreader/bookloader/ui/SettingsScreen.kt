@@ -27,6 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -95,6 +98,9 @@ fun SettingsScreen(addFeed: Boolean) {
 
             item { SectionLabel("Connection") }
             item { ConnectionSection() }
+
+            item { SectionLabel("Sound") }
+            item { SoundSection() }
 
             item { SectionLabel("Downloads") }
             item {
@@ -195,9 +201,9 @@ fun SettingsScreen(addFeed: Boolean) {
     }
     // "+" in the pill: jump to "Add an OPDS feed".
     LaunchedEffect(addFeed) {
-        // Items above "Add an OPDS feed": note?, Connection (2), Downloads (2), Sources label + rows,
+        // Items above "Add an OPDS feed": note?, Connection (2), Sound (2), Downloads (2), Sources label + rows,
         // feeds label + rows (or the "None yet" line).
-        if (addFeed) list.scrollToItem((if (note != null) 1 else 0) + 5 + reg.builtIn().size + 1 + maxOf(reg.feeds().size, 1))
+        if (addFeed) list.scrollToItem((if (note != null) 1 else 0) + 7 + reg.builtIn().size + 1 + maxOf(reg.feeds().size, 1))
     }
 }
 
@@ -300,3 +306,56 @@ private fun SourceRow(src: SourceProvider, on: Boolean, onToggle: (Boolean) -> U
         onRemove?.let { Chip("Remove") { it() } }
     }
 }
+
+/** Music on / off, its volume (d-pad left / right too), and the "sent" sound effects. */
+@Composable
+private fun SoundSection() {
+    val app = BookloaderApp.instance
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Music", color = Color.White, fontSize = 15.sp, modifier = Modifier.width(150.dp))
+            Chip("On", app.musicOn) { dev.thorreader.bookloader.music.Music.setEnabled(true) }
+            Chip("Off", !app.musicOn) { dev.thorreader.bookloader.music.Music.setEnabled(false) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Music volume", color = Color.White, fontSize = 15.sp, modifier = Modifier.width(150.dp))
+            fun set(v: Float) {
+                app.updateMusicVolume(Math.round(v * 20) / 20f) // 5 % steps
+                dev.thorreader.bookloader.music.Music.volumeChanged()
+            }
+            androidx.compose.material3.Slider(
+                value = app.musicVolume,
+                onValueChange = ::set,
+                colors = androidx.compose.material3.SliderDefaults.colors(
+                    thumbColor = House.Accent, activeTrackColor = House.Accent, inactiveTrackColor = House.Chip,
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .onKeyEventLeftRight { dir -> set(app.musicVolume + dir * 0.05f) },
+            )
+            Text("${(app.musicVolume * 100).toInt()} %", color = House.Subtle, fontSize = 14.sp, modifier = Modifier.width(56.dp))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Send sound effects", color = Color.White, fontSize = 15.sp, modifier = Modifier.width(150.dp))
+            Chip("On", app.sfxOn) { app.updateSfxOn(true) }
+            Chip("Off", !app.sfxOn) { app.updateSfxOn(false) }
+        }
+        Text(
+            "Original music, composed in code and played by Bookloader's own little synthesizer. " +
+                "A bloop when a book has been sent, a chime when the queue is done. Music pauses for calls and other apps' audio, and whenever Bookloader isn't on screen.",
+            color = House.Faint, fontSize = 12.sp,
+        )
+    }
+}
+
+/** D-pad left / right on a focused slider change it ([dir] = -1 / +1). */
+private fun Modifier.onKeyEventLeftRight(change: (Int) -> Unit): Modifier = this.then(
+    Modifier.onPreviewKeyEvent {
+        if (it.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onPreviewKeyEvent false
+        when (it.key) {
+            androidx.compose.ui.input.key.Key.DirectionLeft -> { change(-1); true }
+            androidx.compose.ui.input.key.Key.DirectionRight -> { change(1); true }
+            else -> false
+        }
+    },
+)

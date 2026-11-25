@@ -64,7 +64,10 @@ fun TopBar(center: @Composable () -> Unit) {
             }
         }
         Box(Modifier.align(Alignment.Center)) { center() }
-        Box(Modifier.align(Alignment.CenterEnd)) { Pill(running + waiting) }
+        Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MusicButton()
+            Pill(running + waiting)
+        }
     }
 }
 
@@ -153,3 +156,22 @@ fun BackButton() {
     RoundIcon({ host.back() }) { Text("←", color = Color.White, fontSize = 20.sp) }
 }
 
+
+/** The small ♪ button left of the pill: music on / off (remembered). */
+@Composable
+private fun MusicButton() {
+    val app = BookloaderApp.instance
+    val on = app.musicOn
+    Box(
+        Modifier
+            .size(36.dp)
+            .clip(CircleShape)
+            .background(House.Round)
+            .border(1.dp, if (on) House.Accent.copy(alpha = 0.6f) else House.Hairline, CircleShape)
+            .thorClick(CircleShape) { dev.thorreader.bookloader.music.Music.setEnabled(!on) },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("♪", color = if (on) House.Accent else House.Faint, fontSize = 17.sp)
+        if (!on) Canvas(Modifier.size(18.dp)) { drawLine(House.Faint, Offset(0f, size.height), Offset(size.width, 0f), 2.dp.toPx(), StrokeCap.Round) }
+    }
+}

@@ -134,7 +134,7 @@ class DownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
                 setProgress(workDataOf("stage" to stage, "p" to p))
             }
         }
-        return try {
+        return (try {
             progress("Downloading", 0f)
             val file = spec.localPath?.let(::File)?.takeIf { it.exists() } ?: run {
                 val src = app.sources.get(spec.sourceId) ?: throw IOException("The source '${spec.sourceId}' is gone")
@@ -154,6 +154,7 @@ class DownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
                     val name = Storage.save(applicationContext, file, folder)
                     dir.deleteRecursively()
                     Log.i(TAG, "Saved '${spec.title}' as $name")
+                    sent++
                     Result.success(out("SAVED", "Saved as $name"))
                 }
                 JobAction.IMPORT -> {
@@ -163,6 +164,7 @@ class DownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
                     if (r.status == ThorStatus.IMPORTED || r.status == ThorStatus.DUPLICATE) {
                         app.markInThorReader(spec.sourceId, spec.item.id)
                         dir.deleteRecursively() // temp cache gone once Thor Reader has its copy
+                        if (r.status == ThorStatus.IMPORTED) sent++
                         Result.success(out(r.status.name, if (r.status == ThorStatus.DUPLICATE) "Already in Thor Reader" else "Added to Thor Reader", bookId = r.bookId))
                     } else {
                         // Keep the file: "Retry" or "Save to storage instead" won't download it again.
@@ -176,7 +178,28 @@ class DownloadWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(c
             Log.w(TAG, "Job '${spec.title}' failed", e)
             dir.deleteRecursively()
             Result.success(out("FAILED", e.message ?: e.javaClass.simpleName))
+        }).also { sounds() }
+    }
+
+    /** "Bloop" for a book sent; the chime once the whole queue is done (if anything was sent). */
+    private fun sounds() {
+        if (sent > sentBefore) dev.thorreader.bookloader.music.Sounds.bookSent()
+        val others = runCatching {
+            androidx.work.WorkManager.getInstance(applicationContext).getWorkInfosByTag(Jobs.TAG_JOB).get()
+                .count { it.id != id && !it.state.isFinished }
+        }.getOrDefault(1)
+        if (others == 0) {
+            if (sent > 0) dev.thorreader.bookloader.music.Sounds.batchDone()
+            sent = 0
         }
+    }
+
+    private val sentBefore = sent
+
+    companion object {
+        /** Books sent (imported or saved) since the queue was last empty. */
+        @Volatile
+        private var sent = 0
     }
 
     private fun out(status: String, message: String, localPath: String? = null, bookId: Long = -1) =

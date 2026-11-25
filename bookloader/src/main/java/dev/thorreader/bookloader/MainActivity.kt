@@ -118,6 +118,29 @@ class MainActivity : ComponentActivity(), Host {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        dev.thorreader.bookloader.music.Music.onForeground()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Screen off and the Thor's lid closing both stop the activity with the screen not interactive.
+        val interactive = (getSystemService(POWER_SERVICE) as android.os.PowerManager).isInteractive
+        dev.thorreader.bookloader.music.Music.onBackground(
+            when {
+                isFinishing -> "app closing"
+                !interactive -> "screen off or lid closed"
+                else -> "Bookloader in the background"
+            },
+        )
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (isFinishing) dev.thorreader.bookloader.music.Music.onClosed()
+    }
+
     /** The controller's B button = Back. */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_BUTTON_B) {

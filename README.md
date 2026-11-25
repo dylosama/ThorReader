@@ -154,6 +154,18 @@ Requires JDK 17 and the Android SDK (platform 34).
 Release builds are signed with a keystore described by a local, untracked
 `keystore.properties` file (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`).
 
+## Thor Bookloader (companion app, test branch)
+
+Thor Bookloader (`bookloader/`, only on the `bookloader` branch for now) finds public-domain
+books (Project Gutenberg), MangaDex chapters and your own OPDS catalogues, and sends them
+straight into Thor Reader. It must be signed with the same key as Thor Reader.
+
+**Music:** Bookloader's background music and sound effects are **original and composed in
+code**. The notes of the song are written out in `bookloader/.../music/Song.kt` and played by a
+tiny synthesizer built into the app; there are no audio files or samples, and the tune is not
+based on any existing song. It is rendered once, then looped; it pauses for calls, other apps'
+audio and whenever Bookloader isn't on screen, and can be switched off with the ♪ button.
+
 ## Credits and licences
 
 Thor Reader is free software, licensed under the **GNU Affero General Public License v3.0**
