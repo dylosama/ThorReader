@@ -81,6 +81,10 @@ class BookSeries(private val app: ThorApp) {
                     if (old != null && (old.optString("series").isNotEmpty() || System.currentTimeMillis() - old.optLong("at") < 30L * DAY)) {
                         return@withContext old.optString("series").ifEmpty { null }?.let { it to old.optInt("n", 0).takeIf { n -> n > 0 } }
                     }
+                    // A few new titles per app start, a second apart: kind to Wikidata, light on the
+                    // network and battery for a big library (the rest are done on later starts).
+                    if (lookupsThisRun >= MAX_LOOKUPS_PER_RUN) return@withContext null
+                    if (lookupsThisRun++ > 0) kotlinx.coroutines.delay(LOOKUP_GAP_MS)
                     val hit = runCatching { seriesOfTitle(b.title, b.author) }
                         .onFailure { Log.w(TAG, "Book series of '${b.title}': lookup failed (${it.message})") }
                         .getOrElse { return@withContext null } // offline: try again next time
@@ -157,8 +161,13 @@ class BookSeries(private val app: ThorApp) {
         runCatching { file(key).writeText(j.toString()) }
     }
 
+    /** New title lookups made since the app started (see [MAX_LOOKUPS_PER_RUN]). */
+    private var lookupsThisRun = 0
+
     private companion object {
         const val DAY = 24L * 3600 * 1000
+        const val MAX_LOOKUPS_PER_RUN = 25
+        const val LOOKUP_GAP_MS = 1_000L
         val FAILED = BookSeriesList(emptyList(), "failed")
     }
 }

@@ -1191,6 +1191,35 @@ Changes:
   book below) dims then goes fully black on both screens (0 / 255).
 - Tests: NetworkInputHardeningTest (entity bomb / XXE stripped, image bombs refused) - 162 total.
 
+### v0.3.0: release audit ("please optimize this") and the mode badge (main)
+- Audit on the Thor (release build, 64 % battery): idle cost is 0 % CPU and 0 frames in Grid,
+  List, Inspect (spin settled) and reading; Cover flow 0.05 %. Memory 79 MB (library) to 214 MB
+  (reading). One page turn a second for a minute: 9.5 % of one core, temperatures flat (hottest
+  sensor 46-48 C before, during and after). In the background (launcher in front): 0 %.
+- Frontends and helper apps on this Thor: Cocoon, Odin launcher / dual-screen assistant / game
+  assistant, Shizuku, Thor Volume Control, Thor Pathfinder, RetroArch. The app has no services,
+  receivers, overlays, accessibility or storage permission; only its launcher entry is exported;
+  it releases the bottom screen (Cocoon's companion screen comes back) and never takes the
+  volume keys. Nothing to conflict with.
+- Network: HTTPS only, system CAs only, no backups / device transfer. Two fixes from the code
+  review of everything since the last audit:
+  - EpubRepair: a crafted EPUB ("zip bomb") with the "-?" pattern could make the repaired copy
+    grow to 4 GB. The copy is now capped at 16x the file (at least 128 MB); on failure the
+    partial copy is deleted and the book is read as it is from then on.
+  - BookSeries.detect: at most 25 new Wikidata title lookups per app start, 1 s apart (kind to
+    Wikidata, light on network / battery for a big library; the rest on later starts).
+- Burn-in protection re-checked in the new Cover flow view (debug timer 8 s): dim, black, a
+  touch wakes it, then dim and black again.
+- Mode badge ("Mode 1 · Book"): now in the top-left corner as the Thor is held in each mode (the
+  screen content is already turned for the mode), as a nearly solid pill with a hairline (it
+  sits over the first line for 1.6 s). New Settings -> General -> Screen -> "Mode badge when
+  reading starts" (On by default, pref `mode_badge`). Checked on the Thor in Modes 1 and 3, and
+  Off.
+- Noted (long-standing, unchanged): switching modes keeps the first line on screen, so a round
+  trip (Mode 1 -> 3 -> 1) can land one spread earlier.
+- Release: CHANGELOG.md added (0.3 notes, also the GitHub release notes); README updated (new in
+  0.3; privacy section and network table now list Wikipedia, Wikidata, sync and OPDS). Tests:
+  EpubRepairTest copy cap (175 in total).
 ### v0.3.0: cover flow library view (main)
 - A third library view: the pill's view button now steps List -> Grid -> Cover flow (its icon is
   the view it switches to; Cover flow's is three turned books). Pref `library_layout`
@@ -1464,7 +1493,7 @@ Changes:
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: cover flow library view".
+  "v0.3.0: release audit, mode badge setting, changelog".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1499,6 +1528,7 @@ Changes:
   with none (Harry Potter #1), series tiles, missing books by title, Inspect with the list on top.
 - EPUB conversion damage ("fief-?complete") repaired in a copy; checked once per book.
 - Cover flow: a third library view (List -> Grid -> Cover flow), books turned to show spine and cover.
+- Mode badge in the top-left corner, with an On / Off setting (General -> Screen).
 - Grid view: each cover has a small tab at the bottom right with the icon of the mode it opens in
   (its own mode, else the last book mode), styled like the ★ tab. Checked on the Thor (Blue
   Period 1 shows Mode 4, the others Mode 1). Settings → Library → "Mode icons on grid covers"
@@ -1546,6 +1576,18 @@ Test hygiene: Mode 4 sends Back / B to the focused (top) display - target `input
    still has to be written (step23.md, or the next step file).
 4. Bookloader branch: keep testing (MangaDex volumes, Gutenberg mirrors, Pepper&Carrot, the
    bottom-screen keyboard, music); decide later whether / how to merge it into main.
+5. Future build, maybe (owner's idea, 2026-11-25; NOT approved to build yet): "Bookworms" tab.
+   A round bookworm button left of the Library | Completed pill. First visit: pick a username.
+   Then a card with three picks from your own library - Now Reading / Recommended Read / Next
+   Read - posted to a simple feed of other users' cards (one card per user, newest first, like
+   a poll). Feasibility worked out: the app part is ~1-2 days; it needs a small server the
+   owner runs (e.g. a serverless worker + database: register name, save card, list cards,
+   delete account). Safety plan: device key in the Keystore signs posts (no email / password),
+   strict server checks (username a-z 0-9 _ 3-20, length caps, rate limits), only title /
+   author / book id sent (no files, no cover uploads), off until the user opens the tab,
+   report / block + a privacy note + delete account. Cons: a server to run forever,
+   moderation, privacy of reading habits, the app's first shared user data. No background
+   work: no effect on performance, thermals or screens when the tab isn't open.
 
 ### Exact commands (PowerShell, in C:\Users\Dylan\thor-reader)
 Thor Reader (main):
@@ -1554,7 +1596,7 @@ Thor Reader (main):
     adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-debug.apk
     adb shell am start -n dev.thorreader.app/.MainActivity
     .\gradlew assembleRelease      -> app\build\outputs\apk\release\ThorReader-0.3.0.apk
-    .\gradlew testDebugUnitTest    (174 tests)
+    .\gradlew testDebugUnitTest    (175 tests)
 Bookloader branch (both apps):
     git switch bookloader
     .\gradlew assembleDebug

@@ -8,6 +8,10 @@ screens the way a book would: hold the Thor sideways and the two screens become 
 of an open book, or keep it closed-clamshell style and read on one screen while the other stays
 free for something else.
 
+**New in 0.3:** three library views (List, Grid, Cover flow), series collections for books and
+manga, a 3D Inspect view, page-turn and open/close animations, reading progress sync with
+CrossPoint / KOReader, OPDS catalogs and burn-in protection - see [CHANGELOG.md](CHANGELOG.md).
+
 ## Reading modes
 
 Each book remembers its own mode. Switch from the reader menu.
@@ -96,8 +100,10 @@ hand is never overwritten. Turn it off in **Settings** (the ⚙ in the library).
 
 ## Privacy & security
 
-**No tracking.** Thor Reader has no analytics, no ads, no accounts, no crash reporting and no
-background syncing. It never sends your books, your reading position or your library anywhere.
+**No tracking.** Thor Reader has no analytics, no ads, no crash reporting and no background
+work. It never sends your books or your library anywhere. Your reading position is only sent
+if you sign in to reading progress sync yourself (Settings › Online), and only to the sync
+server you chose.
 
 **What it can access**
 
@@ -106,19 +112,29 @@ background syncing. It never sends your books, your reading position or your lib
 - Its own private storage: the library database, cover pictures, and caches it can re-create
   (unpacked comics, page layouts, converted books, saved online answers - limit and
   **Clear cache** in Settings).
-- Permissions: Internet (book info only), network state (to retry a lookup when you're back
-  online) and vibration (the small tick at the end of a book). Nothing else.
+- Permissions: Internet (book info, sync and catalogs), network state (to retry a lookup when
+  you're back online) and vibration (the small tick at the end of a book). Nothing else.
 
-**Network calls** - only when **Look up book info online** is on (Settings), HTTPS only:
+**Network calls** - book info only when **Look up book info online** is on (Settings), HTTPS
+only:
 
 | Service | When | What is sent |
 |---|---|---|
 | graphql.anilist.co | manga and unlabelled comics | the series name |
 | openlibrary.org, covers.openlibrary.org | books | the title and author, or the ISBN; cover download |
 | comicvine.gamespot.com | comics, only if you entered a key | the series name and issue number, your key |
+| en.wikipedia.org | manga series collections | the series name |
+| www.wikidata.org, query.wikidata.org | book series collections | the series name, or a book's title (for a book with no series) |
 
-Each book is looked up once, answers are cached for 30 days, and failures are retried later
-(never in a loop). Book content never leaves the device.
+Each book is looked up once, answers are cached (30 days for book info), and failures are
+retried later (never in a loop). Book content never leaves the device.
+
+Two features you switch on yourself in **Settings › Online**:
+
+| Service | When | What is sent |
+|---|---|---|
+| Your sync server (CrossPoint, KOReader or your own) | only after you sign in | your username and a hash of your password; per book, a fingerprint of the file (not the book itself), your position and percentage, and a device name |
+| OPDS catalogs you add | while you browse or search one | your search words; the catalog's login if it needs one |
 
 **Safety**
 

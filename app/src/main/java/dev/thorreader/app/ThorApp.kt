@@ -270,7 +270,8 @@ class ThorApp : Application() {
             settings.updateLastBookMode(mode)
         }
         menuScreen = null
-        if (!showLabel) return
+        // Settings -> General -> Screen -> "Mode badge when reading starts".
+        if (!showLabel || !settings.modeBadge) return
         toastSeq++
         modeToast = ModeToast(mode, toastSeq)
         toastJob?.cancel()

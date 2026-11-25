@@ -22,6 +22,15 @@ class EpubRepairTest {
         assertEquals(3, EpubRepair.countIn("drip-?drip-?drip and fief-?complete"))
     }
 
+    @Test
+    fun aRepairedCopyCantGrowFarBeyondTheBook() {
+        // A 500 KB book may unpack to 128 MB at most (real books stay far below); a 100 MB one
+        // to 16x; never more than the app-wide unpack limit.
+        assertEquals(128L shl 20, EpubRepair.maxCopy(500L shl 10))
+        assertEquals(1600L shl 20, EpubRepair.maxCopy(100L shl 20))
+        assertEquals(dev.thorreader.app.io.Limits.MAX_UNPACKED_TOTAL, EpubRepair.maxCopy(1L shl 40))
+    }
+
     private fun epub(vararg entries: Pair<String, String>): ByteArray {
         val out = ByteArrayOutputStream()
         ZipOutputStream(out).use { z -> entries.forEach { (n, t) -> z.putNextEntry(ZipEntry(n)); z.write(t.toByteArray()); z.closeEntry() } }

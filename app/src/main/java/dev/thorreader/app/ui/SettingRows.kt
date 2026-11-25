@@ -130,7 +130,10 @@ fun ScreenSaverRow() = ChoiceRow(
 fun SelectButtonRow() = OnOffRow("Select button changes mode", settings.selectCyclesMode) { settings.updateSelectCyclesMode(it) }
 
 @Composable
-fun SwipeSwapRow() = OnOffRow("Swap screens (comics): swipe up", settings.swipeSwap) { settings.updateSwipeSwap(it) }
+fun ModeBadgeRow() = OnOffRow("Mode badge when reading starts", settings.modeBadge) { settings.updateModeBadge(it) }
+
+@Composable
+fun SwipeSwapRow() =OnOffRow("Swap screens (comics): swipe up", settings.swipeSwap) { settings.updateSwipeSwap(it) }
 
 @Composable
 fun PageTurnStyleRow() = ChoiceRow("Page turn", TurnStyle.entries, settings.turnStyle, { it.label }) { settings.updateTurnStyle(it) }

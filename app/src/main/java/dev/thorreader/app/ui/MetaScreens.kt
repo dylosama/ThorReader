@@ -212,6 +212,7 @@ private fun GeneralTab() {
             "(the first touch only wakes them). Everything also moves by a pixel or two now and then - only as a page turns, never while you read.",
         color = HouseStyle.Subtle, fontSize = 13.sp,
     )
+    ModeBadgeRow()
 
     SectionLabel("Bookmark")
     BookmarkColorPicker()

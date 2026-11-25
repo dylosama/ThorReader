@@ -520,6 +520,15 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putBoolean("swipe_swap", on).apply()
     }
 
+    /** The mode badge ("1 · Book" in the middle of each screen) when a book opens or the mode changes. */
+    var modeBadge by mutableStateOf(prefs.getBoolean("mode_badge", true))
+        private set
+
+    fun updateModeBadge(on: Boolean) {
+        modeBadge = on
+        prefs.edit().putBoolean("mode_badge", on).apply()
+    }
+
     /** Size limit for caches the app can re-create (unpacked comics, layouts, lookups...). */
     var cacheLimitMb by mutableIntStateOf(prefs.getInt("cache_limit_mb", dev.thorreader.app.io.CacheBudget.DEFAULT_MB))
         private set

@@ -45,10 +45,17 @@ object EpubRepair {
         return n
     }
 
+    /**
+     * The most a repaired copy of a [fileSize]-byte EPUB may hold. Real books unpack to a few
+     * times their size; a "zip bomb" made to fill the storage hits this and is left as it is.
+     */
+    fun maxCopy(fileSize: Long): Long = minOf(Limits.MAX_UNPACKED_TOTAL, maxOf(128L shl 20, fileSize * 16))
+
     /** A copy of [zip] with the chapters fixed, written to [out] ("mimetype" first and stored, as EPUB requires). */
-    fun write(zip: ZipFile, out: OutputStream) {
+    fun write(zip: ZipFile, out: OutputStream, fileSize: Long = Long.MAX_VALUE / 16) {
         val all = zip.entriesInPhysicalOrder.toList().filter { !it.isDirectory }
         if (all.size > Limits.MAX_ENTRIES) throw TooLargeException("the list of files")
+        val budget = maxCopy(fileSize)
         var total = 0L
         ZipOutputStream(out.buffered()).use { z ->
             val mt = all.firstOrNull { it.name == "mimetype" }?.let { read(zip, it, 1024) } ?: "application/epub+zip".toByteArray()
@@ -68,7 +75,7 @@ object EpubRepair {
                 } else {
                     total += zip.getInputStream(e).use { copyCapped(it, z, Limits.MAX_UNPACKED_FILE) }
                 }
-                if (total > Limits.MAX_UNPACKED_TOTAL) throw TooLargeException("the book")
+                if (total > budget) throw TooLargeException("the book")
                 z.closeEntry()
             }
         }
@@ -106,7 +113,13 @@ object EpubRepair {
                 return@runCatching null
             }
             val tmp = File(dir, fixed.name + ".tmp")
-            tmp.outputStream().use { write(zip, it) }
+            try {
+                tmp.outputStream().use { write(zip, it, size) }
+            } catch (t: Throwable) {
+                tmp.delete() // never leave a partial copy behind
+                clean.createNewFile() // read as it is from now on; don't try again on every open
+                throw t
+            }
             if (!tmp.renameTo(fixed)) { tmp.delete(); return@runCatching null }
             Log.i(TAG, "EPUB text repaired: $n broken hyphens (\"-?\") fixed in a copy (${System.currentTimeMillis() - t0} ms)")
         }

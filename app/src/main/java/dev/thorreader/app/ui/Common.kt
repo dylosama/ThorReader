@@ -157,15 +157,23 @@ fun ModeButton(mode: ReadingMode, selected: Boolean, width: Dp = 104.dp, onClick
     }
 }
 
-/** Brief label after a mode change (menu, or the Select button when turned on). */
+/**
+ * Brief label after a mode change or when a book opens (menu, or the Select button when turned
+ * on), in the top-left corner: the screen's content is already turned for the mode, so it's the
+ * top left as the Thor is held. Off in Settings -> General -> "Mode badge when reading starts".
+ */
 @Composable
 fun ModeToastOverlay(modifier: Modifier = Modifier) {
     val toast = ThorApp.instance.modeToast
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(modifier.fillMaxSize().padding(start = 18.dp, top = 16.dp), contentAlignment = Alignment.TopStart) {
         AnimatedVisibility(visible = toast != null, enter = fadeIn(), exit = fadeOut()) {
             val mode = toast?.mode ?: return@AnimatedVisibility
             // House style: one quiet translucent pill with the mode's little icon.
-            HouseBadge("Mode ${mode.number} · ${mode.title}") {
+            // Nearly solid in the corner: it sits over the page's first line for a moment.
+            HouseBadge(
+                "Mode ${mode.number} · ${mode.title}",
+                Modifier.clip(HouseStyle.Shape).background(Color(0xF0181818)).border(1.dp, HouseStyle.Hairline, HouseStyle.Shape),
+            ) {
                 ModeIcon(mode, true, Modifier.size(20.dp, 16.dp))
             }
         }
