@@ -63,8 +63,9 @@ class ThorApp : Application() {
 
     /** Manga series chapter maps (Wikipedia + AniList), for the collection views. */
     lateinit var mangaSeries: dev.thorreader.app.manga.MangaSeries
+    lateinit var bookSeries: dev.thorreader.app.manga.BookSeries
 
-    /** The manga series whose collection is open over the library (its name), or null. */
+    /** The manga or book series whose collection is open over the library (its name), or null. */
     var collection by mutableStateOf<String?>(null)
 
     val scope = MainScope()
@@ -194,6 +195,7 @@ class ThorApp : Application() {
         progressSync = dev.thorreader.app.sync.ProgressSync(this)
         catalogs = dev.thorreader.app.opds.Catalogs(this)
         mangaSeries = dev.thorreader.app.manga.MangaSeries(this)
+        bookSeries = dev.thorreader.app.manga.BookSeries(this)
         settings.onTextChanged = ::saveBookText
         registerScreenReceiver()
         trimCaches()

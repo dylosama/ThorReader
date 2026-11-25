@@ -143,6 +143,10 @@ interface BookDao {
     @Query("SELECT * FROM books")
     suspend fun all(): List<Book>
 
+    /** A series found for a book that had none (never over one the book or the user gave it). */
+    @Query("UPDATE books SET series = :series, seriesNumber = :number WHERE id = :id AND (series IS NULL OR series = '')")
+    suspend fun setSeriesIfBlank(id: Long, series: String, number: Float?)
+
     @Query("SELECT id FROM books WHERE lookupState IS NULL OR lookupState IN ('pending', 'retry')")
     suspend fun idsNeedingLookup(): List<Long>
 

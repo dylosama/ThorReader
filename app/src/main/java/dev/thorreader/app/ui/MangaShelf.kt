@@ -28,6 +28,27 @@ object MangaShelf {
 
     fun seriesOf(b: Book): String? = unitOf(b)?.series
 
+    /** The series of a book (not manga or comics) - Dune, Harry Potter - or null. */
+    fun bookSeriesOf(b: Book): String? =
+        b.series?.trim()?.takeIf { it.isNotEmpty() && LibraryLogic.typeOf(b) == LibraryLogic.BOOKS && unitOf(b) == null }
+
+    /** Whether [series] is a manga series in [books] (else a book series). */
+    fun isManga(series: String, books: List<Book>): Boolean = seriesKey(series) in mangaSeriesIn(books)
+
+    /** The owned books of the book series [series] in [books], for [BookCollection.build]. */
+    fun ownedBooks(series: String, books: List<Book>): List<dev.thorreader.app.engine.BookCollection.Owned> {
+        val key = seriesKey(series)
+        return books.filter { b -> bookSeriesOf(b)?.let(::seriesKey) == key }
+            .map { dev.thorreader.app.engine.BookCollection.Owned(it.id, it.seriesNumber, it.title) }
+    }
+
+    /** Book series keys in [books] -> their names (for looking their lists up). */
+    fun bookSeriesIn(books: List<Book>): Map<String, String> {
+        val out = LinkedHashMap<String, String>()
+        books.forEach { b -> bookSeriesOf(b)?.let { s -> seriesKey(s)?.let { out.putIfAbsent(it, s) } } }
+        return out
+    }
+
     /** Series keys that are manga in [books] (by their manga books). */
     fun mangaSeriesIn(books: List<Book>): Set<String> = books.mapNotNullTo(HashSet()) { b -> unitOf(b)?.series?.let(::seriesKey) }
 
@@ -40,7 +61,7 @@ object MangaShelf {
 
     sealed interface Item {
         data class One(val book: Book) : Item
-        /** A manga series with 2+ books: [books] in reading order (volumes, then chapters). */
+        /** A manga or book series with 2+ books: [books] in reading order (volumes, then chapters; books by number). */
         data class Series(val name: String, val books: List<Book>) : Item
     }
 
@@ -52,7 +73,7 @@ object MangaShelf {
         val members = HashMap<String, MutableList<Book>>()
         val names = HashMap<String, String>()
         val known = mangaSeriesIn(books)
-        fun seriesOf(b: Book) = unitOf(b, known)?.series
+        fun seriesOf(b: Book) = unitOf(b, known)?.series ?: bookSeriesOf(b)
         for (b in books) {
             val s = seriesOf(b) ?: continue
             val k = seriesKey(s) ?: continue
@@ -73,9 +94,9 @@ object MangaShelf {
         return out
     }
 
-    /** Volumes by number, then chapters by number. */
+    /** Volumes by number, then chapters by number; books by their number in the series, then title. */
     val readingOrder: Comparator<Book> = compareBy<Book>(
         { if (unitOf(it)?.kind == MangaUnits.Kind.VOLUME) 0 else 1 },
-        { unitOf(it)?.let { u -> u.volume?.toFloat() ?: u.chapter } ?: Float.MAX_VALUE },
-    )
+        { unitOf(it)?.let { u -> u.volume?.toFloat() ?: u.chapter } ?: it.seriesNumber ?: Float.MAX_VALUE },
+    ).thenComparator { a, b -> dev.thorreader.app.io.NaturalOrder.compare(a.title, b.title) }
 }

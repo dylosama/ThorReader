@@ -89,9 +89,13 @@ class InspectState(val book: Book, val from: RectF?, series: String? = null) {
 
     /**
      * A manga volume / chapter: its series ([series] when opened from a collection). Then the top
-     * screen shows the series' collection and the 3D book is on the bottom screen.
+     * screen shows the series' collection and the 3D book is on the bottom screen. A book of a
+     * book series too, once its list is known (Dune 1-6) - a lone book with an unknown series
+     * keeps its description.
      */
-    val collection: String? = series ?: MangaShelf.seriesOf(book)
+    val collection: String? = series ?: MangaShelf.seriesOf(book) ?: MangaShelf.bookSeriesOf(book)?.takeIf { s ->
+        runCatching { ThorApp.instance.bookSeries.lists[dev.thorreader.app.data.seriesKey(s)] }.getOrNull()?.books?.isNotEmpty() == true
+    }
     private val reflowable = runCatching { BookFormat.valueOf(book.format).reflowable }.getOrDefault(true)
 
     /** Pages as printed (books: estimated from the source count; comics / PDF: real pages). */

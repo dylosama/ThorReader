@@ -147,6 +147,13 @@ fun LibraryScreen() {
     }
     // Upgraders and anyone who already has books skip "Add your books here".
     LaunchedEffect(loaded?.isNotEmpty()) { if (loaded?.isNotEmpty() == true) app.tutorialDone(TutorialStep.ADD_BOOKS) }
+    // Book series' lists (Dune 1-6), one at a time in the background: from disk, else online if
+    // allowed. Inspect then shows a series book's collection.
+    val bookSeries = remember(loaded) { MangaShelf.bookSeriesIn(loaded.orEmpty()) }
+    LaunchedEffect(bookSeries.keys) { app.bookSeries.warm(bookSeries.values) }
+    // Books with no series: which one they're in (Harry Potter #1), by title - online only if allowed.
+    val noSeries = remember(loaded) { loaded.orEmpty().filter { it.series.isNullOrBlank() } }
+    LaunchedEffect(noSeries.map { it.id }) { app.bookSeries.detect(noSeries) }
 
     // Library shows every book (completed ones too, with their star); Completed only the finished ones.
     val onShelf = if (shelf == Shelf.COMPLETED) books.filter { it.completed } else books
@@ -457,7 +464,7 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClose: () ->
     }
 }
 
-/** A manga series in list view: stacked covers, its name and what's in the library; opens its collection. */
+/** A manga or book series in list view: stacked covers, its name and what's in the library; opens its collection. */
 @Composable
 private fun SeriesRow(item: MangaShelf.Item.Series) {
     val app = ThorApp.instance
@@ -492,10 +499,10 @@ private fun SeriesRow(item: MangaShelf.Item.Series) {
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             Text(item.name, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(
-                listOfNotNull(vols.takeIf { it > 0 }?.let { "$it volume${if (it == 1) "" else "s"}" }, chs.takeIf { it > 0 }?.let { "$it chapter${if (it == 1) "" else "s"}" }).joinToString(" · "),
+                if (units.isEmpty()) "${item.books.size} books" else listOfNotNull(vols.takeIf { it > 0 }?.let { "$it volume${if (it == 1) "" else "s"}" }, chs.takeIf { it > 0 }?.let { "$it chapter${if (it == 1) "" else "s"}" }).joinToString(" · "),
                 color = SubtleText, fontSize = 13.sp,
             )
-            Text("Manga series · tap for the collection", color = Accent, fontSize = 13.sp)
+            Text((if (units.isEmpty()) "Book series" else "Manga series") + " · tap for the collection", color = Accent, fontSize = 13.sp)
         }
     }
 }

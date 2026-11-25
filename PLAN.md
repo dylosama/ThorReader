@@ -1191,6 +1191,29 @@ Changes:
   book below) dims then goes fully black on both screens (0 / 255).
 - Tests: NetworkInputHardeningTest (entity bomb / XXE stripped, image bombs refused) - 162 total.
 
+### v0.3.0: book series collections (main)
+- Book series like the manga ones, for books (not manga / comics): `engine/BookSeriesList`,
+  `engine/BookCollection`, `manga/BookSeries` (only with "Look up book info online").
+- Series lists from Wikidata: the series name is searched (wbsearchentities), then SPARQL for
+  books with "part of the series" (P179) + "series ordinal" (P1545). Rules: whole numbers only
+  (no "0.5" prequels); one book per number (the one with most Wikipedia links, so a translation's
+  item doesn't win); the best search match with 2+ numbered books; labels in "en,mul,en-gb"
+  (Wikidata moved some English names to "mul": Harry Potter came back as "Q8337" without it).
+  Cached in files/book_series a month ("nothing found": a week). Checked live: Dune 1-6, Harry
+  Potter 1-7, The Expanse 1-9, Mistborn 1-7, Discworld 1-41, Hunger Games 1-5, ASOIAF 1-7.
+- Series detection for books with no series metadata: the title is searched on Wikidata and the
+  book's own series + number read (title must match; an author surname must match when both are
+  known), saved with `setSeriesIfBlank` (never over a series the book or the user gave it).
+  Only the title is sent; each title is asked once (again after a month if nothing was found).
+- The collection: owned books by number (the library's number, else the title found on the list:
+  "Dune (Dune Chronicles 1)" -> 1), missing ones one per row with their titles ("Dune Messiah ·
+  Book 2 · not in your library"), unknown numbers as ranges; info line "Books 1–6 / In your
+  library: 1 of 6 books". 2+ books of a series -> one library tile / row ("Book series").
+- Inspect on a series book whose list is known: the collection on the top screen, the 3D book
+  on the bottom (as for manga). A lone book with an unknown series keeps its description.
+- Tests: BookSeriesTest (169 in total). Checked on the Thor: Harry Potter and the Philosopher's
+  Stone detected as Harry Potter #1 (7-book list); Inspect on Dune and Harry Potter (list on
+  top, 3D book below); the Blue Period manga collection unchanged.
 ### v0.3.0: manga series collections (main)
 - Volumes vs chapters (`engine/MangaUnits`, from the file name, computed when needed - no DB
   change, existing books covered): "v01", "Vol. 1", "Volume 3", "第3巻" → volume; "Ch. 1 Title",
@@ -1406,7 +1429,7 @@ Changes:
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: efficiency, gaming and security audit".
+  "v0.3.0: book series collections".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1437,6 +1460,8 @@ Changes:
 - OPDS catalogs: browse, search and download books into the library (Settings → Online, + menu).
 - Manga series collections: volume / chapter detection, series tiles, cover flow + gap list,
   Ongoing / Completed, Inspect with the collection on top and the 3D book below.
+- Book series collections: Wikidata series lists (Dune 1-6), series detection by title for books
+  with none (Harry Potter #1), series tiles, missing books by title, Inspect with the list on top.
 - Grid view: each cover has a small tab at the bottom right with the icon of the mode it opens in
   (its own mode, else the last book mode), styled like the ★ tab. Checked on the Thor (Blue
   Period 1 shows Mode 4, the others Mode 1). Settings → Library → "Mode icons on grid covers"
@@ -1480,7 +1505,7 @@ Thor Reader (main):
     adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-debug.apk
     adb shell am start -n dev.thorreader.app/.MainActivity
     .\gradlew assembleRelease      -> app\build\outputs\apk\release\ThorReader-0.3.0.apk
-    .\gradlew testDebugUnitTest    (162 tests)
+    .\gradlew testDebugUnitTest    (169 tests)
 Bookloader branch (both apps):
     git switch bookloader
     .\gradlew assembleDebug

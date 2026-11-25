@@ -69,6 +69,15 @@ import kotlin.math.min
 fun rememberMangaCollection(series: String, books: List<Book>): Pair<MangaCollection.Collection, Boolean> {
     val app = ThorApp.instance
     val key = seriesKey(series)
+    val manga = remember(books, series) { MangaShelf.isManga(series, books) }
+    if (!manga) {
+        // A book series (Dune 1-6): its numbered books from Wikidata.
+        LaunchedEffect(key) { app.bookSeries.list(series) }
+        val list = key?.let { app.bookSeries.lists[it] }
+        val loading = key != null && !app.bookSeries.lists.containsKey(key) && app.settings.lookupOnline
+        val owned = remember(books, series) { MangaShelf.ownedBooks(series, books) }
+        return remember(owned, list) { dev.thorreader.app.engine.BookCollection.build(owned, list) } to loading
+    }
     LaunchedEffect(key) { app.mangaSeries.map(series) }
     val map = key?.let { app.mangaSeries.maps[it] }
     val loading = key != null && !app.mangaSeries.maps.containsKey(key) && app.settings.lookupOnline
@@ -83,6 +92,22 @@ private val Paused = Color(0xFFE0A84A)
 /** "Chapters 1– Ongoing" (green) or "Chapters 1–97 Completed" (red), and what the user has. */
 @Composable
 fun CollectionInfoLine(c: MangaCollection.Collection, loading: Boolean) {
+    if (c.isBooks) {
+        // "Books 1–6" and what the user has: "In your library: 1 of 6".
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Books 1–", color = Color.White, fontSize = 15.sp)
+                Text(
+                    c.seriesBooks?.toString() ?: if (loading) "looking up…" else "?",
+                    color = if (c.seriesBooks != null) Color.White else SubtleText, fontSize = 15.sp,
+                    fontWeight = if (c.seriesBooks != null) FontWeight.Bold else FontWeight.Normal,
+                )
+            }
+            val of = c.seriesBooks?.let { " of $it" } ?: ""
+            Text("In your library: ${c.books}$of book${if (c.books == 1 && of.isEmpty()) "" else "s"}", color = SubtleText, fontSize = 13.sp)
+        }
+        return
+    }
     val last = c.lastChapter?.let(MangaUnits::fmt)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -124,12 +149,18 @@ private fun texts(r: MangaCollection.Row, status: MangaSeriesMap.Status?): Pair<
         val more = if (r.tail && status == MangaSeriesMap.Status.ONGOING) " · more to come" else ""
         head to ("not in your library" + (r.count?.let { " · $it chapter${if (it == 1) "" else "s"}" } ?: "") + more)
     }
+    is MangaCollection.BookRow -> r.title to (r.number?.let { "Book $it" } ?: "In the series")
+    is MangaCollection.MissingBooksRow -> {
+        val n = if (r.from == r.to) "Book ${r.from}" else "Books ${r.from}–${r.to}"
+        (r.title ?: n) to (if (r.title != null) "$n · not in your library" else "not in your library")
+    }
 }
 
 private fun ownedId(r: MangaCollection.Row): Long? = when (r) {
     is VolumeRow -> r.bookId
     is ChapterRow -> r.bookId
-    is GapRow -> null
+    is MangaCollection.BookRow -> r.bookId
+    is GapRow, is MangaCollection.MissingBooksRow -> null
 }
 
 /** A small cover for [book] (about [widthPx] wide), the user's own picture first. */
@@ -421,6 +452,6 @@ fun InspectCollectionTop(s: InspectState) {
             onRead = { b -> if (b.id == s.book.id) app.readFromInspect() else { app.switchInspect(b); app.readFromInspect() } },
             modifier = Modifier.weight(1f),
         )
-        Text("Tap a volume or chapter to see it below · " + INSPECT_HINT, color = Color(0xFF777777), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text((if (c.isBooks) "Tap a book" else "Tap a volume or chapter") + " to see it below · " + INSPECT_HINT, color = Color(0xFF777777), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

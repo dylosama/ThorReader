@@ -23,6 +23,12 @@ object MangaCollection {
      */
     data class GapRow(val from: Float?, val to: Float?, val count: Int?, val volumes: IntRange?, val tail: Boolean) : Row
 
+    /** A book of a (non-manga) book series the user has: its [number] in the series (null = unknown). */
+    data class BookRow(val number: Int?, val title: String, val bookId: Long) : Row
+
+    /** Books [from]..[to] of a book series the user doesn't have; [title] when it's one known book. */
+    data class MissingBooksRow(val from: Int, val to: Int, val title: String?) : Row
+
     data class Collection(
         val rows: List<Row>,
         val volumes: Int,
@@ -30,6 +36,10 @@ object MangaCollection {
         /** Last chapter of the series (known for completed ones), or the newest known. */
         val lastChapter: Float?,
         val status: MangaSeriesMap.Status?,
+        /** A book series (Dune 1-6), not manga: [books] owned, of [seriesBooks] (if known). */
+        val isBooks: Boolean = false,
+        val books: Int = 0,
+        val seriesBooks: Int? = null,
     ) {
         /** Volumes and loose chapters both: the cover flow is the default view then. */
         val mixed: Boolean get() = volumes > 0 && chapters > 0
