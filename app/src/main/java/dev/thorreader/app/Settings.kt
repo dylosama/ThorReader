@@ -390,6 +390,15 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putBoolean("library_grid", grid).apply()
     }
 
+    /** Grid view: the small reading-mode icon at each cover's bottom right. */
+    var gridModeIcons by mutableStateOf(prefs.getBoolean("grid_mode_icons", true))
+        private set
+
+    fun updateGridModeIcons(show: Boolean) {
+        gridModeIcons = show
+        prefs.edit().putBoolean("grid_mode_icons", show).apply()
+    }
+
     // ---- theme colour (step 24) -----------------------------------------------------------
 
     /** The app's accent colour (ARGB). Read by `ui.Accent`. */

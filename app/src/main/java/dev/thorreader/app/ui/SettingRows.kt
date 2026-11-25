@@ -113,6 +113,9 @@ private val settings get() = ThorApp.instance.settings
 fun PageThemeRow() = ChoiceRow("Page theme", PageTheme.entries, settings.theme, { it.label }) { settings.updateTheme(it) }
 
 @Composable
+fun GridModeIconsRow() = OnOffRow("Mode icons on grid covers", settings.gridModeIcons) { settings.updateGridModeIcons(it) }
+
+@Composable
 fun HeaderRow() = OnOffRow("Header & page number", settings.showHeader) { settings.updateShowHeader(it) }
 
 @Composable

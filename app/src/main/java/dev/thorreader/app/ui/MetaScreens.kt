@@ -162,6 +162,7 @@ fun SettingsPanel() {
         BookmarkColorPicker()
 
         SectionLabel("Library")
+        GridModeIconsRow()
         StorageSection()
 
         SectionLabel("Hidden items")

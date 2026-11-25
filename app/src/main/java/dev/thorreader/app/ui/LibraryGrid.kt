@@ -157,9 +157,10 @@ private fun GridCover(book: Book, cellPx: Int) {
             if (book.completed) {
                 Text("★", color = Gold, fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd).background(Color(0x88000000), RoundedCornerShape(bottomStart = 8.dp)).padding(horizontal = 5.dp, vertical = 1.dp))
             }
-            // The mode it opens in (its own, else the last book mode), in a tab like the ★.
+            // The mode it opens in (its own, else the last book mode), in a tab like the ★
+            // (Settings → Library → Mode icons on grid covers).
             val mode = book.readingMode ?: app.settings.lastBookMode
-            ModeIcon(
+            if (app.settings.gridModeIcons) ModeIcon(
                 mode, selected = false,
                 Modifier
                     .align(Alignment.BottomEnd)
