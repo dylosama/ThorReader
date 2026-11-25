@@ -13,6 +13,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -29,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
@@ -56,8 +61,14 @@ import kotlinx.coroutines.withContext
 object House {
     val Accent = Color(0xFFE0A050)
     val Gold = Color(0xFFF2B544)
-    val Panel = Color(0xFF141414)
-    val Chip = Color(0xFF262626)
+    val Panel = Color(0xFF1A1A1A)
+    val Chip = Color(0xFF2E2E2E)
+    /** Thor Reader's library: screen, rows, author line, text on the accent, the round buttons. */
+    val Screen = Color(0xFF101010)
+    val Row = Color(0xFF1A1A1A)
+    val Byline = Color(0xFFB8B8B8)
+    val OnAccent = Color(0xFF1A1A1A)
+    val Round = Color(0xFF262626)
     val Hairline = Color(0x33FFFFFF)
     val Subtle = Color(0xB3FFFFFF)
     val Faint = Color(0xFF888888)
@@ -88,26 +99,65 @@ fun Modifier.thorClick(shape: Shape = RoundedCornerShape(10.dp), enabled: Boolea
 
 @Composable
 fun Chip(label: String, selected: Boolean = false, enabled: Boolean = true, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Box(
-        modifier
-            .heightIn(min = 40.dp)
+    // Thor Reader's Chip: 14 sp on dark grey; the selected one filled with the accent, bold.
+    Text(
+        label,
+        color = when {
+            !enabled -> Color(0x66FFFFFF)
+            selected -> House.OnAccent
+            else -> Color.White
+        },
+        fontSize = 14.sp,
+        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        maxLines = 1,
+        modifier = modifier
             .clip(House.Pill)
             .background(if (selected) House.Accent else House.Chip)
-            .border(1.dp, House.Hairline, House.Pill)
             .thorClick(House.Pill, enabled, onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    )
+}
+
+/** Thor Reader's sort-row chip: quiet text; the active one in the accent on a faint accent pill. */
+@Composable
+fun RowChip(text: String, active: Boolean, onClick: () -> Unit) {
+    Text(
+        text,
+        color = if (active) House.Accent else House.Subtle,
+        fontSize = 13.sp,
+        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(House.Pill)
+            .background(if (active) House.Accent.copy(alpha = 0.14f) else Color.Transparent)
+            .thorClick(House.Pill, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    )
+}
+
+/** Thor Reader's round top-bar button (44 dp, quiet, hairline). */
+@Composable
+fun RoundIcon(onClick: () -> Unit, content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .size(44.dp)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(House.Round)
+            .border(1.dp, House.Hairline, androidx.compose.foundation.shape.CircleShape)
+            .thorClick(androidx.compose.foundation.shape.CircleShape, onClick = onClick),
         contentAlignment = Alignment.Center,
+    ) { content() }
+}
+
+/** The house badge: one line of small white text on a translucent black pill (top-left status). */
+@Composable
+fun HouseBadge(t: String, dot: Color? = null) {
+    Row(
+        Modifier.clip(House.Pill).background(Color(0x99000000)).border(1.dp, House.Hairline, House.Pill).padding(horizontal = 10.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            label,
-            color = when {
-                !enabled -> Color(0x66FFFFFF)
-                selected -> Color.Black
-                else -> Color.White
-            },
-            fontSize = 15.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-        )
+        dot?.let { Box(Modifier.size(7.dp).clip(androidx.compose.foundation.shape.CircleShape).background(it)); Spacer(Modifier.width(6.dp)) }
+        Text(t, color = Color.White, fontSize = 11.sp, maxLines = 1)
     }
 }
 
@@ -128,12 +178,14 @@ fun Badge(t: String, color: Color = House.Ok) {
 }
 
 @Composable
-fun Panel(modifier: Modifier = Modifier, padding: PaddingValues = PaddingValues(16.dp), content: @Composable () -> Unit) {
+fun Panel(modifier: Modifier = Modifier, padding: PaddingValues = PaddingValues(16.dp), plain: Boolean = false, content: @Composable () -> Unit) {
+    // plain = Thor Reader's library row (rounded 10 dp, #1A1A1A, no outline); else a hairlined panel.
+    val shape = if (plain) RoundedCornerShape(10.dp) else House.PanelShape
     Column(
         modifier
-            .clip(House.PanelShape)
+            .clip(shape)
             .background(House.Panel)
-            .border(1.dp, House.Hairline, House.PanelShape)
+            .then(if (plain) Modifier else Modifier.border(1.dp, House.Hairline, shape))
             .padding(padding),
     ) { content() }
 }
@@ -149,8 +201,13 @@ fun Field(
     keyboard: KeyboardType = KeyboardType.Text,
     imeAction: ImeAction = ImeAction.Done,
     onDone: () -> Unit = {},
+    /** No box of its own (inside the search pill). */
+    bare: Boolean = false,
+    autoFocus: Boolean = false,
 ) {
     var focused by remember { mutableStateOf(false) }
+    val requester = remember { androidx.compose.ui.focus.FocusRequester() }
+    if (autoFocus) androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { requester.requestFocus() } }
     BasicTextField(
         value = value,
         onValueChange = onValue,
@@ -161,11 +218,16 @@ fun Field(
         keyboardOptions = KeyboardOptions(keyboardType = keyboard, imeAction = imeAction),
         keyboardActions = KeyboardActions(onAny = { onDone() }),
         modifier = modifier
+            .focusRequester(requester)
             .onFocusChanged { focused = it.isFocused }
-            .clip(RoundedCornerShape(10.dp))
-            .background(House.Chip)
-            .border(if (focused) 2.dp else 1.dp, if (focused) House.Accent else House.Hairline, RoundedCornerShape(10.dp))
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .then(
+                if (bare) Modifier.padding(vertical = 10.dp)
+                else Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(House.Chip)
+                    .border(if (focused) 2.dp else 1.dp, if (focused) House.Accent else House.Hairline, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+            ),
         decorationBox = { inner ->
             Box {
                 if (value.isEmpty()) Text(placeholder, color = House.Faint, fontSize = 16.sp)

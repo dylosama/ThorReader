@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -135,14 +136,15 @@ fun DetailsScreen(s: DetailsState) {
     }
 
     val d = s.details
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Chip("← Back") { host.back() }
-                Text(s.item.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                if (app.inThorReader(s.item.sourceId, s.item.id)) Badge("In Thor Reader")
-            }
+    Column {
+    TopBar {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BackButton()
+            Text(s.item.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 380.dp))
+            if (app.inThorReader(s.item.sourceId, s.item.id)) Badge("In Thor Reader")
         }
+    }
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)) {
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                 Cover(s.item.coverUrl, Modifier.size(140.dp, 210.dp))
@@ -207,6 +209,7 @@ fun DetailsScreen(s: DetailsState) {
             }
         }
     }
+    }
 }
 
 /** "Details for Thor Reader": tweak what the selected downloads are saved / imported with. */
@@ -216,14 +219,15 @@ fun MetaScreen(s: DetailsState) {
     val first = s.metas().firstOrNull()?.second ?: BookMeta()
     val single = s.selected.size == 1
     var o by androidx.compose.runtime.remember { mutableStateOf(s.override) }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Chip("← Back") { host.back() }
-                Text("Details for Thor Reader", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                Chip("Save", selected = true) { s.override = o; host.back() }
-            }
+    Column {
+    TopBar {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BackButton()
+            BarTitle("Details for Thor Reader")
+            Chip("Save", selected = true) { s.override = o; host.back() }
         }
+    }
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp)) {
         item {
             Message(
                 (if (single) "For this download. " else "For all ${s.selected.size} selected downloads. ") +
@@ -279,6 +283,7 @@ fun MetaScreen(s: DetailsState) {
                 color = House.Subtle, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
+    }
     }
 }
 

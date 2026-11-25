@@ -1151,3 +1151,25 @@ Part B - new module :bookloader ("Thor Bookloader", dev.thorreader.bookloader, 0
 - NOT yet checked on the Thor (it was disconnected): install / launch commands, signature
   refusal for the shell, sharing a file, a full Bookloader search -> import. Gutenberg itself
   (gutenberg.org) was down for maintenance that evening; Gutendex search worked.
+
+### Step 25b: Bookloader looks and works like Thor Reader; network privacy
+- Same layout as Thor Reader's library: dark #101010 screen; top bar with a status badge on the
+  left, a pill switch in the centre (All / Books / Manga / Comics) next to a round search button
+  that opens into a search field, and on the right the same pill: Queue | + | gear. The gear
+  sits exactly where Thor Reader's is and opens Settings (sources, feeds, download folder,
+  connection, about); + jumps to "Add an OPDS feed". Under the bar the soft chip row (Thor
+  Reader's sort row) picks the source. Results are Thor Reader's book rows (cover, bold title,
+  grey author line, small detail line, square button on the right). Details, Queue and Settings
+  keep the same top bar, so the gear never moves; Back / B goes back as before.
+- Connection (Settings → Connection): Direct / Tor through Orbot (SOCKS 127.0.0.1:9050) /
+  your own proxy (SOCKS5 or HTTP, host:port). Every request of the app - searches, covers,
+  downloads - goes through the one network helper, so all of it takes the chosen route; host
+  names are resolved by the proxy (no DNS leak through SOCKS). If the route is down, requests
+  fail with a clear message and are NEVER sent directly instead. "Test connection" asks
+  check.torproject.org (only when tapped) which address the sites see and whether it is Tor.
+  Honest limits: it hides your IP address from the sites (with Tor your internet provider sees
+  Tor, not the sites); it does not change what is legal to download; some sites slow
+  down or block Tor; Orbot's own "VPN mode" covers the whole device instead.
+- Status 2026-11-24: built; tests 121 (:app) + 11 (:bookloader, 2 new in ConnectionTest: the
+  routes, and a dead protected route stops the request with "nothing was sent"). Not yet seen on
+  the Thor (disconnected).

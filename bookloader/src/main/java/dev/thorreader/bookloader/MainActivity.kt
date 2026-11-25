@@ -28,7 +28,7 @@ import dev.thorreader.bookloader.ui.MetaScreen
 import dev.thorreader.bookloader.ui.QueueScreen
 import dev.thorreader.bookloader.ui.SearchScreen
 import dev.thorreader.bookloader.ui.SearchState
-import dev.thorreader.bookloader.ui.SourcesScreen
+import dev.thorreader.bookloader.ui.SettingsScreen
 import dev.thorreader.bookloader.work.Jobs
 import dev.thorreader.bookloader.work.ThorImportClient
 
@@ -37,7 +37,7 @@ sealed interface Screen {
     class Details(val state: DetailsState) : Screen
     class Meta(val state: DetailsState) : Screen
     data object Queue : Screen
-    data object Sources : Screen
+    class Settings(val addFeed: Boolean = false) : Screen
 }
 
 /** What screens ask the activity for: navigation and the system pickers. */
@@ -50,6 +50,8 @@ interface Host {
     fun pickJsonFile(onText: (String) -> Unit)
     /** Thor Reader's own folder picker (its Imported books folder). */
     fun chooseThorFolder()
+    /** The gear (or + = straight to "Add an OPDS feed"). On the Settings screen the gear goes back. */
+    fun openSettings(addFeed: Boolean)
 }
 
 val LocalHost = staticCompositionLocalOf<Host> { error("no host") }
@@ -103,13 +105,13 @@ class MainActivity : ComponentActivity(), Host {
         setContent {
             CompositionLocalProvider(LocalHost provides this) {
                 BackHandler(enabled = stack.size > 1) { back() }
-                Box(Modifier.fillMaxSize().background(Color.Black).padding(horizontal = 24.dp, vertical = 16.dp)) {
+                Box(Modifier.fillMaxSize().background(dev.thorreader.bookloader.ui.House.Screen).padding(16.dp)) {
                     when (val s = stack.last()) {
                         Screen.Search -> SearchScreen(search)
                         is Screen.Details -> DetailsScreen(s.state)
                         is Screen.Meta -> MetaScreen(s.state)
                         Screen.Queue -> QueueScreen()
-                        Screen.Sources -> SourcesScreen()
+                        is Screen.Settings -> SettingsScreen(s.addFeed)
                     }
                 }
             }
@@ -143,6 +145,11 @@ class MainActivity : ComponentActivity(), Host {
     override fun pickJsonFile(onText: (String) -> Unit) {
         onJson = onText
         jsonPicker.launch(arrayOf("application/json", "text/*", "application/octet-stream"))
+    }
+
+    override fun openSettings(addFeed: Boolean) {
+        val top = stack.last()
+        if (top is Screen.Settings && !addFeed) back() else go(Screen.Settings(addFeed))
     }
 
     override fun chooseThorFolder() {

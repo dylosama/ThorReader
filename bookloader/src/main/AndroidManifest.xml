@@ -9,6 +9,8 @@
     <!-- To see (and bind to) Thor Reader on Android 11+. -->
     <queries>
         <package android:name="dev.thorreader.app" />
+        <!-- Orbot (Tor), to offer starting it from Settings → Connection. -->
+        <package android:name="org.torproject.android" />
     </queries>
 
     <application

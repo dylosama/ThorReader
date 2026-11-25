@@ -6,6 +6,10 @@ import dev.thorreader.bookloader.source.ContentType
 import dev.thorreader.bookloader.source.Entry
 import dev.thorreader.bookloader.source.GutendexSource
 import dev.thorreader.bookloader.source.MangaDexSource
+import dev.thorreader.bookloader.source.Http
+import dev.thorreader.bookloader.source.NetConfig
+import dev.thorreader.bookloader.source.NetMode
+import dev.thorreader.bookloader.source.ProxyKind
 import dev.thorreader.bookloader.source.OpdsFeed
 import dev.thorreader.bookloader.source.OpdsParser
 import dev.thorreader.bookloader.source.SourceRegistry
@@ -286,5 +290,40 @@ class BookloaderTest {
         val ours = consts(listOf(File("${rel}bookloader/ThorImportContract.kt"), File("bookloader/${rel}bookloader/ThorImportContract.kt")).first { it.exists() })
         assertTrue(thor.size >= 20)
         for ((k, v) in thor) assertEquals("ImportContract.$k", v, ours[k])
+    }
+}
+
+/** Settings → Connection: the route every request takes, and that it never falls back to direct. */
+class ConnectionTest {
+    @Test
+    fun routesMapToTheRightProxies() {
+        assertNull(NetConfig().proxy())
+        val tor = NetConfig(NetMode.TOR).proxy()!!
+        assertEquals(java.net.Proxy.Type.SOCKS, tor.type())
+        assertEquals(9050, (tor.address() as java.net.InetSocketAddress).port)
+        assertEquals("127.0.0.1", (tor.address() as java.net.InetSocketAddress).hostString)
+        assertEquals(java.net.Proxy.Type.HTTP, NetConfig(NetMode.PROXY, ProxyKind.HTTP, "proxy.example", 8080).proxy()!!.type())
+        assertNotNull(NetConfig(NetMode.PROXY, host = "", port = 1080).problem())
+        assertNotNull(NetConfig(NetMode.PROXY, host = "user@proxy", port = 1080).problem())
+        assertNotNull(NetConfig(NetMode.PROXY, host = "proxy.example", port = 70000).problem())
+        assertNull(NetConfig(NetMode.PROXY, host = "10.0.0.2", port = 1080).problem())
+        assertEquals("Tor", NetConfig(NetMode.TOR).badge)
+        assertNull(NetConfig().badge)
+    }
+
+    @Test
+    fun aDeadProtectedRouteStopsTheRequestInsteadOfGoingDirect() {
+        // A "Tor" that isn't running: a local port nobody listens on.
+        val free = java.net.ServerSocket(0).use { it.localPort }
+        val before = Http.route
+        Http.route = NetConfig(NetMode.PROXY, ProxyKind.SOCKS, "127.0.0.1", free)
+        try {
+            Http.text("https://gutendex.com/books/")
+            org.junit.Assert.fail("the request must not go through")
+        } catch (e: java.io.IOException) {
+            assertTrue(e.message, e.message!!.contains("nothing was sent"))
+        } finally {
+            Http.route = before
+        }
     }
 }

@@ -44,12 +44,14 @@ fun QueueScreen() {
     val rows = infos.mapNotNull { w -> JobStore.get(w.id.toString())?.let { w to it } }.sortedByDescending { it.second.createdAt }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Chip("← Back") { host.back() }
-            Text("Queue", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            Chip("Clear finished", enabled = rows.any { it.first.state.isFinished }) {
-                rows.filter { it.first.state.isFinished }.forEach { JobStore.remove(it.first.id.toString()) }
-                wm.pruneWork()
+        TopBar {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                BackButton()
+                BarTitle("Queue")
+                Chip("Clear finished", enabled = rows.any { it.first.state.isFinished }) {
+                    rows.filter { it.first.state.isFinished }.forEach { JobStore.remove(it.first.id.toString()) }
+                    wm.pruneWork()
+                }
             }
         }
         if (rows.isEmpty()) Message("Nothing queued. Pick a book, chapters or issues and choose Import or Download.")
@@ -59,7 +61,7 @@ fun QueueScreen() {
                 val status = out.getString("status")
                 val message = out.getString("message").orEmpty()
                 val localPath = out.getString("localPath")
-                Panel(Modifier.fillMaxWidth(), PaddingValues(12.dp)) {
+                Panel(Modifier.fillMaxWidth(), PaddingValues(12.dp), plain = true) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(spec.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                         Text(if (spec.action == JobAction.IMPORT) "→ Thor Reader" else "→ storage", color = House.Faint, fontSize = 13.sp)

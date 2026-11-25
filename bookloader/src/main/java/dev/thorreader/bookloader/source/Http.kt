@@ -14,6 +14,10 @@ class HttpException(val code: Int, message: String) : IOException(message)
  * asks for at most 5 per second).
  */
 object Http {
+    /** The connection route (Settings → Connection). Set at start and whenever it changes. */
+    @Volatile
+    var route: NetConfig = NetConfig()
+
     const val USER_AGENT = "ThorBookloader/0.1.0 (Android e-reader companion)"
     const val MAX_TEXT = 16L shl 20
     const val MAX_FILE = 2L shl 30
@@ -34,9 +38,12 @@ object Http {
             next - now
         }
         if (wait > 0) Thread.sleep(wait)
-        val c = u.openConnection() as HttpURLConnection
-        c.connectTimeout = 15_000
-        c.readTimeout = 30_000
+        val r = route
+        val proxy = r.proxy()
+        val c = (if (proxy == null) u.openConnection() else u.openConnection(proxy)) as HttpURLConnection
+        // Tor and proxies are slower to connect: wait longer before giving up.
+        c.connectTimeout = if (r.mode == NetMode.DIRECT) 15_000 else 45_000
+        c.readTimeout = if (r.mode == NetMode.DIRECT) 30_000 else 60_000
         c.instanceFollowRedirects = true
         c.setRequestProperty("User-Agent", USER_AGENT)
         accept?.let { c.setRequestProperty("Accept", it) }
@@ -44,7 +51,20 @@ object Http {
             val token = java.util.Base64.getEncoder().encodeToString("${it.user}:${it.password}".toByteArray())
             c.setRequestProperty("Authorization", "Basic $token")
         }
-        val code = c.responseCode
+        val code = try {
+            c.responseCode
+        } catch (e: java.io.IOException) {
+            c.disconnect()
+            // Never retried directly: a protected route that is down means no request at all.
+            if (r.mode != NetMode.DIRECT && (e is java.net.ConnectException || e is java.net.SocketException || e.message?.contains("SOCKS", true) == true)) {
+                throw IOException(
+                    if (r.mode == NetMode.TOR) "Tor isn't reachable - start Orbot (nothing was sent without it)"
+                    else "Your proxy isn't reachable (nothing was sent without it)",
+                    e,
+                )
+            }
+            throw e
+        }
         if (code !in 200..299) {
             c.disconnect()
             throw HttpException(code, when (code) {
