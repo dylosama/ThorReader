@@ -1157,11 +1157,22 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   after a fresh start - every turn a curl, setup 20-100 ms, p95 after setup 16.8-16.9 ms, curl
   never switched off.
 
+### v0.3.0: page theme back at the top of the reader menu (main)
+- Paper / Sepia / Night are three round swatches at the end of the bookmark row
+  (`PageThemeSwatches` in ReaderMenu.kt), styled like the bookmark colour swatch: each shows its
+  paper colour with "Aa" in its text colour, the current one with the white ring. Books only
+  (comics / PDF keep their own colours). The "Page theme" row left the Reading section; Settings
+  keeps its own row.
+- In books "Go to bookmark (page N)" moves to the line under the bookmark row (no room next to
+  the swatches); comics keep it in the row.
+- Checked on the Thor (debug, Dune Mode 1): swatches at the row's end, tapping Sepia switches
+  the page at once and moves the ring; "Go to bookmark" below with a bookmark elsewhere.
+
 ## Where we left off (2026-11-25)
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: curl no longer switches itself off".
+  "v0.3.0: page theme swatches next to the bookmark in the reader menu".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1179,6 +1190,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 - Fix: no low-resolution page after a turn lands (full-quality landing texture, synchronized
   hand-over, pixel-exact placement, per-turn landing log).
 - Fix: curl no longer switches itself off (texture setup frames not counted as slow).
+- Reader menu: Paper / Sepia / Night swatches next to the bookmark.
 
 ### Built, not yet fully tested on the Thor (test list before releasing 0.3)
 Checked on the Thor already: popup on the last list row and last grid cover (scroll, pinned

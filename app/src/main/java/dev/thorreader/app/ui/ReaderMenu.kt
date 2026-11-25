@@ -48,6 +48,9 @@ import dev.thorreader.app.engine.BlankUnit
 import dev.thorreader.app.engine.leftUnitIndex
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import dev.thorreader.app.importer.formatNumber
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -183,7 +186,7 @@ fun ReaderMenu(session: ReaderSession) {
                         FontRow("Text size", if (mode == ReadingMode.BOTTOM) Screen.BOTTOM else Screen.TOP, labelWidth = 110)
                     }
                     ChoiceRow("Margins", Settings.MARGIN_LABELS.indices.toList(), settings.marginLevel, { Settings.MARGIN_LABELS[it] }) { settings.updateMargin(it) }
-                    PageThemeRow()
+                    // Page theme: the swatches next to the bookmark, at the top of the menu.
                 }
 
                 // 7) More (folded).
@@ -244,7 +247,8 @@ private fun RowScope.BigButton(label: String, primary: Boolean, onClick: () -> U
 /**
  * "Bookmark" toggle (on = this view shows the bookmarked page). In two-page views turning it on
  * asks "Left page / Right page". Next to it: the colour swatch that opens the picker, and
- * "Go to bookmark" when the bookmark is on another page.
+ * "Go to bookmark" when the bookmark is on another page (books: on the line below, since the
+ * Paper / Sepia / Night swatches end the row).
  */
 @Composable
 private fun BookmarkControls(session: ReaderSession) {
@@ -269,10 +273,15 @@ private fun BookmarkControls(session: ReaderSession) {
                 }
             }
             ColorSwatch(Color(app.settings.bookmarkColor), selected = picker, size = 40) { picker = !picker }
-            if (!here) {
-                session.bookmarkPage?.let { page -> Chip("Go to bookmark (page $page)") { session.goToBookmark(); app.menuScreen = null } }
+            // Books: the page theme swatches take the row's end, so "Go to bookmark" goes below.
+            if (!here && !session.reflowable) GoToBookmark(session)
+            // Page theme (books only: comics / PDF keep their own colours), at the row's end.
+            if (session.reflowable) {
+                Box(Modifier.weight(1f))
+                PageThemeSwatches()
             }
         }
+        if (!here && session.reflowable) GoToBookmark(session)
         if (asking && !here) {
             // Which page of the two: physical left / right (mirrored order in right-to-left books).
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -283,6 +292,43 @@ private fun BookmarkControls(session: ReaderSession) {
             }
         }
         if (picker) BookmarkColorPicker()
+    }
+}
+
+/** "Go to bookmark (page N)" when the bookmark is on another page; closes the menu. */
+@Composable
+private fun GoToBookmark(session: ReaderSession) {
+    val page = session.bookmarkPage ?: return
+    Chip("Go to bookmark (page $page)") { session.goToBookmark(); ThorApp.instance.menuScreen = null }
+}
+
+/**
+ * Paper / Sepia / Night as three round swatches, styled like the bookmark colour swatch: each
+ * shows its paper colour with "Aa" in its text colour; the current one has the white ring.
+ */
+@Composable
+private fun PageThemeSwatches() {
+    val settings = ThorApp.instance.settings
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        PageTheme.entries.forEach { t ->
+            val selected = settings.theme == t
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .border(if (selected) 3.dp else 1.dp, if (selected) Color.White else HouseStyle.Hairline, CircleShape)
+                    .padding(if (selected) 5.dp else 3.dp)
+                    .clip(CircleShape)
+                    .background(t.paper)
+                    // Night's paper is pure black: a faint edge so it doesn't vanish into the panel.
+                    .border(1.dp, if (t == PageTheme.NIGHT) HouseStyle.Hairline else Color.Transparent, CircleShape)
+                    .focusClick(CircleShape) { settings.updateTheme(t) }
+                    .semantics { contentDescription = "${t.label} page theme" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("Aa", color = t.ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
 
