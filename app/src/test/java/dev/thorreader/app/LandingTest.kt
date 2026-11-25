@@ -42,6 +42,20 @@ class LandingTest {
     }
 
     @Test
+    fun textureSetupAtTheStartIsNotASlowCurl() {
+        // A Chainsaw Man turn on the Thor: one 36 ms setup frame, then smooth 60 Hz.
+        val turn = listOf(36.4f) + List(19) { 16.7f }
+        assertEquals(false, PageTurnMath.curlTurnSlow(turn, PageTurnMath.SETUP_FRAMES))
+        // Counted from the first frame it would look slow - that switched the curl off before.
+        assertTrue(PageTurnMath.percentile(turn, 95f) > PageTurnMath.SLOW_P95_MS)
+        // Really slow frames while the page is moving still count.
+        val slow = listOf(16.7f, 16.7f) + List(18) { 40f }
+        assertEquals(true, PageTurnMath.curlTurnSlow(slow, PageTurnMath.SETUP_FRAMES))
+        // Too few frames to tell.
+        assertEquals(null, PageTurnMath.curlTurnSlow(List(6) { 50f }, PageTurnMath.SETUP_FRAMES))
+    }
+
+    @Test
     fun fitRectIsWholePixelsAndInsideTheArea() {
         for ((bw, bh) in listOf(1000f to 1500f, 1333f to 2001f, 2400f to 1700f, 777f to 1240f)) {
             for ((w, h) in listOf(1080f to 1920f, 1080f to 1240f, 960f to 1080f, 1920f to 1080f)) {

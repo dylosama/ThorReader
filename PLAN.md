@@ -1144,11 +1144,24 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 - Note: a button / tap curl now takes ~40-100 ms to show its first frame (was ~20-30 ms) because
   the full-quality textures are built up front.
 
+### v0.3.0 fix: curl no longer switches itself off (main)
+- Bug (from the fix above): after a few curl turns the app used Slide instead, for the rest of
+  the session, although the setting said Curl. Cause: the "curl too slow on this device" check
+  (3 curl turns in a row with frame interval p95 > 34 ms) counted the first frame of each turn,
+  which now builds the full-quality textures (20-100 ms). Comics hit it within 3 turns
+  (Chainsaw Man: p95 65 / 37 / 36 ms, every later frame 16.7 ms).
+- Now: a button / tap turn's first `SETUP_FRAMES` (2) frame intervals are left out of the check
+  (`PageTurnMath.curlTurnSlow`); really slow frames while the page moves still count. The turn
+  log adds "setup A+B ms, p95 after setup X ms". Tests: 117 in total.
+- Checked on the Thor (debug): Chainsaw Man, Spider-Man and Dune, normal, rapid and back turns
+  after a fresh start - every turn a curl, setup 20-100 ms, p95 after setup 16.8-16.9 ms, curl
+  never switched off.
+
 ## Where we left off (2026-11-25)
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: no low-resolution page after a turn lands".
+  "v0.3.0: curl no longer switches itself off".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1165,6 +1178,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 - Low-battery simple animations.
 - Fix: no low-resolution page after a turn lands (full-quality landing texture, synchronized
   hand-over, pixel-exact placement, per-turn landing log).
+- Fix: curl no longer switches itself off (texture setup frames not counted as slow).
 
 ### Built, not yet fully tested on the Thor (test list before releasing 0.3)
 Checked on the Thor already: popup on the last list row and last grid cover (scroll, pinned
@@ -1199,7 +1213,7 @@ Thor Reader (main):
     adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-debug.apk
     adb shell am start -n dev.thorreader.app/.MainActivity
     .\gradlew assembleRelease      -> app\build\outputs\apk\release\ThorReader-0.3.0.apk
-    .\gradlew testDebugUnitTest    (116 tests)
+    .\gradlew testDebugUnitTest    (117 tests)
 Bookloader branch (both apps):
     git switch bookloader
     .\gradlew assembleDebug

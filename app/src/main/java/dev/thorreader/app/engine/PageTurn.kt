@@ -73,6 +73,13 @@ object PageTurnMath {
     /** This many slow curl turns in a row switch curl off for the session (Slide instead). */
     const val SLOW_TURNS_TO_FALL_BACK = 3
 
+    /**
+     * The first frame intervals of a button / tap turn include building its full-quality page
+     * textures (a one-off cost at the start, so nothing is uploaded at landing). They are not
+     * counted when deciding whether the curl is too slow.
+     */
+    const val SETUP_FRAMES = 2
+
     /** The tilt of a corner curl is limited, so the page never folds absurdly. */
     const val MAX_THETA = 0.6f
 
@@ -314,6 +321,16 @@ object PageTurnMath {
         val sorted = values.sorted()
         val rank = (p / 100f * sorted.size).toInt().coerceIn(0, sorted.size - 1)
         return sorted[rank]
+    }
+
+    /**
+     * Is this curl turn slow? The 95th-percentile frame interval once the turn is running,
+     * leaving out the first [setupFrames] intervals (texture setup). Null if too few frames to tell.
+     */
+    fun curlTurnSlow(intervals: List<Float>, setupFrames: Int): Boolean? {
+        val running = intervals.drop(setupFrames)
+        if (running.size < 5) return null
+        return percentile(running, 95f) > SLOW_P95_MS
     }
 
     /** Pixels for the curl radius on a screen with [dpi] (clamped to sensible sizes). */

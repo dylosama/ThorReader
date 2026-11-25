@@ -585,11 +585,15 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         val t = Turn(++turnSeq, from, to, style, ms, fromSwapped, interactive = false, cornerTheta0 = corner)
         turn = t
         turnT.floatValue = 0f
-        runTurn(t, 1f, PageTurnMath::easeInOut)
+        // Its first frames build the full-quality textures: not counted as slow.
+        runTurn(t, 1f, PageTurnMath::easeInOut, PageTurnMath.SETUP_FRAMES)
     }
 
-    /** Advance [t] to [toT] on the frame clock, then end it. */
-    private fun runTurn(t: Turn, toT: Float, easing: (Float) -> Float) {
+    /**
+     * Advance [t] to [toT] on the frame clock, then end it. [setupFrames]: how many of the first
+     * frame intervals include building the turn's textures (left out of the curl speed check).
+     */
+    private fun runTurn(t: Turn, toT: Float, easing: (Float) -> Float, setupFrames: Int = 0) {
         turnJob?.cancel()
         turnJob = scope.launch(androidx.compose.ui.platform.AndroidUiDispatcher.Main) {
             val fromT = turnT.floatValue
@@ -606,7 +610,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
                 turnT.floatValue = fromT + (toT - fromT) * easing(x)
                 if (x >= 1f) break
             }
-            endTurn(t, intervals)
+            endTurn(t, intervals, setupFrames)
         }
     }
 
@@ -628,20 +632,26 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
     private fun screenLandingReady(p: Pagination, t: Turn, landing: Int, screen: Screen): Boolean =
         landingTex[screen] == t.id && viewReady(p, landing)
 
-    private fun endTurn(t: Turn, intervals: List<Float>) {
+    private fun endTurn(t: Turn, intervals: List<Float>, setupFrames: Int) {
         if (turn !== t) return
         val p50 = PageTurnMath.percentile(intervals, 50f)
         val p95 = PageTurnMath.percentile(intervals, 95f)
+        val running = intervals.drop(setupFrames)
+        val runP95 = PageTurnMath.percentile(running, 95f)
         Log.d(
             TAG,
             "Turn anim ${t.style.name.lowercase()}${if (t.interactive) " (drag)" else ""} view ${t.from + 1}->${t.to + 1}" +
-                "${if (t.target == 0f) " cancelled" else ""}: ${intervals.size + 1} frames, frame interval p50 ${"%.1f".format(p50)} ms, p95 ${"%.1f".format(p95)} ms",
+                "${if (t.target == 0f) " cancelled" else ""}: ${intervals.size + 1} frames, frame interval p50 ${"%.1f".format(p50)} ms, p95 ${"%.1f".format(p95)} ms" +
+                (if (setupFrames > 0) "; setup ${intervals.take(setupFrames).joinToString("+") { "%.0f".format(it) }} ms, p95 after setup ${"%.1f".format(runP95)} ms" else ""),
         )
         // Too slow for the curl on this device: after a few slow curls in a row, use Slide.
-        if (t.style == TurnStyle.CURL && intervals.size >= 5) {
-            slowCurlTurns = if (p95 > PageTurnMath.SLOW_P95_MS) slowCurlTurns + 1 else 0
+        // Only the running animation counts, not the texture setup at its start.
+        if (t.style == TurnStyle.CURL) {
+            PageTurnMath.curlTurnSlow(intervals, setupFrames)?.let { slow ->
+                slowCurlTurns = if (slow) slowCurlTurns + 1 else 0
+            }
             if (slowCurlTurns >= PageTurnMath.SLOW_TURNS_TO_FALL_BACK) {
-                TurnSupport.disableCurl("too slow: frame interval p95 ${"%.1f".format(p95)} ms in $slowCurlTurns curl turns in a row")
+                TurnSupport.disableCurl("too slow: frame interval p95 ${"%.1f".format(runP95)} ms (after setup) in $slowCurlTurns curl turns in a row")
             }
         }
         land(t, SystemClock.uptimeMillis())
