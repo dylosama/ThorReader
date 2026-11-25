@@ -74,7 +74,24 @@ object EngineFactory {
         try {
             return when (format) {
                 BookFormat.PDF, BookFormat.XPS -> MuPdfFixedEngine(MuPdf.open(file, book.fileName), file, book.title, dims)
-                BookFormat.EPUB, BookFormat.FB2 ->
+                BookFormat.EPUB -> {
+                    // A book with conversion damage ("fief-?complete") is read from a repaired copy.
+                    val fixed = dev.thorreader.app.convert.EpubRepair.repairedCopy(context, book.uri, book.sizeBytes, file)
+                    if (fixed != null) {
+                        file.close()
+                        val f = SafFile.open(fixed)
+                        try {
+                            // Its own layout cache: the fixed text can break lines differently.
+                            ReflowEngine(MuPdf.open(f, "book.epub"), f, book.title, layouts, "$cacheName-fixed1", runCatching { EpubSections(f) }.getOrNull())
+                        } catch (t: Throwable) {
+                            f.close()
+                            throw t
+                        }
+                    } else {
+                        ReflowEngine(MuPdf.open(file, book.fileName), file, book.title, layouts, cacheName, runCatching { EpubSections(file) }.getOrNull())
+                    }
+                }
+                BookFormat.FB2 ->
                     ReflowEngine(
                         MuPdf.open(file, book.fileName), file, book.title, layouts, cacheName,
                         epub = if (format == BookFormat.EPUB) runCatching { EpubSections(file) }.getOrNull() else null,

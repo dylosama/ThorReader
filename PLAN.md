@@ -1191,6 +1191,19 @@ Changes:
   book below) dims then goes fully black on both screens (0 / 255).
 - Tests: NetworkInputHardeningTest (entity bomb / XXE stripped, image bombs refused) - 162 total.
 
+### v0.3.0: EPUB conversion damage repaired (main)
+- Some EPUBs come from a bad conversion that left a "?" where a break character inside a
+  hyphenated word was: Dune has 1,634 ("fief-?complete", "drip-?drip-?drip"). The "?" is in the
+  file itself (MuPDF draws what is there). `convert/EpubRepair`: a "?" right after a hyphen with
+  a letter on both sides is dropped (real question marks never sit there).
+- Checked once per file (uri + size) when an EPUB opens: a damaged book gets a repaired copy in
+  files/converted (`<key>-<size>.fixed.epub`, mimetype first and stored, everything but the
+  chapters copied byte for byte, the usual size limits), a clean one a `.clean` marker; later
+  opens cost nothing. The user's file is never changed. The copy has its own layout cache
+  (`-fixed1`); removing the book deletes both; the cache budget may trim them (re-made on open).
+- Tests: EpubRepairTest (171 in total). Checked on the Thor: Dune repaired in 0.4 s (1,634
+  fixes), "quasi-fief", "fief-complete", "bird-bright" correct, same reading position; the
+  second open skipped the check and used the saved layout (12 ms).
 ### v0.3.0: book series collections (main)
 - Book series like the manga ones, for books (not manga / comics): `engine/BookSeriesList`,
   `engine/BookCollection`, `manga/BookSeries` (only with "Look up book info online").
@@ -1429,7 +1442,7 @@ Changes:
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: book series collections".
+  "v0.3.0: repair EPUB conversion damage".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1462,6 +1475,7 @@ Changes:
   Ongoing / Completed, Inspect with the collection on top and the 3D book below.
 - Book series collections: Wikidata series lists (Dune 1-6), series detection by title for books
   with none (Harry Potter #1), series tiles, missing books by title, Inspect with the list on top.
+- EPUB conversion damage ("fief-?complete") repaired in a copy; checked once per book.
 - Grid view: each cover has a small tab at the bottom right with the icon of the mode it opens in
   (its own mode, else the last book mode), styled like the ★ tab. Checked on the Thor (Blue
   Period 1 shows Mode 4, the others Mode 1). Settings → Library → "Mode icons on grid covers"
@@ -1505,7 +1519,7 @@ Thor Reader (main):
     adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-debug.apk
     adb shell am start -n dev.thorreader.app/.MainActivity
     .\gradlew assembleRelease      -> app\build\outputs\apk\release\ThorReader-0.3.0.apk
-    .\gradlew testDebugUnitTest    (169 tests)
+    .\gradlew testDebugUnitTest    (171 tests)
 Bookloader branch (both apps):
     git switch bookloader
     .\gradlew assembleDebug

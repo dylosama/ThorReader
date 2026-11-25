@@ -1035,7 +1035,12 @@ class ThorApp : Application() {
             db.books().delete(book.id)
             book.coverPath?.let { File(it).delete() }
             dev.thorreader.app.io.CustomCovers.removeAll(book.id)
-            dev.thorreader.app.convert.BookSource.convertedFile(this@ThorApp, book.uri, book.sizeBytes).delete()
+            dev.thorreader.app.convert.BookSource.convertedFile(this@ThorApp, book.uri, book.sizeBytes).let { f ->
+                f.delete()
+                // EpubRepair's copy and "clean" marker sit next to it.
+                java.io.File(f.parentFile, f.name.removeSuffix(".epub") + ".fixed.epub").delete()
+                java.io.File(f.parentFile, f.name.removeSuffix(".epub") + ".clean").delete()
+            }
             runCatching {
                 contentResolver.releasePersistableUriPermission(
                     android.net.Uri.parse(book.uri), android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
