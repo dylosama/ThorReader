@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
@@ -286,11 +285,11 @@ private fun EmptyMessage(text: String) {
 
 @Composable
 private fun BookList(books: List<Book>, showTutorial: Boolean) {
-    Column {
+    Column(Modifier.fillMaxSize()) {
         if (showTutorial && books.isNotEmpty()) {
             TutorialBadge(TutorialStep.OPEN_BOOK, "Tap a book to start reading", ArrowDir.DOWN, Modifier.padding(start = 24.dp, bottom = 2.dp), arrowAlign = Alignment.Start)
         }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        FillList(Modifier.weight(1f)) {
             items(books, key = { it.id }) { BookRow(it) }
         }
     }
@@ -312,8 +311,23 @@ private fun CategoryList(
     open: (String) -> Unit,
 ) {
     val canHide = view != LibraryView.TYPE
-    Column(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    // The list fills the whole area (same FillList as the flat sorts). A tap on the empty space
+    // BELOW the last row cancels a "Hide?", or starts "Add author/series". (This used to be a
+    // separate weighted Box under the list, which split the space and cut the list in half.)
+    Box(
+        Modifier.fillMaxSize().pointerInput(onAdd, revealed) {
+            detectTapGestures { pos ->
+                val info = listState.layoutInfo
+                val last = info.visibleItemsInfo.lastOrNull()
+                val belowLast = last == null || (last.index == info.totalItemsCount - 1 && pos.y > last.offset + last.size)
+                if (belowLast) {
+                    if (revealed != null) onReveal(null) else onAdd?.invoke()
+                }
+            }
+        },
+    ) {
+        FillList(spacing = 6.dp, state = listState) {
             items(categories, key = { it.first }) { (name, count) ->
                 ManagedRow(
                     name, count, canHide,
@@ -337,15 +351,6 @@ private fun CategoryList(
                 )
             }
         }
-        // The empty space below the list: cancels a "Hide?", or starts "Add author/series".
-        Box(
-            Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                    if (revealed != null) onReveal(null) else onAdd?.invoke()
-                },
-        )
     }
 }
 

@@ -21,12 +21,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -331,7 +331,8 @@ fun AddGroupFlow(view: LibraryView, books: List<Book>, onDone: (String?) -> Unit
                 .background(HouseStyle.PanelBackground)
                 .border(1.dp, HouseStyle.Hairline, HouseStyle.PanelShape)
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
-                .verticalScroll(rememberScrollState())
+                // Picking books: the panel takes the full height and the picker list fills it.
+                .then(if (step == 0) Modifier.fillMaxHeight() else Modifier.verticalScroll(rememberScrollState()))
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -350,7 +351,7 @@ fun AddGroupFlow(view: LibraryView, books: List<Book>, onDone: (String?) -> Unit
                     val shown = LibraryLogic.sort(books, dev.thorreader.app.SortOrder.TITLE).filter { b ->
                         q.isEmpty() || b.title.contains(q, true) || b.author?.contains(q, true) == true || b.series?.contains(q, true) == true
                     }
-                    LazyColumn(Modifier.heightIn(max = 380.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FillList(Modifier.weight(1f), spacing = 6.dp) {
                         items(shown, key = { it.id }) { b ->
                             val on = b.id in picked
                             Row(
@@ -429,7 +430,7 @@ fun AddGroupFlow(view: LibraryView, books: List<Book>, onDone: (String?) -> Unit
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     Text(b.title, color = Color.White, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                     Box(Modifier.width(90.dp)) {
-                                        InputField(numbers[b.id] ?: "", { v -> numbers[b.id] = v.filter { c -> c.isDigit() || c == '.' } }, "#")
+                                        InputField(numbers[b.id] ?: "", { v -> numbers[b.id] = v.filter { c -> c.isDigit() || c == '.' } }, "#", number = true)
                                     }
                                 }
                             }

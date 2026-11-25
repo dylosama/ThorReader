@@ -792,3 +792,16 @@ Fix:
   - Typing ends on Done/Start/Enter, B on an empty field, Back, a tap outside the field and the
     keyboard (touch flag, `Modifier.typingArea()`; no coordinates, so it works rotated), closing
     search, or the app going to the background. Tests: TypingTest.
+- Grouped lists cut off (fixed). Measured on the Thor (uiautomator bounds): the flat list was
+  252-1043 px (791 px) but the Author list only 252-647 px (395 px = half), clipping the 4th row.
+  Cause: in `CategoryList` the LazyColumn had `weight(1f, fill = false)` and the invisible
+  "tap empty space to add" Box under it had `weight(1f)`, so the two split the height 50/50.
+  Fix: one shared list, `FillList` (`ui/FillList.kt`: LazyColumn + fillMaxSize + 24 dp bottom
+  padding), used by the flat sorts, Author/Series/Genre/Type, the books inside a group,
+  Completed and the Add author/series picker (which was capped at 380 dp inside a second
+  scroller; its panel now takes the full height on the "Pick books" step). The empty-space tap
+  is now a tap handler on the list's parent that only fires below the last row. Settings
+  (with Hidden items) is a full-height scrolling panel and was never clipped. After: Author and
+  Genre lists 252-1043 px (791 px, same as the flat list), last entry fully reachable, d-pad
+  focus scrolls into view. Regression test: LayoutRulesTest (fails on the old code).
+  Also: the series-number fields now really get the number pad.
