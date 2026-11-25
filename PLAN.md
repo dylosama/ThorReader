@@ -1241,3 +1241,5 @@ Part B - new module :bookloader ("Thor Bookloader", dev.thorreader.bookloader, 0
   pill; Done closed it and released the bottom screen; the pill showed All | dune and the
   search ran; All went back home (type switch back, text cleared). Logo and the
   Queue | ♪ | ⚙ pill as planned. Tests 121 + 18.
+- Volumes first: a manga with volume numbers opens on the Volumes list (Chapters is the other
+  chip). Series without volumes still show chapters.

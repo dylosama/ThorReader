@@ -108,8 +108,11 @@ fun DetailsScreen(s: DetailsState) {
                 val src = app.sources.get(s.item.sourceId) ?: error("This source was removed")
                 val d = withContext(Dispatchers.IO) { src.details(s.item) }
                 s.details = d
+                // Volumes first: whole volumes are the usual way to take manga to Thor Reader.
+                s.byVolume = d.volumes.isNotEmpty()
                 // One edition (or a book's first format): pick it; chapters start unselected.
-                if (d.item.type == ContentType.BOOK || d.entries.size == 1) d.entries.firstOrNull()?.let { s.selected += it.id }
+                val shown = if (s.byVolume) d.volumes else d.entries
+                if (d.item.type == ContentType.BOOK || shown.size == 1) shown.firstOrNull()?.let { s.selected += it.id }
             } catch (e: Exception) {
                 Log.w(TAG, "Details of '${s.item.title}' failed", e)
                 s.error = e.message ?: "Couldn't load the details"
