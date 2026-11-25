@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -155,6 +157,17 @@ private fun GridCover(book: Book, cellPx: Int) {
             if (book.completed) {
                 Text("★", color = Gold, fontSize = 15.sp, modifier = Modifier.align(Alignment.TopEnd).background(Color(0x88000000), RoundedCornerShape(bottomStart = 8.dp)).padding(horizontal = 5.dp, vertical = 1.dp))
             }
+            // The mode it opens in (its own, else the last book mode), in a tab like the ★.
+            val mode = book.readingMode ?: app.settings.lastBookMode
+            ModeIcon(
+                mode, selected = false,
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .background(Color(0x99000000), RoundedCornerShape(topStart = 8.dp))
+                    .padding(horizontal = 5.dp, vertical = 4.dp)
+                    .size(18.dp, 14.dp)
+                    .semantics { contentDescription = "Opens in Mode ${mode.number}, ${mode.title}" },
+            )
         }
         if (popup) {
             Popup(popupPositionProvider = BesideAnchor, onDismissRequest = { popup = false }, properties = PopupProperties(focusable = true)) {

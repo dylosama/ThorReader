@@ -1233,7 +1233,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: your own pictures for the front cover, spine and back cover".
+  "v0.3.0: grid covers show the mode they open in".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1259,6 +1259,9 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 - Inspect: the spine's title · author is centred along the spine (was at the top). Checked on
   the Thor with Dune.
 - Edit info: pick your own front cover, spine and back cover pictures (↺ to go back).
+- Grid view: each cover has a small tab at the bottom right with the icon of the mode it opens in
+  (its own mode, else the last book mode), styled like the ★ tab. Checked on the Thor (Blue
+  Period 1 shows Mode 4, the others Mode 1).
 
 ### Built, not yet fully tested on the Thor (test list before releasing 0.3)
 Checked on the Thor already: popup on the last list row and last grid cover (scroll, pinned
