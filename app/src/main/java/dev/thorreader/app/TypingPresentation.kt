@@ -86,7 +86,15 @@ class InspectPresentation(
             setViewTreeSavedStateRegistryOwner(activity)
             setViewTreeViewModelStoreOwner(activity)
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-            setContent { dev.thorreader.app.ui.BurnInGuard { dev.thorreader.app.ui.InspectInfo(state) } }
+            setContent {
+                dev.thorreader.app.ui.BurnInGuard {
+                    // Follows the book being inspected (a manga collection switches between its books).
+                    val s = ThorApp.instance.inspecting ?: state
+                    androidx.compose.runtime.key(s) {
+                        if (s.collection != null) dev.thorreader.app.ui.InspectOverlay(s, fromRect = null) else dev.thorreader.app.ui.InspectInfo(s)
+                    }
+                }
+            }
         }
         setContentView(view)
         window?.let { w ->

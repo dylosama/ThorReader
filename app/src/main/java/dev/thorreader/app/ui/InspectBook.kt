@@ -84,8 +84,14 @@ class InspectTextures(
  * "Inspect book": the state of the 3D book on the top screen. Everything the Canvas reads is
  * snapshot state, so it only redraws when something changes (a drag, a coast, an animation).
  */
-class InspectState(val book: Book, val from: RectF?) {
+class InspectState(val book: Book, val from: RectF?, series: String? = null) {
     val comic = runCatching { BookFormat.valueOf(book.format).comic }.getOrDefault(false)
+
+    /**
+     * A manga volume / chapter: its series ([series] when opened from a collection). Then the top
+     * screen shows the series' collection and the 3D book is on the bottom screen.
+     */
+    val collection: String? = series ?: MangaShelf.seriesOf(book)
     private val reflowable = runCatching { BookFormat.valueOf(book.format).reflowable }.getOrDefault(true)
 
     /** Pages as printed (books: estimated from the source count; comics / PDF: real pages). */
@@ -314,7 +320,11 @@ private fun drawBook(c: android.graphics.Canvas, s: InspectState, t: InspectText
  * a quick tap on the book reads it. Idle spin after 3 s, at most 20 s.
  */
 @Composable
-fun InspectOverlay(s: InspectState) {
+fun InspectOverlay(
+    s: InspectState,
+    /** Where the book rises from (its library cover); null on the bottom screen (manga collection). */
+    fromRect: RectF? = s.from,
+) {
     val app = ThorApp.instance
     val night = app.settings.theme == PageTheme.NIGHT
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -434,10 +444,10 @@ fun InspectOverlay(s: InspectState) {
                 val tex = s.textures ?: s.let { null }
                 // Where the book is: from its row (e = 0) to the middle of the screen (e = 1).
                 val target = h * 0.66f * s.zoom
-                val rowH = s.from?.height() ?: (h * 0.2f)
+                val rowH = fromRect?.height() ?: (h * 0.2f)
                 val heightPx = rowH + (target - rowH) * e
-                val fx = s.from?.centerX() ?: (w / 2f)
-                val fy = s.from?.centerY() ?: (h / 2f)
+                val fx = fromRect?.centerX() ?: (w / 2f)
+                val fy = fromRect?.centerY() ?: (h / 2f)
                 val cx = fx + (w / 2f - fx) * e
                 val cy = fy + (h * 0.47f - fy) * e
                 // Soft floor shadow under the book.
@@ -453,7 +463,7 @@ fun InspectOverlay(s: InspectState) {
                     drawBook(nc, s, tex, heightPx, cx, cy)
                 } else {
                     // Still loading: the flat cover from the row.
-                    s.from?.let { r ->
+                    fromRect?.let { r ->
                         val p = Paint().apply { color = android.graphics.Color.rgb(0x2A, 0x2A, 0x2A) }
                         nc.drawRect(cx - r.width() / 2, cy - r.height() / 2, cx + r.width() / 2, cy + r.height() / 2, p)
                     }

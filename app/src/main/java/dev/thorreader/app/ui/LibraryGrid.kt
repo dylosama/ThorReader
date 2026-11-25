@@ -96,16 +96,91 @@ fun BookGrid(books: List<Book>, modifier: Modifier = Modifier) {
         val cols = gridColumns(maxWidth.value)
         val cellPx = with(LocalDensity.current) { ((maxWidth - LibraryGap * (cols - 1)) / cols).roundToPx() }
         val state = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
-        ShowLandingBook(books) { i ->
+        // A manga series with 2+ books is one stacked tile (it opens the series' collection).
+        val items = androidx.compose.runtime.remember(books) { MangaShelf.group(books) }
+        ShowLandingBook(items) { i ->
             val info = state.layoutInfo
             val item = info.visibleItemsInfo.firstOrNull { it.index == i }
             val shown = item != null && item.offset.y >= info.viewportStartOffset && item.offset.y + item.size.height <= info.viewportEndOffset
             if (!shown) state.scrollToItem(i)
         }
         FillGrid(cols, state = state) {
-            items(books, key = { it.id }) { GridCover(it, cellPx) }
+            items(items, key = { item -> if (item is MangaShelf.Item.One) item.book.id else "series:" + (item as MangaShelf.Item.Series).name }) { item ->
+                when (item) {
+                    is MangaShelf.Item.One -> GridCover(item.book, cellPx)
+                    is MangaShelf.Item.Series -> SeriesTile(item, cellPx)
+                }
+            }
         }
     }
+}
+
+/**
+ * A manga series (2+ volumes / chapters) as one tile: its covers stacked, the first in front, a
+ * "Series name · N" tab. Tap / A opens the collection (cover flow or list).
+ */
+@Composable
+private fun SeriesTile(item: MangaShelf.Item.Series, cellPx: Int) {
+    val app = ThorApp.instance
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(8.dp)
+    val stack = item.books.take(3)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .aspectRatio(2f / 3f)
+            .onFocusChanged { focused = it.isFocused }
+            .onKeyEvent {
+                when {
+                    (it.key == Key.ButtonA) && it.type == KeyEventType.KeyUp -> { app.collection = item.name; true }
+                    it.key == Key.ButtonA -> true
+                    else -> false
+                }
+            }
+            .focusClick(shape) { app.collection = item.name },
+        contentAlignment = Alignment.BottomStart,
+    ) {
+        // Back covers peek out up and to the right; the first volume / chapter in front.
+        stack.indices.reversed().forEach { depth ->
+            // Depth d sits d·6 dp up and right of the front cover (which leaves room at its top-right).
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(start = (depth * 6).dp, bottom = (depth * 6).dp, end = ((2 - depth) * 6).dp, top = ((2 - depth) * 6).dp)
+                    .shadow(if (depth == 0) 6.dp else 3.dp, shape)
+                    .clip(shape)
+                    .then(if (depth == 0) Modifier.onGloballyPositioned { c ->
+                        // Inspect / close animations of any of its books start and land here.
+                        val r = c.boundsInWindow()
+                        item.books.forEach { b -> app.coverBounds[b.id] = android.graphics.RectF(r.left, r.top, r.right, r.bottom) }
+                    } else Modifier)
+                    .border(2.dp, if (focused && depth == 0) Accent else Color.Transparent, shape),
+            ) {
+                SeriesCover(stack[depth], cellPx)
+                if (depth > 0) Box(Modifier.fillMaxSize().background(Color(0x55000000)))
+            }
+        }
+        Text(
+            "${item.name} · ${item.books.size}",
+            color = Color.White, fontSize = 11.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier
+                .padding(start = 0.dp, end = 12.dp)
+                .background(Color(0xCC000000), RoundedCornerShape(topEnd = 8.dp, bottomStart = 8.dp))
+                .padding(horizontal = 6.dp, vertical = 3.dp),
+        )
+    }
+}
+
+@Composable
+private fun SeriesCover(book: Book, cellPx: Int) {
+    val path = dev.thorreader.app.io.CustomCovers.frontPath(book)
+    val thumb by produceState<ImageBitmap?>(path?.let { CoverThumbs.cached(it, cellPx) }?.asImageBitmap(), path, cellPx) {
+        val p = path ?: return@produceState
+        value = CoverThumbs.load(p, cellPx)?.asImageBitmap()
+    }
+    val img = thumb
+    if (img != null) Image(img, book.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) else BookCover(book, Modifier.fillMaxSize())
 }
 
 @OptIn(ExperimentalFoundationApi::class)

@@ -1157,6 +1157,42 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
   after a fresh start - every turn a curl, setup 20-100 ms, p95 after setup 16.8-16.9 ms, curl
   never switched off.
 
+### v0.3.0: manga series collections (main)
+- Volumes vs chapters (`engine/MangaUnits`, from the file name, computed when needed - no DB
+  change, existing books covered): "v01", "Vol. 1", "Volume 3", "第3巻" → volume; "Ch. 1 Title",
+  "c047", "Chapter 47", "Vol.02 Ch.012.5", "第47話", a bare 3+-digit number → chapter. Only for
+  manga (`MangaShelf.unitOf`: Manga type, or a comic file whose series is already manga in the
+  library - a chapter just imported). The importer now also takes the series from these names
+  when the general parser can't ("Blue Period - c047" → series Blue Period, #47).
+- Chapter maps (`manga/MangaSeries`, only with "Look up book info online"; only the series name
+  is sent; cached a week, three months when finished): Wikipedia's "Graphic novel list" volume
+  tables (`MangaSeriesMap.fromWikitext`: "*1. …", "* 001. …", `{{Numbered list|start=N|…}}`,
+  "# …" continuing, `<li value>`; chapters after the last volume = not in a volume yet; "List of
+  … chapters" pages followed and merged) + AniList status (RELEASING → Ongoing, FINISHED →
+  Completed with its chapter count). Checked on real pages: Blue Period (20 vols, v1 = 1–4,
+  86–92 loose), Chainsaw Man (v1 = 1–7 … 232), Jujutsu Kaisen (… 271), Frieren, One Piece.
+- The collection (`engine/MangaCollection`): chapter 1 to the end; an owned volume stands in for
+  its chapters ("Vol. 1 · Ch. 1–4"), owned chapters ("Ch. 47 · in Vol. 11"), gaps ("Vol. 3–10 ·
+  Ch. 9–46 · not in your library · 38 chapters"), the rest ("… · more to come" when ongoing);
+  without a map: by numbers. Info line "Chapters 1–" + green "Ongoing" (· newest Ch. N) or red
+  "N Completed" (amber "On hiatus").
+- Library: a manga series with 2+ books is one stacked tile "Name · N" (grid) / stacked row
+  (list), at its first book's place in the sort; closing a book lands on the tile. Tap → the
+  collection screen: cover flow (default when volumes and chapters are mixed; middle cover large,
+  neighbours turned away, gaps as empty cards; Inspect / Read / ⋯ under it) or list (⋯ = the
+  book's own menu: opens in, edit info, remove).
+- Inspect on a manga volume / chapter: the top screen shows the series' collection (the book on
+  show highlighted, Read, ↺, ✕) and the 3D book is on the bottom screen; tapping another of the
+  series' books switches the 3D book (the bottom window stays, no blink).
+- Fixed on the way: AniList's top hit for "Blue Period" is "A Bitter Fruit" (it lists "Blue
+  Period" as a synonym) - the online lookup (`Sources.AniList`) and the status lookup now rank a
+  real-title match above a synonym match (a test chapter had been renamed "A Bitter Fruit #47").
+- Tests: MangaUnitsTest, MangaSeriesMapTest, MangaCollectionTest, MangaShelfTest, MetadataTest
+  (160 in total). Checked on the Thor with Blue Period v01 / v02 and a test "Blue Period -
+  c047.cbz" (2 placeholder pages): tile "Blue Period · 3", cover flow, list with the gaps,
+  "Chapters 1–Ongoing · newest Ch. 92", Inspect (list on top, 3D on the bottom, switching
+  books), ⋯ → Remove. The test chapter and its file were removed afterwards.
+
 ### v0.3.0: OPDS catalogs; the Sync tab is now "Online" (main)
 - Settings → Online: Reading progress (the sync) and Catalogs (OPDS). Saved catalogs (Open /
   Remove), one-tap free ones (Project Gutenberg, Internet Archive), "+ Add a catalog" (name,
@@ -1336,7 +1372,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: OPDS catalogs (Settings → Online)".
+  "v0.3.0: manga series collections".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1365,6 +1401,8 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 - Burn-in protection: black screens after no input (Settings → Screen), slow pixel shift.
 - Reading progress sync with CrossPoint (Xteink X4) / KOReader (Settings → Online).
 - OPDS catalogs: browse, search and download books into the library (Settings → Online, + menu).
+- Manga series collections: volume / chapter detection, series tiles, cover flow + gap list,
+  Ongoing / Completed, Inspect with the collection on top and the 3D book below.
 - Grid view: each cover has a small tab at the bottom right with the icon of the mode it opens in
   (its own mode, else the last book mode), styled like the ★ tab. Checked on the Thor (Blue
   Period 1 shows Mode 4, the others Mode 1). Settings → Library → "Mode icons on grid covers"
@@ -1408,7 +1446,7 @@ Thor Reader (main):
     adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-debug.apk
     adb shell am start -n dev.thorreader.app/.MainActivity
     .\gradlew assembleRelease      -> app\build\outputs\apk\release\ThorReader-0.3.0.apk
-    .\gradlew testDebugUnitTest    (144 tests)
+    .\gradlew testDebugUnitTest    (160 tests)
 Bookloader branch (both apps):
     git switch bookloader
     .\gradlew assembleDebug

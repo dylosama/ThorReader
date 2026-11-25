@@ -341,6 +341,7 @@ class Importer(private val context: Context, private val dao: BookDao, private v
 fun withFileMeta(b: Book, meta: ExtractedMeta): Book {
     val format = runCatching { BookFormat.valueOf(b.format) }.getOrNull()
     val comic = format?.comic == true
+    fun mangaUnit(name: String) = dev.thorreader.app.engine.MangaUnits.fromFileName(name)
     // A picture folder has no extension: don't let "Vol. 2" lose its number to the "." rule.
     val parsed = FilenameParser.parse(if (format == BookFormat.IMAGES) "${b.fileName}.dir" else b.fileName, comic)
     val seriesFromName = comic && format != BookFormat.IMAGE
@@ -351,8 +352,13 @@ fun withFileMeta(b: Book, meta: ExtractedMeta): Book {
     return b.copy(
         title = keep("title", b.title, meta.title ?: parsed.title),
         author = keep("authors", b.author, people ?: parsed.author),
-        series = keep("series", b.series, meta.series ?: if (seriesFromName) parsed.series else null),
-        seriesNumber = keep("number", b.seriesNumber, if (meta.series != null) meta.seriesNumber else if (seriesFromName) parsed.number else null),
+        // Manga chapter / volume names the general parser misses ("Blue Period - c047"): the
+        // manga recogniser fills in the series (so the series' reading direction applies too).
+        series = keep("series", b.series, meta.series ?: if (seriesFromName) (parsed.series ?: mangaUnit(b.fileName)?.series) else null),
+        seriesNumber = keep(
+            "number", b.seriesNumber,
+            if (meta.series != null) meta.seriesNumber else if (seriesFromName) (parsed.number ?: mangaUnit(b.fileName)?.let { it.chapter ?: it.volume?.toFloat() }) else null,
+        ),
         genres = keep("genres", b.genres, dev.thorreader.app.metadata.Genres.join(genres)),
         description = keep("description", b.description, description),
         mangaRtl = meta.mangaRtl || b.mangaRtl,

@@ -61,6 +61,12 @@ class ThorApp : Application() {
     /** The catalog being browsed (over the library), or null. */
     var browsing by mutableStateOf<dev.thorreader.app.opds.Catalog?>(null)
 
+    /** Manga series chapter maps (Wikipedia + AniList), for the collection views. */
+    lateinit var mangaSeries: dev.thorreader.app.manga.MangaSeries
+
+    /** The manga series whose collection is open over the library (its name), or null. */
+    var collection by mutableStateOf<String?>(null)
+
     val scope = MainScope()
 
     var screens by mutableStateOf(ScreenMetrics.DEFAULT)
@@ -166,6 +172,7 @@ class ThorApp : Application() {
         lookup = dev.thorreader.app.metadata.MetadataLookup(this).also { it.start() }
         progressSync = dev.thorreader.app.sync.ProgressSync(this)
         catalogs = dev.thorreader.app.opds.Catalogs(this)
+        mangaSeries = dev.thorreader.app.manga.MangaSeries(this)
         settings.onTextChanged = ::saveBookText
         registerScreenReceiver()
         trimCaches()
@@ -387,10 +394,23 @@ class ThorApp : Application() {
     var inspecting by mutableStateOf<dev.thorreader.app.ui.InspectState?>(null)
         private set
 
-    fun startInspect(book: Book) {
+    /** Inspect [book]; [series]: it belongs to this manga collection (opened from it). */
+    fun startInspect(book: Book, series: String? = null) {
         if (inspecting != null || session != null || bookAnim != null) return
-        Log.i(TAG, "Inspect book '${book.title}'")
-        inspecting = dev.thorreader.app.ui.InspectState(book, coverBounds[book.id]?.let { android.graphics.RectF(it) })
+        Log.i(TAG, "Inspect book '${book.title}'${series?.let { " (collection '$it')" } ?: ""}")
+        inspecting = dev.thorreader.app.ui.InspectState(book, coverBounds[book.id]?.let { android.graphics.RectF(it) }, series)
+    }
+
+    /** Manga collection (Inspect): show another volume / chapter of the series as the 3D book. */
+    fun switchInspect(book: Book) {
+        val old = inspecting ?: return
+        if (old.book.id == book.id || old.closing) return
+        Log.i(TAG, "Inspect: switched to '${book.title}'")
+        inspecting = dev.thorreader.app.ui.InspectState(book, null, old.collection)
+        scope.launch {
+            delay(300)
+            old.textures?.recycle()
+        }
     }
 
     /** X / B / Back: the book shrinks back into its row (then [endInspect]). */
@@ -415,8 +435,9 @@ class ThorApp : Application() {
         val s = inspecting ?: return
         if (s.closing) return
         s.touched()
-        // From where the front cover is right now (the book is not turned back first).
-        val from = s.frontRect(screens.topW.toFloat(), screens.topH.toFloat())
+        // From where the front cover is right now (the book is not turned back first). A manga
+        // collection's 3D book is on the bottom screen: then from its library tile instead.
+        val from = if (s.collection == null) s.frontRect(screens.topW.toFloat(), screens.topH.toFloat()) else null
         Log.i(TAG, "Read from Inspect: '${s.book.title}'")
         openBookAnimated(s.book.id, from) {
             inspecting = null

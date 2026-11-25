@@ -276,6 +276,7 @@ fun LibraryScreen() {
     }
     if (app.settingsOpen) SettingsPanel()
     app.browsing?.let { c -> androidx.compose.runtime.key(c.id) { CatalogBrowser(c) } }
+    app.collection?.let { s -> androidx.compose.runtime.key(s) { CollectionScreen(s, books) } }
     app.editInfoBook?.let { b -> androidx.compose.runtime.key(b.id) { EditInfoPanel(b) } }
     }
 }
@@ -298,14 +299,20 @@ private fun BookList(books: List<Book>, showTutorial: Boolean) {
             BookGrid(books, Modifier.weight(1f))
         } else {
             val state = androidx.compose.foundation.lazy.rememberLazyListState()
-            ShowLandingBook(books) { i ->
+            val items = remember(books) { MangaShelf.group(books) }
+            ShowLandingBook(items) { i ->
                 val info = state.layoutInfo
                 val item = info.visibleItemsInfo.firstOrNull { it.index == i }
                 val shown = item != null && item.offset >= info.viewportStartOffset && item.offset + item.size <= info.viewportEndOffset
                 if (!shown) state.scrollToItem((i - 1).coerceAtLeast(0))
             }
             FillList(Modifier.weight(1f), state = state) {
-                items(books, key = { it.id }) { BookRow(it) }
+                items(items, key = { item -> if (item is MangaShelf.Item.One) item.book.id else "series:" + (item as MangaShelf.Item.Series).name }) { item ->
+                    when (item) {
+                        is MangaShelf.Item.One -> BookRow(item.book)
+                        is MangaShelf.Item.Series -> SeriesRow(item)
+                    }
+                }
             }
         }
     }
@@ -317,10 +324,16 @@ private fun BookList(books: List<Book>, showTutorial: Boolean) {
  * whatever the sort (Recently read puts it first; Title, Progress... wherever it falls).
  */
 @Composable
-fun ShowLandingBook(books: List<Book>, reveal: suspend (Int) -> Unit) {
+fun ShowLandingBook(items: List<MangaShelf.Item>, reveal: suspend (Int) -> Unit) {
     val id = ThorApp.instance.landingBookId ?: return
-    LaunchedEffect(id, books) {
-        val i = books.indexOfFirst { it.id == id }
+    LaunchedEffect(id, items) {
+        // The book itself, or the manga series tile it is in.
+        val i = items.indexOfFirst { item ->
+            when (item) {
+                is MangaShelf.Item.One -> item.book.id == id
+                is MangaShelf.Item.Series -> item.books.any { it.id == id }
+            }
+        }
         if (i < 0) return@LaunchedEffect // not in this list (another shelf / filter): fallback place
         androidx.compose.runtime.withFrameNanos { } // laid out first
         reveal(i)
@@ -441,6 +454,49 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, onClose: () ->
                 onClose()
             }.padding(horizontal = 10.dp, vertical = 6.dp),
         )
+    }
+}
+
+/** A manga series in list view: stacked covers, its name and what's in the library; opens its collection. */
+@Composable
+private fun SeriesRow(item: MangaShelf.Item.Series) {
+    val app = ThorApp.instance
+    val units = item.books.mapNotNull { MangaShelf.unitOf(it) }
+    val vols = units.count { it.kind == dev.thorreader.app.engine.MangaUnits.Kind.VOLUME }
+    val chs = units.size - vols
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFF1A1A1A))
+            .focusClick { app.collection = item.name }
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(64.dp, 84.dp).onGloballyPositioned { c ->
+                // Closing any of its books lands on this row.
+                val r = c.boundsInWindow()
+                item.books.forEach { b -> app.coverBounds[b.id] = android.graphics.RectF(r.left, r.top + 4f, r.right - 8f, r.bottom) }
+            },
+        ) {
+            // Up to three covers fanned out, the first volume / chapter in front.
+            val stack = item.books.take(3)
+            stack.indices.reversed().forEach { depth ->
+                BookCover(
+                    stack[depth],
+                    Modifier.align(Alignment.BottomStart).padding(start = (depth * 4).dp, bottom = (depth * 2).dp).size(56.dp, 80.dp),
+                )
+            }
+        }
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(item.name, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                listOfNotNull(vols.takeIf { it > 0 }?.let { "$it volume${if (it == 1) "" else "s"}" }, chs.takeIf { it > 0 }?.let { "$it chapter${if (it == 1) "" else "s"}" }).joinToString(" · "),
+                color = SubtleText, fontSize = 13.sp,
+            )
+            Text("Manga series · tap for the collection", color = Accent, fontSize = 13.sp)
+        }
     }
 }
 

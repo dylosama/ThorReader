@@ -73,7 +73,8 @@ object AniList {
             val t = m.optJSONObject("title") ?: JSONObject()
             val english = t.str("english")
             val romaji = t.str("romaji")
-            val names = listOf(english, romaji, t.str("native")) + m.optJSONArray("synonyms").strings()
+            val titles = listOf(english, romaji, t.str("native"))
+            val synonyms = m.optJSONArray("synonyms").strings()
             val format = m.str("format")
             val country = m.str("countryOfOrigin")
             val volumes = if (m.isNull("volumes")) null else m.optInt("volumes")
@@ -94,7 +95,9 @@ object AniList {
             }
             val genres = Genres.normalize(m.optJSONArray("genres").strings(), trusted = true) + Genres.normalize(tagNames)
             val isManga = format == "MANGA" || format == "ONE_SHOT" || country in setOf("JP", "KR", "CN")
-            var score = Match.best(q.name, names) * 0.95f
+            // A work whose own title matches beats one that only lists the name among its
+            // alternative titles (AniList's top hit for "Blue Period" is "A Bitter Fruit").
+            var score = maxOf(Match.best(q.name, titles) * 0.95f, Match.best(q.name, synonyms) * 0.9f)
             if (format == "MANGA" || format == "ONE_SHOT") score += 0.05f
             if (q.volume != null && volumes != null && volumes > 0 && q.volume > volumes) score -= 0.2f
             Candidate(

@@ -122,6 +122,16 @@ class MetadataTest {
     }
 
     @Test
+    fun aniListRealTitleBeatsAnAlternativeName() {
+        // AniList's top hit for "Blue Period" is "A Bitter Fruit", which lists it as a synonym.
+        val json = """{"data":{"Page":{"media":[
+            {"id":1,"title":{"romaji":"Nigai Kajitsu","english":"A Bitter Fruit"},"synonyms":["Blue Period"],"format":"MANGA","countryOfOrigin":"JP","volumes":1},
+            {"id":2,"title":{"romaji":"Blue Period","english":"Blue Period"},"synonyms":[],"format":"MANGA","countryOfOrigin":"JP","volumes":null}]}}}"""
+        val c = AniList.parse(json, Query("Blue Period - c047", "Blue Period", null, 47f, null, null, null, null))
+        assertTrue(c.first { it.id == "2" }.score > c.first { it.id == "1" }.score)
+    }
+
+    @Test
     fun comicVineAnswers() {
         val q = Query("Spectacular Spider-Man v1 001", "Spectacular Spider-Man", 1, 1f, null, null, null, null)
         val vols = ComicVine.parseVolumes(

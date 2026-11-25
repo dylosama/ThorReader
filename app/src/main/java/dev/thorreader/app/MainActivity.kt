@@ -50,7 +50,8 @@ class MainActivity : HostActivity() {
     private var inspectPresentation: InspectPresentation? = null
 
     private fun showInspect(s: dev.thorreader.app.ui.InspectState) {
-        if (inspectPresentation?.isShowing == true && inspectPresentation?.state === s) return
+        // Already showing: it follows app.inspecting itself (no blink when switching books).
+        if (inspectPresentation?.isShowing == true) return
         dismissInspect()
         val display = app.bottomDisplay() ?: return
         try {

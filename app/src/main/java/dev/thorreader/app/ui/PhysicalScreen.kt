@@ -59,9 +59,12 @@ fun PhysicalScreen(screen: Screen) {
                     ScreenBody(screen, mode)
                 }
             }
-            // Inspect book: the 3D book over the library (top screen).
+            // Inspect book: the 3D book over the library (top screen) - or, for a manga volume /
+            // chapter, the series' collection here and the 3D book on the bottom screen.
             val inspect = ThorApp.instance.inspecting
-            if (inspect != null && screen == Screen.TOP && ThorApp.instance.session == null) InspectOverlay(inspect)
+            if (inspect != null && screen == Screen.TOP && ThorApp.instance.session == null) {
+                if (inspect.collection != null) androidx.compose.runtime.key(inspect) { InspectCollectionTop(inspect) } else InspectOverlay(inspect)
+            }
         }
         // Book open / close animation: over everything, in unrotated screen pixels (also on a
         // screen that is otherwise idle in the new mode, while the animation still needs it).
