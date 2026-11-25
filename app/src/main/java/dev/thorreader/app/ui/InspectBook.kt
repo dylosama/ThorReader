@@ -207,8 +207,9 @@ private fun generatedSpine(book: Book, w: Int, h: Int, base: Int, dark: Int): Bi
         }
         val ell = android.text.TextUtils.ellipsize(text, tp, h - 80f, android.text.TextUtils.TruncateAt.END).toString()
         c.save()
-        // Reads top to bottom, as on most spines.
-        c.translate(w / 2f + tp.textSize * 0.35f, 40f)
+        // Reads top to bottom, as on most spines; centred along the spine's length.
+        val start = ((h - tp.measureText(ell)) / 2f).coerceAtLeast(40f)
+        c.translate(w / 2f + tp.textSize * 0.35f, start)
         c.rotate(90f)
         c.drawText(ell, 0f, 0f, tp)
         c.restore()

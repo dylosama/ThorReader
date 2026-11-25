@@ -1213,7 +1213,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: closing a book lands its cover in its new library place".
+  "v0.3.0: Inspect spine text centred along the spine".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1236,6 +1236,8 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 - Night keeps a book's front cover in its own colours; Inspect spine / back in the cover's
   dominant colour.
 - Closing a book lands its cover in its new library place (re-sorted, scrolled into view).
+- Inspect: the spine's title · author is centred along the spine (was at the top). Checked on
+  the Thor with Dune.
 
 ### Built, not yet fully tested on the Thor (test list before releasing 0.3)
 Checked on the Thor already: popup on the last list row and last grid cover (scroll, pinned
