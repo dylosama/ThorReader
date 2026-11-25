@@ -265,7 +265,8 @@ page" always moves the right way physically.
   PKCS12, alias `thor-reader`, RSA 4096, valid 100 years). Passwords only in
   `keystore.properties` (git-ignored) which `app/build.gradle.kts` reads. **The .jks file and
   its password must be backed up**: without them no update can ever install over v0.1.0.
-- Version: versionName 0.2.0, versionCode 2 (increase versionCode for every release).
+- Version: versionName 0.2.0, versionCode 3 (increase versionCode for every release; code 3 =
+  0.2.0 re-release with the step-21 fixes).
 - Build: `.\gradlew assembleRelease` -> `app\build\outputs\apk\release\app-release.apk`.
   The owner uploads it to GitHub Releases manually.
 - Since v0.2.0 debug builds are signed with the release key too (when keystore.properties
@@ -712,7 +713,7 @@ Idle CPU was already ~0 before; the fixes remove the cases that weren't idle (sp
 screen kept on forever, 120 Hz). Debug log lines added: "Badge: ...", "Built pages for
 chapters a..b in N ms", "Display N: asking for 60 Hz".
 
-### v0.2.1 hotfix (step 21): RTL manga, small screen blacks out on forward turns
+### Step 21 fixes (shipped as v0.2.0, versionCode 3): RTL manga, small screen blacks out on forward turns
 Hypothesis (checked on the Thor below): comic pages were decoded at up to 2x the screen size
 (inSampleSize only halves), ~12 MB per manga page, 2 per view; Step 20 cut the render cache to
 120 MB, so current ±2 views (~118 MB) no longer fit. The LRU evicts the oldest entries; prefetch
@@ -738,9 +739,11 @@ Fix:
 - Per-turn log: "Turn forward to view N (from M): slot0 hit, slot1 MISS ..." (a miss on a
   normal one-step turn is logged as a warning) and "Screen TOP/BOTTOM shows view N, X ms after
   the turn".
-- versionName 0.2.1, versionCode 3.
+- Version: NOT a new version name. Kept versionName 0.2.0 and raised versionCode to 3, so anyone with
+  the first 0.2.0 (versionCode 2) gets a clean update. APK ThorReader-0.2.0.apk; the v0.2.0 git tag
+  is moved to this commit (tag only; main is never force-pushed).
 
-### v0.2.1 addition: swapping a double-page spread, better spread detection
+### Step 21 addition (also v0.2.0, code 3): swapping a double-page spread, better spread detection
 - Swap on a split spread (swipe up, Y, or d-pad right in Mode 1) no longer says "Spread can't
   be swapped": the big (top) screen shows the WHOLE spread fitted to it (aspect kept, black
   around, double-tap / pinch zoom work), the small screen shows the same spread dimmed with a
