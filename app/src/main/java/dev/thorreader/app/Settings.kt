@@ -381,13 +381,22 @@ class Settings(private val prefs: SharedPreferences) {
         prefs.edit().putBoolean("turn_corner_bottom", bottom).apply()
     }
 
-    /** Library shows covers in a grid (true) or the list (false). Remembered. */
-    var libraryGrid by mutableStateOf(prefs.getBoolean("library_grid", false))
+    /**
+     * How the library shows books: the list, a grid of covers, or a cover flow of angled 3D
+     * books. Remembered ("library_layout"; before 0.3 there was only "library_grid" on / off).
+     */
+    var libraryLayout by mutableStateOf(
+        prefs.getString("library_layout", null)?.let { s -> LibraryLayout.entries.firstOrNull { it.name == s } }
+            ?: if (prefs.getBoolean("library_grid", false)) LibraryLayout.GRID else LibraryLayout.LIST,
+    )
         private set
 
-    fun updateLibraryGrid(grid: Boolean) {
-        libraryGrid = grid
-        prefs.edit().putBoolean("library_grid", grid).apply()
+    /** Covers in a grid (the grid view's rules: tap = Inspect, mode icons...). */
+    val libraryGrid: Boolean get() = libraryLayout == LibraryLayout.GRID
+
+    fun updateLibraryLayout(layout: LibraryLayout) {
+        libraryLayout = layout
+        prefs.edit().putString("library_layout", layout.name).apply()
     }
 
     /**
@@ -614,3 +623,11 @@ enum class AnimSpeed(val label: String, val bookMs: Int, val swapMs: Int, val hi
 
 /** Open & close book style: Hinge (book modes: centre, turn, travel to the hinge, open) or Classic. */
 enum class BookAnimStyle(val label: String) { HINGE("Hinge"), CLASSIC("Classic") }
+
+/** The library's views, in the order the view button steps through them. */
+enum class LibraryLayout(val label: String) {
+    LIST("List"), GRID("Grid"), FLOW("Cover flow");
+
+    /** The view the button switches to next. */
+    val next: LibraryLayout get() = entries[(ordinal + 1) % entries.size]
+}

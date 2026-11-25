@@ -268,7 +268,7 @@ private fun GridCover(book: Book, cellPx: Int) {
 @Composable
 fun LibraryPill(onAdd: () -> Unit, addPopup: @Composable () -> Unit) {
     val app = ThorApp.instance
-    val grid = app.settings.libraryGrid
+    val next = app.settings.libraryLayout.next
     Row(
         Modifier
             .clip(RoundedCornerShape(50))
@@ -276,7 +276,14 @@ fun LibraryPill(onAdd: () -> Unit, addPopup: @Composable () -> Unit) {
             .border(1.dp, HouseStyle.Hairline, RoundedCornerShape(50)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PillButton(onClick = { app.settings.updateLibraryGrid(!grid) }) { if (grid) ListIcon() else GridIcon() }
+        // List -> Grid -> Cover flow -> List; the icon is the view it switches to.
+        PillButton(onClick = { app.settings.updateLibraryLayout(next) }) {
+            when (next) {
+                dev.thorreader.app.LibraryLayout.LIST -> ListIcon()
+                dev.thorreader.app.LibraryLayout.GRID -> GridIcon()
+                dev.thorreader.app.LibraryLayout.FLOW -> FlowIcon()
+            }
+        }
         PillDivider()
         Box {
             PillButton(onClick = onAdd) { Text("+", color = Color.White, fontSize = 24.sp) }
@@ -326,6 +333,28 @@ private fun GridIcon() {
         val s = (size.width - g) / 2f
         for (i in 0..1) for (j in 0..1) {
             drawRoundRect(Color.White, Offset(i * (s + g), j * (s + g)), androidx.compose.ui.geometry.Size(s, s), androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
+        }
+    }
+}
+
+/** Three books standing turned (a spine and a slanted cover each): "show as a cover flow". */
+@Composable
+private fun FlowIcon() {
+    Canvas(Modifier.size(22.dp, 20.dp)) {
+        val bw = size.width / 3f
+        for (i in 0..2) {
+            val x = i * bw
+            // The spine: a narrow upright strip.
+            drawRect(Color.White.copy(alpha = 0.55f), Offset(x, size.height * 0.08f), androidx.compose.ui.geometry.Size(bw * 0.28f, size.height * 0.84f))
+            // The cover, turned away: a slanted quad going back from the spine.
+            val p = androidx.compose.ui.graphics.Path().apply {
+                moveTo(x + bw * 0.3f, size.height * 0.08f)
+                lineTo(x + bw * 0.88f, size.height * 0.2f)
+                lineTo(x + bw * 0.88f, size.height * 0.8f)
+                lineTo(x + bw * 0.3f, size.height * 0.92f)
+                close()
+            }
+            drawPath(p, Color.White)
         }
     }
 }

@@ -178,6 +178,7 @@ class ThorApp : Application() {
         Log.i(TAG, "Android asks for memory (level $level)")
         session?.trimMemory(severe)
         dev.thorreader.app.ui.CoverThumbs.trim()
+        dev.thorreader.app.ui.FlowSpines.trim()
         if (::catalogs.isInitialized) catalogs.trimThumbnails()
     }
 

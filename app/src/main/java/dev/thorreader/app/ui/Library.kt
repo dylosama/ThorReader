@@ -302,7 +302,9 @@ private fun BookList(books: List<Book>, showTutorial: Boolean, stackSeries: Bool
             TutorialBadge(TutorialStep.OPEN_BOOK, "Tap a book to start reading", ArrowDir.DOWN, Modifier.padding(start = 24.dp, bottom = 2.dp), arrowAlign = Alignment.Start)
         }
         // Grid view: covers only (tap = Inspect); list view: the rows. Same sorts and groups.
-        if (ThorApp.instance.settings.libraryGrid) {
+        if (ThorApp.instance.settings.libraryLayout == dev.thorreader.app.LibraryLayout.FLOW) {
+            BookFlow(books, Modifier.weight(1f), stackSeries)
+        } else if (ThorApp.instance.settings.libraryGrid) {
             BookGrid(books, Modifier.weight(1f), stackSeries)
         } else {
             val state = androidx.compose.foundation.lazy.rememberLazyListState()

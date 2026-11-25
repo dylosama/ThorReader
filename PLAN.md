@@ -1191,6 +1191,28 @@ Changes:
   book below) dims then goes fully black on both screens (0 / 255).
 - Tests: NetworkInputHardeningTest (entity bomb / XXE stripped, image bombs refused) - 162 total.
 
+### v0.3.0: cover flow library view (main)
+- A third library view: the pill's view button now steps List -> Grid -> Cover flow (its icon is
+  the view it switches to; Cover flow's is three turned books). Pref `library_layout`
+  (LIST / GRID / FLOW); older installs keep their view from `library_grid`.
+- Cover flow (`ui/CoverFlowShelf.kt`): one row of books standing turned 34 deg (FlowGeometry),
+  each showing its spine and its front cover at an angle, like books on a table. Spines are
+  Inspect's (title · author in the cover's dominant colour, or the user's spine picture; cached
+  in `FlowSpines`, trimmed on low memory), as thick as the book (`Book3D.thicknessRatio`, kept
+  between 6 and 22 % of the height). Right-to-left manga turn the other way (spine on the
+  right). Soft shadow under each book; ★ and the mode icon on the cover as in the grid.
+- Tap / A = Inspect (the 3D book lifts from the angled cover and lands back there), hold / X =
+  the book's popup, d-pad along the row (the focused book lifts, accent outline); a series is
+  one book with a "Name · N" tab that opens its collection; inside a Series group the books
+  show one by one; closing a book scrolls the row to it.
+- Two things found on the way: the flat faces are wider than their slots, so they are laid out
+  unbounded (Compose had squeezed them into the slot: cropped covers, gaps at the joint); slots
+  are sized with the renderer's perspective (camera 8 = 576 px, checked against the drawn
+  covers: Dune's 332 px cover turned 34 deg is drawn ~210 px wide). Measuring the turned layers
+  doesn't work: Android reports their bounds without perspective.
+- Tests: CoverFlowTest (174 in total). Checked on the Thor: the row (Recently read and Title
+  sorts), tap -> Inspect (series list on top for Harry Potter; Spider-Man lifts from its slot
+  and lands back), long press popup, d-pad, the pill's three icons.
 ### v0.3.0: EPUB conversion damage repaired (main)
 - Some EPUBs come from a bad conversion that left a "?" where a break character inside a
   hyphenated word was: Dune has 1,634 ("fief-?complete", "drip-?drip-?drip"). The "?" is in the
@@ -1442,7 +1464,7 @@ Changes:
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: pre-release test run fixes".
+  "v0.3.0: cover flow library view".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1476,6 +1498,7 @@ Changes:
 - Book series collections: Wikidata series lists (Dune 1-6), series detection by title for books
   with none (Harry Potter #1), series tiles, missing books by title, Inspect with the list on top.
 - EPUB conversion damage ("fief-?complete") repaired in a copy; checked once per book.
+- Cover flow: a third library view (List -> Grid -> Cover flow), books turned to show spine and cover.
 - Grid view: each cover has a small tab at the bottom right with the icon of the mode it opens in
   (its own mode, else the last book mode), styled like the ★ tab. Checked on the Thor (Blue
   Period 1 shows Mode 4, the others Mode 1). Settings → Library → "Mode icons on grid covers"
@@ -1531,7 +1554,7 @@ Thor Reader (main):
     adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-debug.apk
     adb shell am start -n dev.thorreader.app/.MainActivity
     .\gradlew assembleRelease      -> app\build\outputs\apk\release\ThorReader-0.3.0.apk
-    .\gradlew testDebugUnitTest    (171 tests)
+    .\gradlew testDebugUnitTest    (174 tests)
 Bookloader branch (both apps):
     git switch bookloader
     .\gradlew assembleDebug

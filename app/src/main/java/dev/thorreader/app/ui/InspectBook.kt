@@ -133,7 +133,7 @@ class InspectState(val book: Book, val from: RectF?, series: String? = null) {
 // ---- textures ------------------------------------------------------------------------------------
 
 /** The front cover's dominant colour (see [dev.thorreader.app.engine.CoverColors.dominantColor]). */
-private fun dominantColor(b: Bitmap): Int {
+internal fun dominantColor(b: Bitmap): Int {
     val s = Bitmap.createScaledBitmap(b, 64, 64, true)
     val px = IntArray(64 * 64)
     s.getPixels(px, 0, 64, 0, 0, 64, 64)
@@ -141,13 +141,13 @@ private fun dominantColor(b: Bitmap): Int {
     return dev.thorreader.app.engine.CoverColors.dominantColor(px)
 }
 
-private fun shade(c: Int, k: Float) = android.graphics.Color.rgb(
+internal fun shade(c: Int, k: Float) = android.graphics.Color.rgb(
     (android.graphics.Color.red(c) * k).toInt().coerceIn(0, 255),
     (android.graphics.Color.green(c) * k).toInt().coerceIn(0, 255),
     (android.graphics.Color.blue(c) * k).toInt().coerceIn(0, 255),
 )
 
-private fun textOn(c: Int) = if (dev.thorreader.app.AccentMath.prefersDarkText(c)) android.graphics.Color.rgb(20, 20, 20) else android.graphics.Color.WHITE
+internal fun textOn(c: Int) = if (dev.thorreader.app.AccentMath.prefersDarkText(c)) android.graphics.Color.rgb(20, 20, 20) else android.graphics.Color.WHITE
 
 private fun buildTextures(app: ThorApp, book: Book, front: Bitmap, model: Book3D): InspectTextures {
     // Spine and back in the front cover's dominant colour (only lightly shaded for depth).
@@ -208,7 +208,7 @@ private fun generatedBack(book: Book, w0: Int, h0: Int, base: Int, dark: Int): B
  * photographed lying down, so it is stood up (reading top to bottom); then it is cropped from the
  * middle to the spine's shape.
  */
-private fun customSpine(book: Book, w: Int, h: Int): Bitmap? {
+internal fun customSpine(book: Book, w: Int, h: Int): Bitmap? {
     val f = dev.thorreader.app.io.CustomCovers.file(book.id, dev.thorreader.app.io.CustomCovers.Part.SPINE) ?: return null
     val src = runCatching { BitmapFactory.decodeFile(f.path) }.getOrNull() ?: return null
     val upright = if (src.width > src.height) {
@@ -225,7 +225,7 @@ private fun customSpine(book: Book, w: Int, h: Int): Bitmap? {
     return out
 }
 
-private fun generatedSpine(book: Book, w: Int, h: Int, base: Int, dark: Int): Bitmap {
+internal fun generatedSpine(book: Book, w: Int, h: Int, base: Int, dark: Int): Bitmap {
     val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val c = android.graphics.Canvas(b)
     // Rounded look: darker toward both edges.
