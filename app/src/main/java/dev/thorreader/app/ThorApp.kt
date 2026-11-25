@@ -156,11 +156,12 @@ class ThorApp : Application() {
         trimCaches()
         refreshScreens()
         MuPdf.logNativeSupport()
-        // Burn-in protection: the slow pixel shift (one small step every few minutes).
+        // Burn-in protection: a pixel-shift step falls due every few minutes; it is taken at
+        // the next page turn (or touch outside the reader), never while a page is being read.
         scope.launch {
             while (true) {
                 delay(dev.thorreader.app.engine.BurnIn.SHIFT_EVERY_MS)
-                pixelShiftStep++
+                shiftDue = true
             }
         }
         // Settings.mode always starts as Mode 3: the library on the top screen.
@@ -718,27 +719,62 @@ class ThorApp : Application() {
 
     // ---- burn-in protection (AMOLED): screen saver and pixel shift ----------------------------
 
-    /** Both screens are black (pixels off) after Settings → Screen minutes without input. */
-    var screenSaver by mutableStateOf(false)
+    /**
+     * Screen saver stage: 0 = normal, [SAVER_DIM] = dimmed (a warning; the page is still
+     * readable), [SAVER_BLACK] = black (pixels off). Dims after Settings → Screen minutes without
+     * input, black [DIM_WARNING_MS] later. Never changes while you are interacting.
+     */
+    var saverStage by androidx.compose.runtime.mutableIntStateOf(0)
         private set
+    val screenSaver: Boolean get() = saverStage != 0
     private var saverJob: Job? = null
 
-    /** Step of the slow pixel shift ([dev.thorreader.app.engine.BurnIn]); read at layout only. */
+    /** Last touch / button (uptime ms): one cheap write per input, no timer restarted each time. */
+    @Volatile private var lastInputAt = SystemClock.uptimeMillis()
+
+    /**
+     * Step of the slow pixel shift ([dev.thorreader.app.engine.BurnIn]); read at layout only.
+     * It only advances at a moment of change - a page turn starting, or a touch / button
+     * outside the reader - never under a page being read, so reading stays perfectly still.
+     */
     var pixelShiftStep by androidx.compose.runtime.mutableIntStateOf(0)
         private set
+    private var shiftDue = false
+
+    /** A page is about to change (turn, swipe, jump): take a pending pixel-shift step now. */
+    fun pageChanging() {
+        if (!shiftDue) return
+        shiftDue = false
+        pixelShiftStep++
+        Log.d(TAG, "Pixel shift step $pixelShiftStep -> ${dev.thorreader.app.engine.BurnIn.shiftAt(pixelShiftStep)} px (${if (session != null) "page turn" else "input"})")
+    }
 
     /** The touch that woke the screens: swallowed until the finger lifts. */
     private var swallowingTouch = false
     private var swallowingKey = -1
 
+    /** One loop sleeps until the idle time is up; each input only moves [lastInputAt]. */
     private fun restartScreenSaver() {
-        saverJob?.cancel()
-        val min = settings.screenSaverMin
+        lastInputAt = SystemClock.uptimeMillis()
+        if (saverJob?.isActive == true) return
         saverJob = scope.launch {
-            delay(debugSaverMs ?: (min * 60_000L))
-            screenSaver = true
-            keepScreenOn = false
-            Log.i(TAG, "No input for ${if (debugSaverMs != null) "$debugSaverMs ms (debug)" else "$min min"}: screens black (burn-in protection)")
+            while (true) {
+                val idleFor = debugSaverMs ?: (settings.screenSaverMin * 60_000L)
+                val now = SystemClock.uptimeMillis()
+                val due = lastInputAt + idleFor
+                if (now < due) {
+                    delay(due - now)
+                    continue
+                }
+                saverStage = SAVER_DIM
+                Log.i(TAG, "No input for ${if (debugSaverMs != null) "$debugSaverMs ms (debug)" else "${settings.screenSaverMin} min"}: screens dimmed (burn-in protection)")
+                delay(if (debugSaverMs != null) 3_000L else DIM_WARNING_MS)
+                if (saverStage != SAVER_DIM) return@launch // woken meanwhile
+                saverStage = SAVER_BLACK
+                keepScreenOn = false
+                Log.i(TAG, "Screens black (burn-in protection)")
+                return@launch
+            }
         }
     }
 
@@ -751,8 +787,11 @@ class ThorApp : Application() {
     }
 
     private fun wakeFromSaver(how: String) {
-        screenSaver = false
-        Log.i(TAG, "Screens woken ($how)")
+        val wasBlack = saverStage == SAVER_BLACK
+        saverStage = 0
+        saverJob?.cancel() // a fresh idle count from now
+        saverJob = null
+        Log.i(TAG, "Screens ${if (wasBlack) "woken" else "undimmed"} ($how)")
         userActive()
     }
 
@@ -789,6 +828,8 @@ class ThorApp : Application() {
     /** Any touch or button on either screen. */
     fun userActive() {
         restartScreenSaver()
+        // Outside the reader a touch / button is a moment of change: take a pending shift step.
+        if (session == null) pageChanging()
         if (session == null) {
             keepScreenOn = false
             return
@@ -806,7 +847,9 @@ class ThorApp : Application() {
         startedActivities++
         Background.setVisible(true)
         if (startedActivities == 1) {
-            screenSaver = false // coming back: screens on, the idle time counts again
+            saverStage = 0 // coming back: screens on, the idle time counts again
+            saverJob?.cancel()
+            saverJob = null
             restartScreenSaver()
             onReturn("$who started again")
         }
@@ -832,7 +875,9 @@ class ThorApp : Application() {
                 }
                 android.content.Intent.ACTION_SCREEN_ON -> {
                     Background.setScreenOn(true)
-                    screenSaver = false
+                    saverStage = 0
+                    saverJob?.cancel()
+                    saverJob = null
                     restartScreenSaver()
                     if (startedActivities > 0) onReturn("screen on")
                 }
@@ -1210,6 +1255,13 @@ class ThorApp : Application() {
         private const val HANDOVER_GUARD_MS = 2000L
         private const val AUTO_OFF_DELAY_MS = 1200L
         private const val KEEP_ON_MS = 10 * 60_000L
+
+        /** Screen saver stages ([saverStage]). */
+        const val SAVER_DIM = 1
+        const val SAVER_BLACK = 2
+
+        /** Dimmed this long (still readable: a warning) before the screens go black. */
+        const val DIM_WARNING_MS = 20_000L
         private const val REPEAT_FIRST_DELAY_MS = 450L
         private const val REPEAT_START_MS = 320L
         private const val REPEAT_FASTEST_MS = 60L

@@ -89,13 +89,19 @@ fun BurnInGuard(content: @Composable () -> Unit) {
     }
 }
 
-/** Black over everything while the screen saver is on (fades in over 1.5 s). */
+/**
+ * The screen saver over everything: first a dim (a warning; the page stays readable, a touch
+ * brings it back), then black. Fades in slowly, back out quickly.
+ */
 @Composable
 private fun ScreenSaverCover() {
     val app = ThorApp.instance
-    val black by animateFloatAsState(
-        if (app.screenSaver) 1f else 0f, tween(if (app.screenSaver) 1500 else 150), label = "screen saver",
-    )
+    val target = when (app.saverStage) {
+        ThorApp.SAVER_DIM -> 0.6f
+        ThorApp.SAVER_BLACK -> 1f
+        else -> 0f
+    }
+    val black by animateFloatAsState(target, tween(if (target > 0f) 1500 else 150), label = "screen saver")
     if (black > 0f) Box(Modifier.fillMaxSize().graphicsLayer { alpha = black }.background(Color.Black))
 }
 

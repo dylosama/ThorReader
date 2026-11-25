@@ -1174,8 +1174,18 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 - The idle bottom screen's "Choose a book on the top screen" hint fades to black after 8 s.
 - Not ours to protect: in Mode 3 the bottom screen shows the Thor's own launcher (another app),
   and Android's status / navigation bars when swiped in.
-- Debug builds: `adb shell setprop debug.thorreader.saverms 8000` (read at app start) for
-  testing. Tests: BurnInTest (130 in total). Checked on the Thor (debug, 8 s): library, Inspect
+- Reading stays still and smooth (follow-up): the pixel shift only takes a step at a moment of
+  change - when a page turn / swipe / jump starts (`ReaderSession.show` / `beginDrag` →
+  `ThorApp.pageChanging`), or with a touch / button outside the reader - never under a page
+  being read; a step merely falls due every 3 min. The screen saver first dims (60 % black, the
+  page still readable) and goes black only 20 s later; a touch or button during the dim brings
+  the page back without turning it. The idle timer no longer restarts a coroutine on every input
+  event (one loop; each input only stores its time). Checked on the Thor: Dune left untouched for
+  3.5 min - both screens bit-identical before and after; the due shift step happened at the next
+  turn ("Pixel shift step 1 -> (2, 0) px (page turn)"), that turn p95 16.8 ms; dim 154 → 62 of
+  255, a tap undimmed without turning, then dim → black (0/255 both screens).
+- Debug builds: `adb shell setprop debug.thorreader.saverms 8000` (read at app start; the dim
+  lasts 3 s then) for testing. Tests: BurnInTest (130 in total). Checked on the Thor (debug, 8 s): library, Inspect
   (both screens incl. its details) and reading Dune in Mode 1 all went to 0/255 on both
   screens; a tap or button only woke them (Inspect stayed open, no page turned). The pixel shift
   was not watched on the device (3-minute steps).
@@ -1256,7 +1266,7 @@ ThorReader-0.3.0.apk and publish (tag only when asked).
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), NOT published yet, no 0.3.0 tag. Last commit:
-  "v0.3.0: burn-in protection (screen saver, pixel shift)".
+  "v0.3.0: burn-in protection never disturbs reading (shift at page turns, dim before black)".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).

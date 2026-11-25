@@ -434,6 +434,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         val fromSwapped = isSwapped(app.settings.mode)
         finishTurnNow("new turn") // a turn mid-animation completes instantly; no queue
         swappedView = null // a page turn ends a screen swap
+        app.pageChanging() // burn-in pixel shift: only now, while everything moves anyway
         shownIndex = i
         if (cause != null) startTurn(from, i, cause, i - stepsFrom, fromSwapped)
     }
@@ -738,6 +739,7 @@ class ReaderSession(private val app: ThorApp, initialBook: Book) {
         val (style, ms) = chooseStyle(TurnCause.NORMAL, delta)
         if (style == TurnStyle.NONE) return null
         finishTurnNow("drag started")
+        app.pageChanging() // burn-in pixel shift: only as the page starts to move
         val t = Turn(++turnSeq, shownIndex, target, style, ms, isSwapped(app.settings.mode), interactive = true)
         dragFraction = 0f
         turnT.floatValue = 0f

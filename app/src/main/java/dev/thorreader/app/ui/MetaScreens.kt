@@ -139,8 +139,8 @@ fun SettingsPanel() {
         SectionLabel("Screen")
         ScreenSaverRow()
         Text(
-            "Protects the screens from burn-in: both go black after this long without a touch or button " +
-                "(the first touch only wakes them), and everything on screen moves by a pixel or two every few minutes.",
+            "Protects the screens from burn-in: after this long without a touch or button they dim, then go black " +
+                "(the first touch only wakes them). Everything also moves by a pixel or two now and then - only as a page turns, never while you read.",
             color = HouseStyle.Subtle, fontSize = 13.sp,
         )
 
