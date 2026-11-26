@@ -42,6 +42,23 @@ object KoSync {
     fun md5(s: String): String =
         MessageDigest.getInstance("MD5").digest(s.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 
+    /**
+     * The book's details sent with a position, as CrossPoint sends them: "filename", "title",
+     * "authors" (one string); with [extended] (CrossPoint's own server) also "series" and
+     * "series_index". Blank values are left out.
+     */
+    fun metadata(fileName: String, title: String, author: String?, series: String?, seriesIndex: Float?, extended: Boolean): org.json.JSONObject {
+        val m = org.json.JSONObject()
+        m.put("filename", fileName.substringAfterLast('/'))
+        title.takeIf { it.isNotBlank() }?.let { m.put("title", it) }
+        author?.takeIf { it.isNotBlank() }?.let { m.put("authors", it) }
+        if (extended && !series.isNullOrBlank()) {
+            m.put("series", series)
+            seriesIndex?.let { m.put("series_index", it.toDouble()) }
+        }
+        return m
+    }
+
     // ---- book-wide percentage (by section bytes, like CrossPoint) -------------------------------
 
     /** Book fraction of byte fraction [inSection] through spine item [spine], given each item's size. */

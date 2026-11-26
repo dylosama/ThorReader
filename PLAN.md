@@ -1227,6 +1227,13 @@ Changes:
 - Not used: CrossPoint's optional "position" object (rich progress, its own server only) and
   Basic auth (needs the plain password, which we never keep).
 - Not tested live (the user chose to skip: no device connected / account); 177 unit tests pass.
+- A CrossPoint user's report: Thor progress reached the CrossPoint sync site, but showed
+  "Untitled book", no author. The X4 sends a "metadata" object with each PUT (filename, title,
+  authors as one string; series / series_index only to CrossPoint's server). We now send it too
+  (`KoSync.metadata`, blanks left out), on by default; Settings -> Online -> "Send book title and
+  author" (pref send_info) turns it off. README privacy table updated. Books already on the
+  site get their title with the next position sent (a page turn). Test: bookInfoSentLikeCrossPoint
+  (178 in total).
 
 - The published 0.3 release (with the old build) was deleted and re-published with this build
   as 0.3 (same version 0.3.0 / versionCode 4; the tag moved to this commit).
@@ -1532,11 +1539,11 @@ Changes:
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), PUBLISHED 2026-11-25 as GitHub release 'Thor Reader 0.3'
-  (tag 0.3 moved to the CrossPoint sync check, re-published; Pre-release like 0.1 / 0.2, asset ThorReader-0.3.0.apk, SHA-256
-  0E1F3C4C0CE8B268D96ACD3851B1A78D6CE6511169B9B27F85E6F9058A9BA0A5, notes = the 0.3 section of
+  (tag 0.3 moved to the CrossPoint book info fix, re-published; Pre-release like 0.1 / 0.2, asset ThorReader-0.3.0.apk, SHA-256
+  51AB0C20BF59E894893B0B614B74FE8F39320BCC9D55372108731435AF25F209, notes = the 0.3 section of
   CHANGELOG.md). Published with the GitHub CLI (installed with winget, signed in as dylosama:
   "& 'C:\Program Files\GitHub CLI\gh.exe' release create <tag> <apk> --title ... --notes-file ..."). Last commit:
-  "v0.3.0: CrossPoint sync check".
+  "v0.3.0: send book title and author with sync".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).

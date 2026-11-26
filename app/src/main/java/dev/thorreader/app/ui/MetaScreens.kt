@@ -435,6 +435,7 @@ private fun SyncSection() {
             }
         }
         ChoiceRow("Match books by", listOf(false, true), sync.byFileName, { if (it) "File name" else "File contents" }) { sync.updateByFileName(it) }
+        OnOffRow("Send book title and author", sync.sendBookInfo) { sync.updateSendBookInfo(it) }
         sync.status?.let { Text(it, color = HouseStyle.Subtle, fontSize = 13.sp) }
     } else {
         // Which reader's server: one tap for the common ones, or type your own (self-hosted, Calibre-Web...).

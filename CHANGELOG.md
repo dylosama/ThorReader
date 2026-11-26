@@ -43,7 +43,9 @@
 - **Reading progress sync** with CrossPoint (Xteink X4) and KOReader (Kobo, Kindle, PocketBook,
   Boox, Android), or your own sync server. Checked against CrossPoint's current firmware: same
   book fingerprint, positions and percentage; a book is also found when the other device matches
-  books by file name instead of file contents (and the other way round).
+  books by file name instead of file contents (and the other way round). Each book's title,
+  author and file name go with its position, so CrossPoint's sync site shows the book instead
+  of "Untitled book" ("Send book title and author" to turn this off).
 - **OPDS catalogs**: browse, search and download books into your library (Project Gutenberg,
   Internet Archive, Calibre-Web, Kavita, Komga...).
 - Online lookups only happen with "Look up book info online" on, and only the series name or

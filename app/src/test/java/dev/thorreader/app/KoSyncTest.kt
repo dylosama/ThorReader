@@ -102,6 +102,20 @@ class KoSyncTest {
     }
 
     @Test
+    fun bookInfoSentLikeCrossPoint() {
+        // CrossPoint's sync site shows "Untitled book" without these.
+        val m = KoSync.metadata("Books/Dune.epub", "Dune", "Frank Herbert", "Dune", 1f, extended = false)
+        assertEquals("Dune.epub", m.getString("filename"))
+        assertEquals("Dune", m.getString("title"))
+        assertEquals("Frank Herbert", m.getString("authors"))
+        assertTrue(!m.has("series")) // series only to CrossPoint's own server
+        val x = KoSync.metadata("Dune.epub", "Dune", null, "Dune", 1f, extended = true)
+        assertEquals("Dune", x.getString("series"))
+        assertEquals(1.0, x.getDouble("series_index"), 0.0)
+        assertTrue(!x.has("authors")) // no author: left out, not blank
+    }
+
+    @Test
     fun bookPercentageAndBackByBytes() {
         val sizes = listOf(1000L, 3000L, 6000L)
         assertEquals(0.25f, KoSync.bookFraction(sizes, 1, 0.5f), 1e-6f) // (1000 + 1500) / 10000

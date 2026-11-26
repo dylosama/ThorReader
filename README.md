@@ -144,7 +144,7 @@ Two features you switch on yourself in **Settings › Online**:
 
 | Service | When | What is sent |
 |---|---|---|
-| Your sync server (CrossPoint, KOReader or your own) | only after you sign in | your username and a hash of your password; per book, a fingerprint of the file (not the book itself), your position and percentage, and a device name |
+| Your sync server (CrossPoint, KOReader or your own) | only after you sign in | your username and a hash of your password; per book, a fingerprint of the file (not the book itself), your position and percentage, and a device name; also the book's title, author and file name (and series, to CrossPoint's server) unless you turn off "Send book title and author" |
 | OPDS catalogs you add | while you browse or search one | your search words; the catalog's login if it needs one |
 
 **Safety**

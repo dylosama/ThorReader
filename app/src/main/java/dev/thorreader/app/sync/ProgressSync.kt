@@ -68,6 +68,18 @@ class ProgressSync(private val app: ThorApp) {
     var byFileName by mutableStateOf(prefs.getBoolean("by_name", false))
         private set
 
+    /**
+     * Send the book's title, author and file name with its position (like CrossPoint's "send
+     * metadata"), so the server's site shows which book it is instead of "Untitled".
+     */
+    var sendBookInfo by mutableStateOf(prefs.getBoolean("send_info", true))
+        private set
+
+    fun updateSendBookInfo(on: Boolean) {
+        sendBookInfo = on
+        prefs.edit().putBoolean("send_info", on).apply()
+    }
+
     /** For Settings: the last thing that happened ("Signed in", "Synced 'Dune'", an error). */
     var status by mutableStateOf<String?>(null)
         private set
@@ -236,6 +248,7 @@ class ProgressSync(private val app: ThorApp) {
                     .put("percentage", pct.toDouble())
                     .put("device", DEVICE_NAME)
                     .put("device_id", deviceId)
+                if (sendBookInfo) body.put("metadata", KoSync.metadata(book.fileName, book.title, book.author, book.series, book.seriesNumber, extended = server == DEFAULT_SERVER))
                 val (code, _) = call("PUT", "/syncs/progress", body.toString(), auth())
                 if (alt != null && code in 200..299) {
                     runCatching { call("PUT", "/syncs/progress", body.put("document", alt).toString(), auth()) }
