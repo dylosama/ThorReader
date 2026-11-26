@@ -154,9 +154,18 @@ class ProgressSync(private val app: ThorApp) {
             }
             if (app.session !== s || !s.syncReady) return@launch
             val book = s.book
-            val doc = withContext(Dispatchers.IO) { documentId(book) } ?: return@launch
+            val doc = withContext(Dispatchers.IO) { documentId(book, byFileName) } ?: return@launch
             val remote = try {
-                withContext(Dispatchers.IO) { pull(doc) }
+                withContext(Dispatchers.IO) {
+                    val main = pull(doc)
+                    // Like CrossPoint: another device may match books the other way (file name vs
+                    // file contents), so that id is asked too; the newer of the two wins.
+                    val other = documentId(book, !byFileName)?.takeIf { it != doc }?.let { alt ->
+                        runCatching { pull(alt) }.getOrNull()
+                    }
+                    prefs.edit().putBoolean("alt_${book.id}", other != null).apply()
+                    newer(main, other)
+                }
             } catch (e: IOException) {
                 report("Couldn't sync '${book.title}': ${e.message}")
                 return@launch
@@ -217,8 +226,10 @@ class ProgressSync(private val app: ThorApp) {
         val a = s.syncAnchor() ?: Anchor(book.posChapter, book.posFraction)
         try {
             withContext(Dispatchers.IO) {
-                val doc = documentId(book) ?: return@withContext
+                val doc = documentId(book, byFileName) ?: return@withContext
                 val (progress, pct) = fromAnchor(book, a) ?: return@withContext
+                // Also under the other id while a device uses that one for this book.
+                val alt = if (prefs.getBoolean("alt_${book.id}", false)) documentId(book, !byFileName)?.takeIf { it != doc } else null
                 val body = JSONObject()
                     .put("document", doc)
                     .put("progress", progress)
@@ -226,6 +237,9 @@ class ProgressSync(private val app: ThorApp) {
                     .put("device", DEVICE_NAME)
                     .put("device_id", deviceId)
                 val (code, _) = call("PUT", "/syncs/progress", body.toString(), auth())
+                if (alt != null && code in 200..299) {
+                    runCatching { call("PUT", "/syncs/progress", body.put("document", alt).toString(), auth()) }
+                }
                 when {
                     code in 200..299 -> Log.i(TAG, "Progress sync ($why): sent '${book.title}' at ${"%.1f".format(pct * 100)} % ($progress)")
                     code == 401 -> throw IOException("the server no longer accepts the sign-in")
@@ -250,7 +264,7 @@ class ProgressSync(private val app: ThorApp) {
     private fun isEpub(book: Book) = book.format == BookFormat.EPUB.name
 
     /** The book's id on the server (cached): KOReader's partial MD5 of the file, or of its name. */
-    private fun documentId(book: Book): String? {
+    private fun documentId(book: Book, byFileName: Boolean): String? {
         val cacheKey = "doc_${book.id}_${if (byFileName) "name" else "bin"}"
         prefs.getString(cacheKey, null)?.let { return it }
         val id = if (byFileName) {
@@ -319,6 +333,12 @@ class ProgressSync(private val app: ThorApp) {
     // ---- the server ------------------------------------------------------------------------------
 
     private data class Remote(val progress: String, val percentage: Float, val device: String, val deviceId: String, val timestamp: Long)
+
+    private fun newer(a: Remote?, b: Remote?): Remote? = when {
+        a == null -> b
+        b == null -> a
+        else -> if (b.timestamp > a.timestamp) b else a
+    }
 
     private fun auth(): Pair<String, String> = (user to (key ?: throw IOException("not signed in")))
 

@@ -1213,6 +1213,21 @@ Changes:
   cover turned 17 deg -> rises to the top, no flash, 77-79 frames), Spider-Man (3D book on top,
   no flash), Harry Potter opening in Mode 4. Tests: BookAnimTest (bottom -> shared space, tilted
   cover box) - 177 in total.
+### v0.3.0: CrossPoint sync check (main; 0.3 re-published again with this)
+- Compared ProgressSync / KoSync with CrossPoint's current firmware (crosspoint-reader,
+  lib/KOReaderSync + src/sync/SyncEngine.cpp). Same: partial MD5 (offsets 0, 1024 << 2i) and
+  file-name MD5 ids, MD5 password key, x-auth headers, any 2xx = OK, 204/404 = no progress,
+  default server https://sync.crosspointreader.com (up; answers 401 without sign-in), percentage
+  by cumulative spine bytes (Epub::calculateProgress), XPointers with full ancestry and
+  "text()[n].offset" (we land on the element's start).
+- Gap fixed: the X4 ("smart sync") also asks the server under the other match method's id. We
+  now do too (`newer` of the two by timestamp), remember it per book ("alt_<id>"), and then
+  send our position under both ids, so an X4 matching by file name and the Thor by contents
+  (or the reverse) still meet.
+- Not used: CrossPoint's optional "position" object (rich progress, its own server only) and
+  Basic auth (needs the plain password, which we never keep).
+- Not tested live (the user chose to skip: no device connected / account); 177 unit tests pass.
+
 - The published 0.3 release (with the old build) was deleted and re-published with this build
   as 0.3 (same version 0.3.0 / versionCode 4; the tag moved to this commit).
 ### v0.3.0: release audit ("please optimize this") and the mode badge (main)
@@ -1517,11 +1532,11 @@ Changes:
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), PUBLISHED 2026-11-25 as GitHub release 'Thor Reader 0.3'
-  (tag 0.3 moved to the Read-from-Inspect fix, re-published; Pre-release like 0.1 / 0.2, asset ThorReader-0.3.0.apk, SHA-256
-  F6DC1201C6CA98F0F6131F5E530BE74FDF48158CF0A93856B19B901A3DAB0B74, notes = the 0.3 section of
+  (tag 0.3 moved to the CrossPoint sync check, re-published; Pre-release like 0.1 / 0.2, asset ThorReader-0.3.0.apk, SHA-256
+  0E1F3C4C0CE8B268D96ACD3851B1A78D6CE6511169B9B27F85E6F9058A9BA0A5, notes = the 0.3 section of
   CHANGELOG.md). Published with the GitHub CLI (installed with winget, signed in as dylosama:
   "& 'C:\Program Files\GitHub CLI\gh.exe' release create <tag> <apk> --title ... --notes-file ..."). Last commit:
-  "v0.3.0: Read from Inspect, seamless".
+  "v0.3.0: CrossPoint sync check".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
