@@ -91,7 +91,13 @@ class InspectPresentation(
                     // Follows the book being inspected (a manga collection switches between its books).
                     val s = ThorApp.instance.inspecting ?: state
                     androidx.compose.runtime.key(s) {
-                        if (s.collection != null) dev.thorreader.app.ui.InspectOverlay(s, fromRect = null) else dev.thorreader.app.ui.InspectInfo(s)
+                        when {
+                            // "Read": the open animation's bottom-screen part, until the reader
+                            // takes this screen over (it draws the same frame there).
+                            s.handingOff -> dev.thorreader.app.ui.BookAnimOverlay(dev.thorreader.app.Screen.BOTTOM)
+                            s.collection != null -> dev.thorreader.app.ui.InspectOverlay(s, fromRect = null)
+                            else -> dev.thorreader.app.ui.InspectInfo(s)
+                        }
                     }
                 }
             }

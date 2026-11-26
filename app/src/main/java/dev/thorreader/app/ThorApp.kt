@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import dev.thorreader.app.engine.BookAnimMath
+import dev.thorreader.app.ui.frontBox
 import dev.thorreader.app.ui.frontRect
 import java.io.File
 
@@ -314,6 +315,8 @@ class ThorApp : Application() {
         val fromRow: Boolean = true,
         /** Hinge style (book modes 1 / 2, Settings → Open & close book → Style), else Classic. */
         val hinge: Boolean = false,
+        /** Opening from Inspect: the front cover as seen (centre, size, tilt), in the space of both screens. */
+        val fromBox: dev.thorreader.app.engine.CoverBox? = null,
     ) {
         /** Does this animation draw on [screen]? */
         fun uses(screen: Screen): Boolean = screen == Screen.TOP || mode.isBook || mode == ReadingMode.BOTTOM
@@ -380,7 +383,7 @@ class ThorApp : Application() {
     }
 
     /** Open [id] from the library with the cover animation (or instantly if it's off). */
-    fun openBookAnimated(id: Long, fromRect: android.graphics.RectF? = null, onSnapshot: (() -> Unit)? = null) {
+    fun openBookAnimated(id: Long, fromRect: android.graphics.RectF? = null, fromBox: dev.thorreader.app.engine.CoverBox? = null, onSnapshot: (() -> Unit)? = null) {
         if (bookAnim != null) return
         if (!settings.bookAnim) {
             onSnapshot?.invoke()
@@ -402,7 +405,7 @@ class ThorApp : Application() {
             onSnapshot?.invoke()
             val fade = batteryLow() || shot == null
             if (fade) Log.i(TAG, "Book opens with a quick fade (${if (shot == null) "no snapshot" else "low battery"})")
-            startBookAnim(BookAnim(true, id, mode, book.rtl, cover, from, listOfNotNull(shot?.let { Screen.TOP to it }).toMap(), fade, fromRow = fromRect == null, hinge = useHinge(mode, fade)))
+            startBookAnim(BookAnim(true, id, mode, book.rtl, cover, from, listOfNotNull(shot?.let { Screen.TOP to it }).toMap(), fade, fromRow = fromRect == null, hinge = useHinge(mode, fade), fromBox = fromBox))
             openBook(id)
         }
     }
@@ -454,16 +457,42 @@ class ThorApp : Application() {
         val s = inspecting ?: return
         if (s.closing) return
         s.touched()
-        // From where the front cover is right now (the book is not turned back first). A manga
-        // collection's 3D book is on the bottom screen: then from its library tile instead.
-        val from = if (s.collection == null) s.frontRect(screens.topW.toFloat(), screens.topH.toFloat()) else null
-        Log.i(TAG, "Read from Inspect: '${s.book.title}'")
-        openBookAnimated(s.book.id, from) {
-            inspecting = null
+        // From where the front cover is right now (the book is not turned back first). In a
+        // series' collection the 3D book is on the bottom screen: from there, in the animation's
+        // space of both screens (the bottom screen sits below the top one), so it flies up.
+        val wt = screens.topW.toFloat()
+        val ht = screens.topH.toFloat()
+        val wb = screens.bottomW.toFloat()
+        val onBottom = s.collection != null
+        val (sw, sh) = if (onBottom) wb to screens.bottomH.toFloat() else wt to ht
+        var from = s.frontRect(sw, sh)
+        // ...and as it's seen (tilted, its real size), so the cover doesn't snap straight first.
+        var box = s.frontBox(sw, sh)
+        if (onBottom) {
+            val v = dev.thorreader.app.engine.BookAnimMath.bottomToVirtual(from.left, from.top, from.right, from.bottom, wt, wb, ht)
+            from = android.graphics.RectF(v[0], v[1], v[2], v[3])
+            val (ox, oy) = dev.thorreader.app.engine.BookAnimMath.bottomOffset(wt, wb, ht)
+            box = box?.copy(cx = box.cx + ox, cy = box.cy + oy)
+        }
+        Log.i(TAG, "Read from Inspect: '${s.book.title}'${box?.let { " (cover turned ${"%.0f".format(it.rot)} deg)" } ?: ""}")
+        openBookAnimated(s.book.id, from, box) {
+            // The animation now shows the book; Inspect keeps the bottom screen until the
+            // reader has it ([openBook] ends it), so the launcher never shows through.
+            s.handingOff = true
             scope.launch {
-                delay(1500)
-                s.textures?.recycle()
+                delay(HANDOFF_SAFETY_MS)
+                if (inspecting === s) endHandoff(s) // the book didn't open: don't leave Inspect up
             }
+        }
+    }
+
+    /** The reader has the screens: Inspect goes (see [dev.thorreader.app.ui.InspectState.handingOff]). */
+    private fun endHandoff(s: dev.thorreader.app.ui.InspectState) {
+        if (inspecting !== s) return
+        inspecting = null
+        scope.launch {
+            delay(1500)
+            s.textures?.recycle()
         }
     }
 
@@ -658,6 +687,9 @@ class ThorApp : Application() {
             session = ReaderSession(this@ThorApp, book.copy(mode = mode.name))
             userActive()
             setMode(mode)
+            // Opened from Inspect: the reader takes the bottom screen in this same update, so
+            // Inspect lets go of it now (no gap in between).
+            inspecting?.takeIf { it.handingOff }?.let(::endHandoff)
             tutorialDone(TutorialStep.ADD_BOOKS)
             tutorialDone(TutorialStep.OPEN_BOOK)
         }
@@ -1326,6 +1358,9 @@ class ThorApp : Application() {
         /** The app is running (false in plain unit tests). */
         val ready: Boolean get() = ::instance.isInitialized
         private const val HANDOVER_GUARD_MS = 2000L
+
+        /** Inspect -> reader: if the book hasn't opened by then, Inspect goes anyway. */
+        private const val HANDOFF_SAFETY_MS = 4000L
 
         /** Book open / close: a gap this long between the first frames is a stall, not motion. */
         private const val STALL_NS = 25_000_000L

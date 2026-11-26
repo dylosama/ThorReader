@@ -27,6 +27,8 @@ class MainActivity : HostActivity() {
             val bottom = app.bottomDisplay()
             if (bottom != null && launchOnDisplay(BottomActivity::class.java, bottom.displayId)) {
                 dismissPresentation()
+                dismissInspect() // opened from Inspect: the reader has the bottom screen now
+
                 bottomLaunched = true
                 if (app.bookAnim == null) finish()
                 return
@@ -44,7 +46,31 @@ class MainActivity : HostActivity() {
         if (t != null && mode == ReadingMode.TOP && app.session == null) showTyping(t) else dismissTyping()
         // Inspect book: the book's details take over the bottom screen, only while inspecting.
         val ins = app.inspecting
-        if (ins != null && mode == ReadingMode.TOP && app.session == null && t == null) showInspect(ins) else dismissInspect()
+        if (ins != null && mode == ReadingMode.TOP && app.session == null && t == null) {
+            showInspect(ins)
+        } else {
+            // A book opened from Inspect: keep Inspect on the bottom screen until the reader's
+            // window there has drawn its first frame, else the launcher shows through for a frame.
+            val p = presentation
+            if (inspectPresentation != null && p != null && !p.drawn && !handoverTimedOut) {
+                if (!waitingForReader) {
+                    waitingForReader = true
+                    p.afterFirstFrame { finishInspectHandover() }
+                    window.decorView.postDelayed({ handoverTimedOut = true; finishInspectHandover() }, 300) // never wait longer
+                }
+            } else {
+                dismissInspect()
+            }
+        }
+    }
+
+    private var waitingForReader = false
+    private var handoverTimedOut = false
+
+    private fun finishInspectHandover() {
+        if (!waitingForReader && !handoverTimedOut) return
+        waitingForReader = false
+        reconcile() // still right to close Inspect? (it re-checks everything)
     }
 
     private var inspectPresentation: InspectPresentation? = null
@@ -62,6 +88,8 @@ class MainActivity : HostActivity() {
     }
 
     private fun dismissInspect() {
+        waitingForReader = false
+        handoverTimedOut = false
         inspectPresentation?.let {
             it.dismiss()
             Log.i(TAG, "Bottom screen released (book details closed)")

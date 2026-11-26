@@ -27,6 +27,16 @@ class BottomScreenPresentation(
     display: Display,
 ) : Presentation(activity, display) {
 
+    /** Its first frame has been shown on the bottom screen. */
+    var drawn = false
+        private set
+    private val whenDrawn = ArrayList<() -> Unit>()
+
+    /** Runs [f] once this window has drawn its first frame (at once if it has). */
+    fun afterFirstFrame(f: () -> Unit) {
+        if (drawn) f() else whenDrawn += f
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val composeView = ComposeView(context).apply {
@@ -52,6 +62,13 @@ class BottomScreenPresentation(
                 it.hide(WindowInsets.Type.systemBars())
                 it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
+        }
+        // Its first frame on screen: until then the window is empty (whatever was there before
+        // must stay up - see MainActivity.reconcile).
+        window?.decorView?.viewTreeObserver?.registerFrameCommitCallback {
+            drawn = true
+            whenDrawn.forEach { it() }
+            whenDrawn.clear()
         }
         // Follow "keep the screen on while reading" (released 10 min after the last input).
         keepOnJob = activity.lifecycleScope.launch {

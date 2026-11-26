@@ -21,6 +21,8 @@
 - Spine and back cover in the cover's own colour, with title and author centred on the spine.
 - For a book or manga in a series, the series list is on the top screen and the 3D book on the
   bottom one.
+- Read from Inspect: the cover lifts straight from the 3D book - at its angle, and from the
+  bottom screen when the series list is on top - and swings open, with no flash in between.
 - Edit info: choose your own front cover, spine and back cover pictures.
 
 ### Reading

@@ -86,7 +86,8 @@ private class BookAnimPainter(val a: ThorApp.BookAnim) {
         get() = if (a.open) a.from else app.coverBounds[a.bookId] ?: a.from
 
     private val from: CoverBox
-        get() = slot?.let { CoverBox(it.centerX(), it.centerY(), it.width(), it.height(), 0f) }
+        get() = a.fromBox?.takeIf { a.open } // from Inspect: the front cover as it was seen, tilted
+            ?: slot?.let { CoverBox(it.centerX(), it.centerY(), it.width(), it.height(), 0f) }
             ?: CoverBox(wt / 2f, ht / 2f, ht * 0.25f * aspect, ht * 0.25f, 0f)
 
     private val bitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)

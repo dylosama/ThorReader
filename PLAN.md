@@ -1191,6 +1191,30 @@ Changes:
   book below) dims then goes fully black on both screens (0 / 255).
 - Tests: NetworkInputHardeningTest (entity bomb / XXE stripped, image bombs refused) - 162 total.
 
+### v0.3.0: Read from Inspect, seamless (main; the published 0.3 was replaced with this)
+- Found in the promo video: opening a book from Inspect jumped. (1) In a series' collection the
+  3D book is on the bottom screen, but the open animation started from the book's thumbnail
+  in the series list on the top screen. (2) One frame of the launcher showed on the bottom
+  screen between Inspect letting go and the reader taking it. (3) The cover started flat and
+  upright, so it snapped straight from the tilted 3D book first.
+- Fixes: `readFromInspect` passes where the front cover really is - on the bottom screen it's
+  moved into the animation's space of both screens (`BookAnimMath.bottomToVirtual`), and as a
+  turned box of its real size (`BookAnimMath.boxFromQuad` from the front face's projected
+  corners: centre, width / height between the edges' middles, tilt; `BookAnim.fromBox`; null
+  when the front faces away -> upright as before). The cover now rises from the bottom screen
+  across the hinge, straightening as it goes.
+- Hand-over: "Read" sets `InspectState.handingOff` (Inspect draws no book; its bottom window
+  draws the animation's bottom part) instead of ending Inspect at once; `openBook` ends it when
+  the reader takes over, and `MainActivity.reconcile` keeps the Inspect window until the
+  reader's bottom window has drawn its first frame (`BottomScreenPresentation.afterFirstFrame`,
+  a frame-commit callback; 300 ms at most; safety: Inspect ends after 4 s if the book never
+  opens). Mode 4 dismisses Inspect when BottomActivity is launched.
+- Checked on the Thor (frame by frame, both screens): Dune from its series list (bottom 3D book,
+  cover turned 17 deg -> rises to the top, no flash, 77-79 frames), Spider-Man (3D book on top,
+  no flash), Harry Potter opening in Mode 4. Tests: BookAnimTest (bottom -> shared space, tilted
+  cover box) - 177 in total.
+- The published 0.3 release (with the old build) was deleted and re-published with this build
+  as 0.3 (same version 0.3.0 / versionCode 4; the tag moved to this commit).
 ### v0.3.0: release audit ("please optimize this") and the mode badge (main)
 - Audit on the Thor (release build, 64 % battery): idle cost is 0 % CPU and 0 frames in Grid,
   List, Inspect (spin settled) and reading; Cover flow 0.05 %. Memory 79 MB (library) to 214 MB
@@ -1493,11 +1517,11 @@ Changes:
 
 ### Branches
 - main: Thor Reader v0.3.0 (versionCode 4), PUBLISHED 2026-11-25 as GitHub release 'Thor Reader 0.3'
-  (tag 0.3 on cdf04db, Pre-release like 0.1 / 0.2, asset ThorReader-0.3.0.apk, SHA-256
-  8548913448B9FCE9D36BF58B7E785B6D5CB55BCE553473B4020EC39547EFBDEC, notes = the 0.3 section of
+  (tag 0.3 moved to the Read-from-Inspect fix, re-published; Pre-release like 0.1 / 0.2, asset ThorReader-0.3.0.apk, SHA-256
+  F6DC1201C6CA98F0F6131F5E530BE74FDF48158CF0A93856B19B901A3DAB0B74, notes = the 0.3 section of
   CHANGELOG.md). Published with the GitHub CLI (installed with winget, signed in as dylosama:
   "& 'C:\Program Files\GitHub CLI\gh.exe' release create <tag> <apk> --title ... --notes-file ..."). Last commit:
-  "v0.3.0: release audit, mode badge setting, changelog".
+  "v0.3.0: Read from Inspect, seamless".
 - bookloader: Thor Reader 0.3.0-bookloader (import API, share screen) + Thor Bookloader 0.1.0
   (new :bookloader module). Pushed, not merged, not published. Its own PLAN.md has the step 25
   sections (25 to 25e).
@@ -1603,7 +1627,7 @@ Thor Reader (main):
     adb install -r app\build\outputs\apk\debug\ThorReader-0.3.0-debug.apk
     adb shell am start -n dev.thorreader.app/.MainActivity
     .\gradlew assembleRelease      -> app\build\outputs\apk\release\ThorReader-0.3.0.apk
-    .\gradlew testDebugUnitTest    (175 tests)
+    .\gradlew testDebugUnitTest    (177 tests)
 Bookloader branch (both apps):
     git switch bookloader
     .\gradlew assembleDebug

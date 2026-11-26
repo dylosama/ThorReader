@@ -17,6 +17,36 @@ class BookAnimTest {
     private val aspect = 2f / 3f
 
     @Test
+    fun aTiltedCoverStartsTiltedAtItsRealSize() {
+        // A 200 x 300 cover turned 30 degrees clockwise around (500, 400).
+        val a = Math.toRadians(30.0)
+        val c = kotlin.math.cos(a).toFloat(); val s = kotlin.math.sin(a).toFloat()
+        val local = listOf(-100f to -150f, 100f to -150f, 100f to 150f, -100f to 150f) // TL, TR, BR, BL
+        val xs = FloatArray(4) { 500f + local[it].first * c - local[it].second * s }
+        val ys = FloatArray(4) { 400f + local[it].first * s + local[it].second * c }
+        val box = BookAnimMath.boxFromQuad(xs, ys)
+        assertEquals(500f, box.cx, 0.01f)
+        assertEquals(400f, box.cy, 0.01f)
+        assertEquals(200f, box.w, 0.01f)
+        assertEquals(300f, box.h, 0.01f)
+        assertEquals(30f, box.rot, 0.01f)
+        // Upright: no turn.
+        assertEquals(0f, BookAnimMath.boxFromQuad(floatArrayOf(0f, 10f, 10f, 0f), floatArrayOf(0f, 0f, 20f, 20f)).rot, 0.01f)
+    }
+
+    @Test
+    fun aBookOnTheBottomScreenStartsBelowTheTopOne() {
+        // Inspect's 3D book in a series' collection (bottom screen): the open animation lifts it
+        // from there - below the top screen in the shared space, centred like the bottom screen.
+        val v = BookAnimMath.bottomToVirtual(500f, 300f, 740f, 700f, wt, wb, ht)
+        assertEquals(500f + (wt - wb) / 2f, v[0], 0.01f)
+        assertEquals(300f + ht, v[1], 0.01f)
+        assertEquals(740f + (wt - wb) / 2f, v[2], 0.01f)
+        assertEquals(700f + ht, v[3], 0.01f)
+        assertTrue(v[1] >= ht) // entirely below the top screen: it rises up across the hinge
+    }
+
+    @Test
     fun mode3CoverLiesOnTheFirstPageWithItsSpineOnTheCentre() {
         val ltr = BookAnimMath.place(ReadingMode.TOP, false, wt, ht, wb, hb, aspect)
         assertEquals(SwingAxis.VERTICAL, ltr.axis)

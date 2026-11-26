@@ -117,6 +117,13 @@ class InspectState(val book: Book, val from: RectF?, series: String? = null) {
     var lastTouch by mutableLongStateOf(System.nanoTime())
     var closing by mutableStateOf(false)
 
+    /**
+     * "Read" was pressed: the open animation has taken over from the 3D book. Inspect draws no
+     * book any more (the bottom screen shows the animation) but keeps the bottom screen until the
+     * reader has it, so the launcher never shows through in between.
+     */
+    var handingOff by mutableStateOf(false)
+
     fun touched() {
         lastTouch = System.nanoTime()
     }
@@ -496,6 +503,20 @@ fun InspectOverlay(
  * animation starts exactly there).
  */
 fun InspectState.frontRect(w: Float, h: Float): RectF = projectedRect(w, h, listOf(BookFace.FRONT))
+
+/**
+ * The front cover as it's seen right now - centre, size and tilt (see
+ * [dev.thorreader.app.engine.BookAnimMath.boxFromQuad]) - or null when it's turned away (then
+ * the open animation starts from [frontRect], upright).
+ */
+fun InspectState.frontBox(w: Float, h: Float): dev.thorreader.app.engine.CoverBox? {
+    if (!model.visible(BookFace.FRONT, rot)) return null
+    val target = h * 0.66f * zoom
+    val pts = model.corners(BookFace.FRONT).map { model.project(it, rot, target, w / 2f, h * 0.47f) }
+    return dev.thorreader.app.engine.BookAnimMath.boxFromQuad(
+        FloatArray(4) { pts[it].first }, FloatArray(4) { pts[it].second },
+    )
+}
 
 /** The whole book on screen right now (a tap inside it = Read). */
 fun InspectState.bookRect(w: Float, h: Float): RectF = projectedRect(w, h, BookFace.entries)

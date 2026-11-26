@@ -57,6 +57,36 @@ object BookAnimMath {
     /** The bottom screen's offset in the virtual space. */
     fun bottomOffset(wt: Float, wb: Float, ht: Float): Pair<Float, Float> = (wt - wb) / 2f to ht
 
+    /**
+     * The cover box of a face seen at an angle, from its four corners on screen (top-left,
+     * top-right, bottom-right, bottom-left): centred on them, as wide as the line between the
+     * left and right edges' middles, as tall as the one between the top and bottom edges'
+     * middles, turned like that left-to-right line (degrees, clockwise). Opening a book from
+     * Inspect starts from it, so the cover doesn't snap straight first.
+     */
+    fun boxFromQuad(xs: FloatArray, ys: FloatArray): CoverBox {
+        val cx = (xs[0] + xs[1] + xs[2] + xs[3]) / 4f
+        val cy = (ys[0] + ys[1] + ys[2] + ys[3]) / 4f
+        val lx = (xs[0] + xs[3]) / 2f; val ly = (ys[0] + ys[3]) / 2f
+        val rx = (xs[1] + xs[2]) / 2f; val ry = (ys[1] + ys[2]) / 2f
+        val tx = (xs[0] + xs[1]) / 2f; val ty = (ys[0] + ys[1]) / 2f
+        val bx = (xs[3] + xs[2]) / 2f; val by = (ys[3] + ys[2]) / 2f
+        val w = kotlin.math.hypot(rx - lx, ry - ly)
+        val h = kotlin.math.hypot(bx - tx, by - ty)
+        val rot = Math.toDegrees(kotlin.math.atan2((ry - ly).toDouble(), (rx - lx).toDouble())).toFloat()
+        return CoverBox(cx, cy, w, h, rot)
+    }
+
+    /**
+     * A box on the bottom screen ([l], [t], [r], [b] in its own pixels) in the virtual space of
+     * both screens: e.g. Inspect's 3D book in a series' collection, which the open animation
+     * then lifts from (up across the hinge).
+     */
+    fun bottomToVirtual(l: Float, t: Float, r: Float, b: Float, wt: Float, wb: Float, ht: Float): FloatArray {
+        val (ox, oy) = bottomOffset(wt, wb, ht)
+        return floatArrayOf(l + ox, t + oy, r + ox, b + oy)
+    }
+
     /** Where the closed cover sits for [mode] (see PLAN.md "Book open / close animation"). */
     fun place(mode: ReadingMode, rtl: Boolean, wt: Float, ht: Float, wb: Float, hb: Float, aspect: Float): CoverPlacement {
         val (ox, oy) = bottomOffset(wt, wb, ht)
